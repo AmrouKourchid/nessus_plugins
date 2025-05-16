@@ -1,0 +1,912 @@
+#TRUSTED 2b5f6d08669ceb2774a9e3bc655cf74184e004cf23441a72565867274281d7d5ae05fdac3aa9ce94c183c9c20dd5673dbd7a465fbbde0dc2a47bd19b2460b70947c7545511dfceeec5ffa098526d41a32d094c0aea7c39495a430763327aac7e7dec790358f128aeaa0dfdc274b2f4154427ffdef8f6b17da0df85e2878aa70de6747f429ded80c38efeed9f7baf9fea6f1fa2e25e7a0588d8cecf31383b761e77ec823363a2c197c4e17c69a93505eae99b7251d659169d79e2e8d668b1c7aa779599770637389f1ab5dd609594452e13fd2ae76317db38538aaff41b3bc98dfcfc1e8ab5a2a344c3f5ec7de149e51176e0f64831ffae800b6649e245f5074303cc7a8c4f9a7256e00d410a6eaa22b49d89bf5216364a537f77bd214126619e01e2ef51e5c69d4acbe6bdb98fdb36c1336f14e82afc6a180f454dfc90801ed7b2bf0b3fbfac05a40f56cf394d2535591152271a3d23636814a50dc103c8b3e033752363cf7a5d1040212fd1206443db5dda5fb9f14a16bffdc022ca5a264a61a8b6970499626adf3a8533b4b40452597d93be7230114988a3e463514958fed04729afaf9f362fba08a1ef422e7e2749670953c61a7c0d5cd6106594329830abee7d866b676469271cbb8dba59dd18e9f4882f8a069aaf8a8380fa1251d677f552dda24cb47831915fd4f22329183a326f998cd63d31bc388070f42ac20b8b13
+#TRUST-RSA-SHA256 6e4a4a7961f877560bdfefca0d80809d958b00a948e56f1bb40a791723ee29298e457e126c22b9abeea2da276a6ce2e53d2d9f06f0b049beaf7a2fd14277ee51cc00ff275dea4a03d98a20bb69b96b8c1f5b516d38dd90e99630ff5ab6e81faddb205dd1d8995c95ed11529926fa9621e20dcececd9b61d15ecb7610094dec4e66190fd8a00ce528dc66d5b4b59466516fde5bcbc2b41774836b58fff82e8d211fabcff4880c0abd4002ec32f154e289c27802e22e943b155226095a3712dcd9ddcb6b4d5c771f2574eb04591a2d8ba84d5f04efbdc8e86d8579e1dd0e58d96edd3aabcee8efb8c0fc49e74bb588099935a28a027ab79ab4c46e1b9ee718785d3a5ed1265ae9cc4eb9cb069532f77a0da08a671aeacc17e38cbb00201d3c61499e606e25bc6a3c45139b141cf87e6eedf1e925e21ad580cf06873f294e64fe20127ee6bd25b425b67c71b3096c7d11e6692a3532db0a1b1187430dab0796f58552aeb540b9b721fc8550cdb3d348571d2880238b46aa7f13f682b1ec9d5032caec20e3a10ffeaad5cdaddeda186833915d6eef281c2dfdf205cf31c7b81d713c7b77c85f97e148390e226fe32ce855a4fc1fa9b33365d6ca0ae6e06b844c47d9c108a74dbaf62f6410c53390339d6ddd473eea82026268baa009b9ae270392db47d754e7258507156a29f989777fc97efbbf97b475d804dacf95cad1fe98f0e4
+
+###
+# Functions and objects to manage SSH channels.
+#
+# @license
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# Revision: 2.14
+#
+# @library ssh_lib.inc
+# @nessus 6.0
+# @category SSH
+###
+
+namespace sshlib
+{
+  ##
+  # Default starting window size, 64000
+  ##
+  global_var DEFAULT_INIT_WINDOW_SIZE = 64000;
+  #global_var DEFAULT_INIT_WINDOW_SIZE = 512000;
+
+  ##
+  # Default maximum packet size, 32000
+  ##
+  global_var DEFAULT_MAX_PACKET_SIZE = 32000;
+  #global_var DEFAULT_MAX_PACKET_SIZE = 1024000;
+  #global_var WINDOWBASE = 128000;
+  ##
+  # Default window size, 1024000
+  ##
+  global_var WINDOWBASE = 1024000;
+  ##
+  # Default minimum window limit, WINDOWBASE/2, 512000
+  ##
+  global_var WINDOWLIMIT = WINDOWBASE/2;
+
+  ##
+  # Type code for STDERR return type, 1
+  ##
+  global_var SSH_EXTENDED_DATA_STDERR = 1;
+
+  # Channel state tracking
+  ##
+  # Internal channel state tracking value for no state, 0
+  ##
+  global_var CHANNEL_STATE_NONE    = 0;
+  ##
+  # Internal channel state tracking value for connection pending state, 1
+  ##
+  global_var CHANNEL_STATE_PENDING   = 1;
+  ##
+  # Internal channel state tracking value for connection accepted state, 2
+  ##
+  global_var CHANNEL_STATE_ACCEPTED  = 2;
+  ##
+  # Internal channel state tracking value for connection denied state, 3
+  ##
+  global_var CHANNEL_STATE_DENIED  = 3;
+  ##
+  # Internal channel state tracking value for connection error state, 4
+  ##
+  global_var CHANNEL_STATE_ERROR   = 4;
+  ##
+  # Internal channel state tracking value for connection closed state, 5
+  ##
+  global_var CHANNEL_STATE_CLOSED  = 5;
+  ##
+  # Internal channel state tracking value for client-initiated connection closed state, 6
+  ##
+  global_var CHANNEL_STATE_CLOSED_CLIENT = 6;
+
+  object ChannelManager
+  {
+
+    var channels = make_array();
+    var next_id = 0;
+    var default_id = 0;
+    var session;
+
+    ##
+    # Constructor function for ChannelManager object.
+    #
+    # @anonparam [session:object] First session object to link this ChannelManager to.
+    ##
+    function ChannelManager()
+    {
+      this.session =  _FCT_ANON_ARGS[0];
+      if (isnull(session) || typeof(session) != 'object')
+        dbg::detailed_log_and_exit(src:FUNCTION_NAME, exit_msg:'Channel manager initialized without session.');
+
+      session.dbg_log(src:FUNCTION_NAME, lvl:3, msg:'Initialized Channel Manager.');
+    }
+
+    ##
+    # Parses the channel ID from an SSH packet.
+    #
+    # @param [sshpkt:data] The SSH packet to parse.
+    #
+    # @return [integer|NULL] Channel ID from packet, or
+    #         NULL if channel ID dword couldn't be extracted from packet, or
+    #         NULL if channel ID dword has no entry in the list of channels managed by this object.
+    #
+    ##
+    public function packets_channel(sshpkt)
+    {
+      var err = NULL;
+      # All channel specific packets encode the
+      # recipient channel as the first uint32
+      var chid = getdword(blob:sshpkt.payload, pos:0, order:BYTE_ORDER_BIG_ENDIAN);
+      if (isnull(chid))
+        err = 'Could not read channel ID from packet.';
+      else
+      {
+        var channel = this.channels[chid];
+        if (isnull(channel))
+          err = 'Channel '+chid+' not found.';
+      }
+      if (err)
+      {
+        session.dbg_log(
+          lvl:1,
+          src:'ChannelManager.packets_channel',
+          msg:err);
+        return NULL;
+      }
+      return channel;
+    }
+
+    ##
+    # Creates a new channel object managed by this object.
+    #
+    # @param [type:string]       The type value to feed into the new channel constructor.
+    # @param [options:data]      The options value to feed into the new channel constructor.
+    # @param [window:integer]    The window value to feed into the new channel constructor.
+    # @param [maxpacket:integer] The maxpacket value to feed into the new channel constructor.
+    #
+    # @return [object] The newly constructed Channel object.
+    ##
+    public function open_new_channel(type, options, window, maxpacket)
+    {
+      var chid = this.next_id++;
+      var sets = make_array(
+        "id", chid,
+        "type", type,
+        "window", window,
+        "maxpacket", maxpacket,
+        "options", options,
+        "session", this.session
+      );
+      if (isnull(this.default_id))
+        default_id = chid;
+      this.channels[chid] = new("sshlib::Channel", sets);
+      return this.channels[chid];
+    }
+
+
+    ##
+    # Returns the default channel if one is available.
+    #
+    # @return [object|NULL] The default Channel object if it exists, NULL otherwise.
+    ##
+    public function get_default_channel()
+    {
+      if (isnull(this.default_id))
+        return NULL;
+      return this.channels[this.default_id];
+    }
+
+    ##
+    # Sets the default channel.
+    #
+    # @param [channel:object] The channel object to set as the default channel (can be passed anonymously).
+    ##
+    public function set_default_channel(channel)
+    {
+      if (isnull(channel))
+        channel = _FCT_ANON_ARGS[0];
+      #if (this.channels[channel.local_channel] != channel)
+      #  exit(1, "Cannot set an unregistered channel to default.");
+      this.channels[channel.local_channel] = channel;
+      this.default_id = channel.local_channel;
+    }
+
+    ##
+    # Creates a channel with settings identical to the channel provided,
+    # but with a new channel id number.
+    #
+    # @param [chan:object]     The channel object to clone.
+    # @param [replace:boolean] A flag to determine whether or not to remove ``chan`` before cloning it.
+    #
+    # @return [object] The new Channel object.
+    ##
+    public function clone_channel(chan, replace)
+    {
+      var sets = chan.settings;
+      var chid;
+      if (replace)
+      {
+        chid = sets['id'];
+        this.remove_channel(chan);
+      }
+      else
+      {
+        chid = this.next_id++;
+      }
+      this.channels[chid] = new('sshlib::Channel',sets);
+      return this.channels[chid];
+    }
+
+    ##
+    # Initializes a channel with settings identical to the channel provided,
+    # but with a new channel id number, and deletes the existing channel.
+    #
+    # @param [old_chan:object] The channel to clone the settings of and remove.
+    # @param [new_chan:object] The channel to initialize with the settings of ``old_chan``.
+    ##
+    public function replace_channel(old_chan, new_chan)
+    {
+      var chid = new_chan.local_channel;
+      # If we're replacing the default channel, make the new one the default
+      if (!isnull(old_chan))
+      {
+        new_chan.init(settings:old_chan.settings);
+        new_chan.set_id(chid);
+        if (old_chan.local_channel == this.default_id)
+          this.default_id = chid;
+        this.remove_channel(old_chan);
+        if (!isnull(old_chan.shell_handler))
+          new_chan.shell_handler.init(settings:old_chan.shell_handler.settings);
+      }
+      this.channels[chid] = new_chan;
+    }
+
+    ##
+    # Removes the channel from the list of channels managed by the ChannelManager object.
+    #
+    # @param [channel:object] The channel object to remove from the list (can be passed anonymously).
+    #
+    # @return [NULL] Always returns NULL on error and on success.
+    ##
+    public function remove_channel(channel)
+    {
+      if (isnull(channel))
+        channel = _FCT_ANON_ARGS[0];
+      if (isnull(channel))
+        return NULL;
+      if (channel.local_channel == this.default_id)
+        this.default_id = NULL;
+      delete_element(var:this.channels, idx:channel.local_channel);
+    }
+  }
+
+  ##
+  # Object to keep track of the last two packets in the data buffer.
+  ##
+  object tail_buffer
+  {
+    var part1 = "";
+    var part2 = NULL;
+
+    ##
+    # Add data to the end of the buffer.
+    #
+    # @anonparam [part:data] The data to add to the buffer.
+    ##
+    public function add()
+    {
+      var part;
+      part = _FCT_ANON_ARGS[0];
+
+      if(isnull(part2))
+      {
+        part2 = part;
+      }
+      else
+      {
+        part1 = part2;
+        part2 = part;
+      }
+    }
+
+    ##
+    # Gets all of the data in the tail buffer.
+    #
+    # @return [data] All of the data in the tail buffer.
+    ##
+    public function get()
+    {
+      return part1 + part2;
+    }
+
+    ##
+    # Clears all of the data contained in the tail buffer.
+    ##
+    public function clear()
+    {
+      part1 = "";
+      part2 = NULL;
+    }
+  }
+
+  object Channel
+  {
+
+    # Session that this channel belongs to
+    var session;
+
+    var shell_handler;
+
+    var data_buf = '';
+    var buf_tail = new("sshlib::tail_buffer");
+    var buf_change_counter = 0;
+
+    # last response, TRUE for SUCCESS, otherwise FAIL
+    var last_response;
+    var last_exit_status;
+
+    # Local channel tracking
+    var local_channel;
+    var local_window;
+    var local_eof;
+    var local_maxpacket;
+
+    # Remote channel tracking
+    var remote_channel;
+    var remote_window;
+    var remote_eof = FALSE;
+    var remote_maxpacket;
+
+    # "session", "exec", "scp", etc ...
+    var type;
+
+    # Specific options for type
+    var options;
+
+    # stderr
+    var stderr = '';
+
+    var settings; # an immutable copy of the channel's initial settings
+
+    var objname = 'Channel.';
+
+    # Channel state
+    var state = CHANNEL_STATE_NONE;
+
+    ##
+    # Increments ``buf_change_counter`` by one.
+    #
+    # @remark
+    # If buf_change_counter exceeds 1073741824, it is set to 0 to prevent overflow.
+    ##
+    function incr_buffer_change_counter()
+    {
+      buf_change_counter++;
+      # prevent overflows, counter can be used as a less intensive way
+      # to see if data_buf has been updated
+      if(buf_change_counter > 1073741824)
+      buf_change_counter = 0;
+    }
+
+    ##
+    # Sets the ID number for the Channel object.
+    #
+    # @anonparam [local_channel:integer] Value to set the ID number to.
+    ##
+    public function set_id()
+    {
+      this.local_channel = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Sets shell_handler to anonymous parameter 1.
+    #
+    # @param [shell_handler:object] Shell handler object to link to the channel (can be passed anonymously).
+    #
+    # @remark
+    # If the shell handler object is passed via the named argument, it is passed as a reference.
+    ##
+    public function set_shell_handler(&shell_handler)
+    {
+      if (shell_handler)
+        this.shell_handler = shell_handler;
+      else
+        this.shell_handler = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Clears the data buffer and tail buffer, leaving
+    # the start of the current buffer up to the given length.
+    #
+    # @param [len:integer] The character length (from the start) of the buffer to keep.
+    #
+    # @remark
+    # If ``len`` is NULL or is not smaller than the buffer's size, the whole buffer is cleared.
+    ##
+    public function clear_data_buf(len)
+    {
+      if(!isnull(len) && len < strlen(data_buf))
+      {
+        incr_buffer_change_counter();
+        data_buf = substr(data_buf, len);
+        buf_tail.add(substr(data_buf, len));
+      }
+      else
+      {
+        incr_buffer_change_counter();
+        data_buf = '';
+        buf_tail.clear();
+      }
+    }
+
+    ##
+    # Clears the stderr, leaving the start of the current stderr up to the given length.
+    #
+    # @param [len:integer] The character length (from the start) of the stderr to keep.
+    #
+    # @remark
+    # If ``len`` is NULL or is not smaller than the stderr's size, the whole stderr is cleared.
+    ##
+    public function clear_stderr_buf(len)
+    {
+      if(!isnull(len) && len < strlen(stderr))
+        stderr = substr(stderr, len);
+      else
+        stderr = '';
+    }
+
+    ##
+    # Sets channel state to closed, ends the SSH session if necessary, and
+    # deletes session, shell handler, and sftp session objects if they exist.
+    #
+    # @return [NULL] This function always returns NULL, on success and on error.
+    ##
+    public function close()
+    {
+      var fn = this.objname + FUNCTION_NAME;
+      # Perform any required actions (if applicable) to clean up the shell before the channel is closed
+      if (this.shell_handler && this.shell_handler.cleanup_required_before_close)
+      {
+        this.shell_handler.cleanup_before_close(channel:this);
+      }
+
+      if(this.state == CHANNEL_STATE_CLOSED)
+        return NULL;
+        this.state = CHANNEL_STATE_CLOSED;
+      if(isnull(this.session) || this.session.cur_state.val == "SOC_CLOSED")
+        return NULL;
+
+      session.dbg_log(lvl:3, src:fn, msg:"Closing the channel.");
+
+      var pkt = "";
+      pkt += mkdword(this.remote_channel, order:BYTE_ORDER_BIG_ENDIAN);
+      this.session.sshsend(data:pkt, code:PROTO_SSH2_MSG_CHANNEL_CLOSE);
+
+      if (!isnull(this.session) && typeof(this.session) == 'object')
+        delete(this.session);
+      if (!isnull(this.shell_handler) && typeof(this.shell_handler) == 'object')
+        delete(this.shell_handler);
+    }
+
+    ##
+    # Sets the value of the ``last_response`` flag.
+    #
+    # @anonparam [last_response:boolean] Value to set ``last_response`` to.
+    ##
+    public function set_response()
+    {
+      last_response = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Sets the ``remote_eof`` flag to TRUE.
+    ##
+    public function remote_eof()
+    {
+      remote_eof = TRUE;
+    }
+
+    ##
+    # Constructor function for the Channel object. Initialises the object with the given settings.
+    #
+    # @anonparam [settings:array] Array of options to set for the channel.
+    #
+    # @remark
+    # Channels should not be created by calling this constructor.
+    # Instead they should be created via `sshlib::session.get_channel()`_.
+    #
+    # The format of the ``settings`` array should be as follows:
+    # ```
+    # {
+    #   'local_channel': <channel ID number>,
+    #   'session'      : <sshlib::session object to link to the channel>,
+    #   'window'       : <the packet window size integer>,
+    #   'maxpacket'    : <the integer maximum size of packets>,
+    #   'type'         : <the string type of channel>,
+    #   'options'      : <additional binary data for the channel>
+    # }
+    # ```
+    ##
+    function Channel()
+    {
+      this.settings = _FCT_ANON_ARGS[0];
+      this.state = CHANNEL_STATE_NONE;
+      this.init();
+
+      if (!isnull(settings) && !isnull(session) && typeof(session) == 'object')
+      {
+        this.objname = '[Channel '+local_channel+'] ' + this.objname;
+        session.dbg_log(lvl:3, src:this.objname + FUNCTION_NAME, msg:"Initialized new Channel object.");
+      }
+    }
+
+    ##
+    # Initializes object variables based on supplied or existing settings
+    # and known defaults.
+    #
+    # @param [settings:array] Array of settings to initialize object with.
+    #
+    # @remark
+    # See `sshlib::Channel.Channel()`_ for the format of the ``settings`` array.
+    ##
+    public function init(settings)
+    {
+      if (!isnull(settings))
+        this.settings = settings;
+
+      this.local_channel   = this.settings['id'];
+      this.session         = this.settings['session'];
+      this.local_window    = this.settings['window'];
+      this.local_maxpacket = this.settings['maxpacket'];
+      this.type            = this.settings['type'];
+      this.options         = this.settings['options'];
+
+      # Set defaults
+      if (isnull(this.local_window))
+        this.local_window = DEFAULT_INIT_WINDOW_SIZE;
+      if (isnull(this.local_maxpacket))
+        this.local_maxpacket = DEFAULT_MAX_PACKET_SIZE;
+      if (isnull(this.type))
+        this.type = "";
+      if (isnull(this.options))
+        this.options = "";
+      if(TAP_MODE)
+        this.remote_maxpacket = DEFAULT_MAX_PACKET_SIZE;
+    }
+
+    ##
+    # Gets the status of the remote window.
+    #
+    # @return [boolean] TRUE if the remote window size is exhausted, FALSE otherwise.
+    ##
+    public function remote_window_exhausted()
+    {
+      return (this.remote_window <= 0);
+    }
+
+    ##
+    # Handler for window adjust packets received from the target.
+    #
+    # @param [sshpkt:data] The window adjust packet to handle.
+    #
+    # @remark
+    # This increases the local tracker of the target's window size.
+    ##
+    public function handle_window_adjust(sshpkt)
+    {
+      # Payload:
+      # uint32  recipient channel
+      # uint32  bytes to add
+      var adds = getdword(blob:sshpkt.payload, pos:4, order:BYTE_ORDER_BIG_ENDIAN);
+      this.remote_window += adds;
+    }
+
+    ##
+    # Handler for channel confirmation packets received from the target.
+    #
+    # @param [sshpkt:data] The channel confirmation packet to handle.
+    #
+    # @remark
+    # This function parses a channel confirmation packet, assigning ``remote_channel``,
+    # ``remote_window``, ``remote_maxpacket`` based on the packet, and setting
+    # state to ``CHANNEL_STATE_ACCEPTED``.
+    ##
+    public function handle_channel_confirmation(sshpkt)
+    {
+      # Payload:
+      # uint32  recipient channel
+      # uint32  sender channel
+      # uint32  initial window size
+      # uint32  maximum packet size
+      # ....    channel type specific data follows
+      var pos = 4; # Skip recipient channel id
+      this.remote_channel = getdword(blob:sshpkt.payload, order:BYTE_ORDER_BIG_ENDIAN, pos:pos);
+      pos += 4;
+      this.remote_window = getdword(blob:sshpkt.payload, order:BYTE_ORDER_BIG_ENDIAN, pos:pos);
+      pos += 4;
+      this.remote_maxpacket = getdword(blob:sshpkt.payload, order:BYTE_ORDER_BIG_ENDIAN, pos:pos);
+      this.state = CHANNEL_STATE_ACCEPTED;
+    }
+
+    ##
+    # Handler for channel open failure packets received from the target.
+    #
+    # @param [sshpkt:data] The channel open failure packet to handle.
+    #
+    # @remark
+    # This function parses a channel open failure packet, calling `sshlib::session.set_cmd_error()`_
+    # based on the parsed packet, and setting state to ``CHANNEL_STATE_DENIED``.
+    ##
+    public function handle_channel_open_failure(sshpkt)
+    {
+      # Payload:
+      # uint32  recipient channel
+      # uint32  reason code
+      # string  description
+      # string  language tag
+      var fn = this.objname + FUNCTION_NAME;
+      var pos = 4; # Skip recipient channel id
+
+      var reason = getdword(blob:sshpkt.payload, order:BYTE_ORDER_BIG_ENDIAN, pos:pos);
+      pos += 4;
+
+      var desc = get_ssh_string(buffer:sshpkt.payload, pos:pos);
+      var err = "Failed to open channel with reason code " + reason;
+
+      if(!empty_or_null(desc))
+        err += ": " + desc;
+
+      err += ".";
+      this.session.set_cmd_error(src:fn, err_msg:err);
+      this.state = CHANNEL_STATE_DENIED;
+    }
+
+    ##
+    # Handler for data packets received from the target.
+    #
+    # @param [sshpkt:data] The data packet to handle.
+    #
+    # @remark
+    # This function parses a data packet, handling the window size as necessary
+    # and aggregating data in the data and tail buffers.
+    ##
+    public function handle_data_received(sshpkt)
+    {
+      # Payload:
+      # uint32  recipient channel
+      # string  data
+      var fn = this.objname + FUNCTION_NAME;
+      var data, data_orig;
+      data_orig = get_ssh_string(buffer:sshpkt.payload, pos:4);
+      data = remove_escape_sequences(data_orig);
+      if(!isnull(session) && data != data_orig)
+      {
+        if (!empty_or_null(data))
+        {
+          var packet_log = session.dbg_add_packet(msg:"Data after removing escape sequences", data:data);
+          session.dbg_log(src:fn, packets:packet_log);
+        }
+        else
+        {
+          session.dbg_log(src:fn, msg:'Data contained only escape sequences, they have been removed.');
+        }
+      }
+
+      var dlen = strlen(data);
+      if (dlen <= this.local_window)
+        this.local_window -= dlen;
+      else
+        this.local_window = 0; # Should never happen unless remote is stupid
+
+      window_adjust_packet();
+      incr_buffer_change_counter();
+      buf_tail.add(data);
+      data_buf += data;
+    }
+
+    ##
+    # Handler for stderr data packets received from the target.
+    #
+    # @param [sshpkt:data] The stderr data packet to handle.
+    #
+    # @remark
+    # This function parses an stderr data packet, handling the window size as necessary,
+    # aggregating data in the stderr buffer and calling `sshlib::session.set_cmd_error()`_ with the data.
+    #
+    # @remark
+    # This function will return NULL early if the packet type is not ``SSH_EXTENDED_DATA_STDERR``.
+    ##
+    public function handle_extended_data_received(sshpkt)
+    {
+      # uint32  recipient channel
+      # uint32  data_type_code
+      # string  data
+
+      var fn = this.objname + FUNCTION_NAME;
+      var type_code = getdword(blob:sshpkt.payload, pos:4, order:BYTE_ORDER_BIG_ENDIAN);
+      if(type_code != SSH_EXTENDED_DATA_STDERR)
+      {
+        session.dbg_log(lvl:1, src:fn, msg:'Misidentified packet as being an stderr data packet.');
+        return NULL;
+      }
+      var data, data_orig;
+      data_orig = get_ssh_string(buffer:sshpkt.payload, pos:8);
+      data = remove_escape_sequences(data_orig);
+      if(data != data_orig)
+      {
+        var packet_log = session.dbg_add_packet(msg:"Data after removing escape sequences", data:data);
+        session.dbg_log(src:fn, packets:packet_log);
+      }
+
+      var dlen = strlen(data);
+      if (dlen <= this.local_window)
+        this.local_window -= dlen;
+      else
+        this.local_window = 0; # Should never happen unless remote is stupid
+
+      window_adjust_packet();
+      stderr += data;
+      this.session.set_cmd_error(data);
+    }
+
+    ##
+    # Constructs a packet with the data and sends it to the target.
+    #
+    # @param [data:data] The packet containing the data to send.
+    # @param [redact:boolean] Set to TRUE to redact the data in the logging output (optional, defaults to FALSE).
+    #
+    # @remark
+    # This function will keep track of the remaining window size for the target.
+    ##
+    public function window_send_data(data, redact)
+    {
+      var pos = 0;
+      var dlen = strlen(data);
+      var end, pkt, buf;
+      var maxpkt = this.remote_maxpacket - 10; # Allow 10 bytes for header
+      while (pos < dlen)
+      {
+        end = pos + maxpkt;
+        if (end > dlen)
+          end = dlen;
+
+        pkt = '';
+        buf = substr(data, pos, end);
+        pkt += mkdword(this.remote_channel, order:BYTE_ORDER_BIG_ENDIAN);
+        pkt += mk_ssh_string(buf);
+        this.remote_window -= strlen(buf);
+
+        if(redact)
+          this.session.set_redact(TRUE);
+        this.session.sshsend(data:pkt, code:PROTO_SSH2_MSG_CHANNEL_DATA);
+        if(redact)
+          this.session.set_redact(FALSE);
+
+        pos += end;
+      }
+    }
+
+
+    ##
+    # Constructs and sends a window adjust packet to the target.
+    #
+    # @param [minimumsize:integer] The new window size.
+    #
+    # @remark
+    # If minimumsize is less than ``WINDOWBASE``, ``WINDOWBASE`` will be used.
+    #
+    # @remark
+    # If the window size does not need to grow, the function will return NULL early and no packet will be sent.
+    ##
+    public function window_adjust_packet(minimumsize)
+    {
+      if (this.state == CHANNEL_STATE_CLOSED)
+        return NULL;
+
+      var newwindow;
+      if (isnull(minimumsize))
+        minimumsize = 0;
+
+      if (minimumsize > WINDOWBASE)
+        newwindow = minimumsize;
+      else
+        newwindow = WINDOWBASE;
+
+      var adjust = (newwindow - this.local_window);
+
+      # Window does not need to grow
+      #if(adjust < (newwindow / 2)) return NULL; # solaris has a problem with this...
+      if(adjust == 0)
+        return NULL;
+
+      this.local_window += adjust;
+
+      var pkt = '';
+      pkt += mkdword(this.remote_channel, order:BYTE_ORDER_BIG_ENDIAN);
+      pkt += mkdword(adjust, order:BYTE_ORDER_BIG_ENDIAN);
+      this.session.sshsend(data:pkt, code:PROTO_SSH2_MSG_CHANNEL_WINDOW_ADJUST);
+    }
+
+    ##
+    # Handler for request packets received from the target.
+    #
+    # @param [sshpkt:data] The request packet to handle.
+    #
+    # @remark
+    # This function parses an a request packet, setting ``last_exit_status`` if
+    # the request is of exit-status type.
+    ##
+    public function handle_request(sshpkt)
+    {
+      var pos = 4; # Skip recipient channel id
+      var request = get_ssh_string(buffer:sshpkt.payload, pos:pos);
+      pos += strlen(request) + 4;
+      if(request == "exit-status")
+      {
+        pos += 1;
+        this.last_exit_status = getdword(blob:sshpkt.payload, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      }
+    }
+
+    ##
+    # Crafts a request packet using the paramters, and sends it to the target.
+    #
+    # @param [type:string]        The type of request.
+    # @param [want_reply:boolean] Flag indicating whether or not a reply is wanted (optional, defaults to FALSE).
+    # @param [extra:data]         Extra data to append to request packet
+    ##
+    public function make_request(type, want_reply, extra)
+    {
+      #  byte    SSH_MSG_CHANNEL_REQUEST
+      #  uint32  recipient channel
+      #  string  request type in US-ASCII characters only
+      #  boolean   want reply
+      #  ....    type-specific data follows
+
+      var pkt = '';
+      pkt += mkdword(this.remote_channel, order:BYTE_ORDER_BIG_ENDIAN);
+      pkt += mk_ssh_string(type);
+
+      if(want_reply)
+        want_reply = 1;
+      else
+        want_reply = 0;
+
+      pkt += mkbyte(want_reply);
+
+      if(!isnull(extra))
+        pkt += extra;
+      this.session.sshsend(data:pkt, code:PROTO_SSH2_MSG_CHANNEL_REQUEST);
+    }
+
+    ##
+    # Crafts a channel open packet based on the values of local object
+    # values, and sends the packet to the target.
+    #
+    # @remark
+    # This function sets the channel state to ``CHANNEL_STATE_PENDING``.
+    ##
+    public function open_channel()
+    {
+      var pkt = '';
+      pkt += mk_ssh_string(this.type);
+      pkt += mkdword(this.local_channel, order:BYTE_ORDER_BIG_ENDIAN);
+      pkt += mkdword(this.local_window, order:BYTE_ORDER_BIG_ENDIAN);
+      pkt += mkdword(this.local_maxpacket, order:BYTE_ORDER_BIG_ENDIAN);
+
+      if(this.options != "")
+        pkt += this.options;
+
+      this.state = CHANNEL_STATE_PENDING;
+      this.session.sshsend(data:pkt, code:PROTO_SSH2_MSG_CHANNEL_OPEN);
+    }
+
+    ##
+    # Check channel state and shell handler state to see if channel
+    # can be used to run a shell command.
+    #
+    # @return [boolean] TRUE if the channel is usable, FALSE otherwise.
+    ##
+    public function usable_for_shell_command()
+    {
+      var reason = '';
+      if(this.state != CHANNEL_STATE_ACCEPTED)
+        reason += '\n  channel state : ' + this.state;
+      if(this.shell_handler.last_cmd_error)
+        reason += '\n  shell_handler.last_cmd_error : ' + this.shell_handler.last_cmd_error;
+      if(this.shell_handler.timed_out)
+        reason += '\n  shell_handler.timed_out : ' + this.shell_handler.timed_out;
+
+      if(!reason)
+        return TRUE;
+
+      if(!isnull(session) && typeof(session) == 'object')
+      {
+        var fn = this.objname + FUNCTION_NAME;
+        var msg = 'Channel is unusable for shell commands.' + reason;
+        session.dbg_log(lvl:1, src:fn, msg:msg);
+      }
+
+      return FALSE;
+    }
+  }
+}

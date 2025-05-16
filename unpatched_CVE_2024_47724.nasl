@@ -1,0 +1,126 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(229506);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/05");
+
+  script_cve_id("CVE-2024-47724");
+
+  script_name(english:"Linux Distros Unpatched Vulnerability : CVE-2024-47724");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The Linux/Unix host has one or more packages installed with a vulnerability that the vendor indicates will not be
+patched.");
+  script_set_attribute(attribute:"description", value:
+"The Linux/Unix host has one or more packages installed that are impacted by a vulnerability without a vendor supplied
+patch available.
+
+  - In the Linux kernel, the following vulnerability has been resolved: wifi: ath11k: use work queue to
+    process beacon tx event Commit 3a415daa3e8b (wifi: ath11k: add P2P IE in beacon template) from Feb 28,
+    2024 (linux-next), leads to the following Smatch static checker warning:
+    drivers/net/wireless/ath/ath11k/wmi.c:1742 ath11k_wmi_p2p_go_bcn_ie() warn: sleeping in atomic context The
+    reason is that ath11k_bcn_tx_status_event() will directly call might sleep function ath11k_wmi_cmd_send()
+    during RCU read-side critical sections. The call trace is like: ath11k_bcn_tx_status_event() ->
+    rcu_read_lock() -> ath11k_mac_bcn_tx_event() -> ath11k_mac_setup_bcn_tmpl()  -> ath11k_wmi_bcn_tmpl() ->
+    ath11k_wmi_cmd_send() -> rcu_read_unlock() Commit 886433a98425 (ath11k: add support for BSS color
+    change) added the ath11k_mac_bcn_tx_event(), commit 01e782c89108 (ath11k: fix warning of RCU usage for
+    ath11k_mac_get_arvif_by_vdev_id()) added the RCU lock to avoid warning but also introduced this BUG. Use
+    work queue to avoid directly calling ath11k_mac_bcn_tx_event() during RCU critical sections. No need to
+    worry about the deletion of vif because cancel_work_sync() will drop the work if it doesn't start or block
+    vif deletion until the running work is done. Tested-on: WCN6855 hw2.0 PCI
+    WLAN.HSP.1.1-03125-QCAHSPSWPL_V1_V2_SILICONZ_LITE-3.6510.30 (CVE-2024-47724)
+
+Note that Nessus relies on the presence of the package as reported by the vendor.");
+  script_set_attribute(attribute:"solution", value:
+"There is no known solution at this time.");
+  script_set_attribute(attribute:"agent", value:"unix");
+  script_set_cvss_base_vector("CVSS2#AV:L/AC:L/Au:S/C:N/I:N/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2024-47724");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+  script_set_attribute(attribute:"vendor_unpatched", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2024/10/21");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/03/05");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info2.nasl");
+  script_require_keys("Host/cpu", "Host/local_checks_enabled", "global_settings/vendor_unpatched");
+  script_require_ports("Host/Debian/dpkg-l", "Host/Ubuntu", "Host/Ubuntu/release");
+
+  exit(0);
+}
+include('vdf.inc');
+
+# @tvdl-content
+var vuln_data = {
+ "metadata": {
+  "spec_version": "1.0p"
+ },
+ "requires": [
+  {
+   "scope": "scan_config",
+   "match": {
+    "vendor_unpatched": true
+   }
+  },
+  {
+   "scope": "target",
+   "match": {
+    "os": "linux"
+   }
+  }
+ ],
+ "report": {
+  "report_type": "unpatched"
+ },
+ "checks": [
+  {
+   "product": {
+    "name": "linux-lowlatency-hwe-6.11",
+    "type": "dpkg_package"
+   },
+   "check_algorithm": "dpkg",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "ubuntu"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "24.04"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+};
+
+var vdf_res = vdf::check_and_report(vuln_data:vuln_data, severity:SECURITY_WARNING);
+vdf::handle_check_and_report_errors(vdf_result: vdf_res);

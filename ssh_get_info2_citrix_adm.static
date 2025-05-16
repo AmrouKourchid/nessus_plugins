@@ -1,0 +1,119 @@
+#TRUSTED 0c490037b9f092e45912fa335b9542e615656138f69797408a2b9b69fbc2b6eadc943ade99ed6a9596c1bbc22fe48203341bdf0264ffa490cb31bab99e83d4ad11ef7e96805759694c84f2369088dea3f0c0bea4d911e0b91bcca76284566518fe52c1f48fb3dc97dc8703611f539010872bfef61abd64e829923253f324466decb9d04e065b4b0b4457d558b4617ec085e9167f80e48a139875df729521da14cdb83592a2b42dff49ed38204812ff7a95135b3175da3b6c071fb795f42d3c464ae337394b660a0970493fb3a1ebbd0cba4bda75318cad3e58529f1cc395b7be10c95c2b17bc7554e3b0bb420a4a467c6a3ac77a4fe10ee73d4820b741acc0124e53636329c401fdab1f634fe4c28710d0243fe636cf99de3034c480c0e001d4068383be011c4d8cc30f3e46c175fdc5726725e167392a2aebc4a379ddea96f41a3191ffcf85d7a403eb44577f81ae457b0d3235c8dd05c58fc62d10c945711794cda0ee0f794f316067dbbe21b700ce0e185c52676d6bc0256319c95565e115c1ba157d207f7e7743bcdbdba11012437e1faed12ee5d027ec7947a8a93adeca05d053e9d042faa50bacc9874bbce17f4c588a21785ee0d7b558ec604b9c0ceb281ffbab35406abb90eb4b78860568b9190d1ff23dbcd91779c168fd7b8d1c7ab4ae928f955a4f5172543bdb2c9cef0a701187645c21eded6f3babc5a109fc7d
+#TRUST-RSA-SHA256 3721af7d4c017127193c432375b08165f49d9aef35242796635c43276e1100fcee55f4edff5e345795b6e599c65de162f8db5ee6943f7215b4db572f15af5b9a75db84fb04c375769f34ba4127cc28032d22385c0fb8c565aa4ef37c3b44227cc2f913dec5908a1aefd0ffac8592f9abb6fd5b5bf93ecfdc279eb634e9de1d5261efe0bf83611c377bd9c247ec9562e18b1b186dee0495148322e282228482113aea13851828a022e1949632f58f5285e261feae08e52e8fef5abb536ea40e1c67c513b6ba55ffc51a5e65dab92821ac2215bdb597231d9ed1cada2296dfa3dd5947d3ca3e54603f226c575af88ac26d2f486f2c2a0bfa703788a5464b6e09e600c6f7af46668d53fbe70a54fc55f1fc30110a93491befd0cb619d33fbbb09e5e02cf627308e96f7920fd5e046abb96a6576eb46e272cb349b60e6dc54959e9c21a5840bc1d2770d42fdc4b98ba6c972540b25dfbe6cb76989ac187c73cc461850f05161a791a6dc97db76e5651b0ee99540b8b12b451a3291ccd4e2d828f936972c41f2d307b94c1e92ff7108ce03606f35f3f40cff697ab14dd28839dab07ac4fd4264676d3483310cbf1f9c52b6c043253d238cf2fc84e61020f26e226e6652d118694889a3fa723a429ca0b70c64f048a4ffe76fb6db3eb818f739af93813d02be124c8dffbcc00e75352e827457f94d9a3aff552300ee434a1bbfe35f53
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.16
+#
+
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+function is_citrix_adm()
+{
+  if (host_info_key_val['uname-a_unrecognized'] == '>')
+    return TRUE;
+
+  return FALSE;
+}
+
+
+#
+# citrix_adm_pre_check_fail
+#
+function citrix_adm_pre_check_fail()
+{
+  if(host_info_key_val['host_not_citrix_adm'])
+    return TRUE;
+
+  # Not adm if one of the following devices
+  if (is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_cisco_firepower() ||
+      is_timos_userauth() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+function handle_citrix_adm(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var buf, command, show_ver, file_list, show_packages, match, services;
+  local_var item, vendor, version, product, confidence, os_name = "Citrix ADM";
+
+  #We need to capture the result of uname -a to store in the kb and show the user in the final report
+  #Citrix ADM has a custom shell handler elevates to a different shell before getting uname -a
+  #however, through the process of identifiying the device, uname -a is sent using the basic shell handler
+  #When using the basic shell handler, uname -a returns different, useless results
+  #the useless results are then stored in the kb and shown to the user. So we need to
+  #capture the real uname -a output and overwrite the useless results
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+  host_info_key_val['uname-a_unrecognized'] = cmd_res;
+
+  #The report variable is started in ssh_get_info2_nix.static. Just overwrite whats currently in it
+  #ssh_get_info2_cisco_viptela.static adds output of 'show system status' to the report
+  #This output isn't really relevant to citrix adm so we aren't going to worry about it getting deleted here
+  report = '\nIt was possible to log into the remote host via SSH using \'keyboard-interactive\' authentication.\n';
+  report = strcat(report, '\nThe output of "uname -a" is :\n', cmd_res, '\n');
+
+
+  command = "cat /mps/version.conf";
+  show_ver = run_command(cmd:command,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  match = pregmatch(string:show_ver, pattern:"[\d]+\.[\d]-[\d]+\.[\d]+");
+  if(!empty_or_null(match))
+    version = match[0];
+
+  if(empty_or_null(version))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find version in output of "'+chomp(command)+'".');
+    session.close_connection();
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return FALSE;
+  }
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Version determined to be '+version+'.\n');
+
+  set_kb_item(name:"Host/OS/showver", value:"Citrix ADM");
+  set_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  set_kb_item(name:"Host/OS/showver/Type", value:"General");
+  set_kb_item(name:"Host/Citrix_ADM/version", value:version);
+
+  #we don't have any further local detection here so local checks unavailable
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+  return TRUE;
+}
+
+
+#
+# callback for systems without adm component in show system status
+#
+function handle_not_citrix_adm(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    host_info_key_val['host_not_citrix_adm'] = TRUE;
+  }
+}

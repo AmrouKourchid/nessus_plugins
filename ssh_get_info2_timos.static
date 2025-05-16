@@ -1,0 +1,129 @@
+#TRUSTED 7ea71d1f8fe4865e9ebef401ebd3fe2ef14560cd638e6c0df82b671f1666c1c8659627677d3cb78107d54048631735e2086fbf2e3fc6a3dc742773f26eef8dfb570500e25faae856e6cd0adda79fe72172a1725c32e84d155aa1546bee446fb73019371c4f6e3e1ef1f105c90c59da81b058279ea83b2420045694ebab86451117fbe8f969a432ee98784389cf8173c8c792299e46efae80e281eb87eddb7986b805fc7eb2b3f6bf1e7b5668733408a3b6a60d5e89496c67242173250abac91fe60f68578722ffbe667c36c8c32c545df219728725af6dd5b5e0001d54594a4e2a9f061f0c9a9ed2e69506358f01fa089e46d49cd9c809a7c50fc15c8d00a25e3e376d6ab478fb4df5e8b92e4a907dddf466c64002bd0eb958eb8a2c8e330804247ddb8d0617f2d1e5c6f64ccb2af5a197386986540328cea305b2dcaa6c6672e76697abc13497550625cbb182453ee466cc05d7aefc09058ba4cb8f5d8fb2acf8c3dd67a860b7a930c333eef0662cfedacb44d3375bd386d53554834da77ccdea609df4771b69511412417a5b059abd41c1e61c8d02c429af4875c3a2a2add0ee1d4e4422765c9bf21db7c7ec4cddfa8449091d33ea830c43d2feefbea20081699ed4bbe6be91a52f734f7bd1454215ab3f4c4eaabc4e1c869099b0379b2ecb3aa3c763209e72c756ab7f4f8db2f13647b43e02aa435d5a609d6486ed5a1862
+#TRUST-RSA-SHA256 751eef72b8307794b024262d87715e285a598325a5344eb8b4bbaee964f8f997c8a19ea76519a8c02424d80b0f2b360d093e234ae672b43d589f4961a1221ab79de17133d62ed5330386d23c4a740b3d12caf74d0c54985fa85ca6e20ffe09c3b4c164b6567efeafcf88ce74ffb78c9210b2971aa6d3ed662ece5fe550179bb41c019c81309f6b8366fedd74c9f991bab8e8d4d6e1d74a6576b264f01cb1bd82868b9d25fa7eddccac7a4c1c25d9b744fe8d496629c79c588b068bebfc909fb0eb4fc0cec76a0eaae4be443e10ca239b2f35063c53cb1d15c690db8b00eba6342f7c519546ee955b2c61114c752827c72a34004d1231a84e88548948a733f7e918f9d622ecda660a7e2d9ba51d51bfa324728f63345b5909ff6d3ab828b85372129ce25b56e8d85e765b12ffe982b4a0cc4d81b468e7d87109cb07597a893cd079b9a28a029f9ca196713b643571b98ec751a3c8b9f32a8a263c17a6f60901698b525972dffa1b71e49766f8e358b9918c52f4523ef593a212553d80187a9a77d6ad8ee043ffbb71a1e0919990393a347a46cc3e49d8d9d3f9a702938a1d9b369e8f77dc16974d9ef5ac3d96d03d89c8a71bc58e91c9840d9ca56fdf274fb402ca1ac8bd5fb7b27bcf20a718082507573ea04524cdc8c6e62f3f778224b9cc39ca0d07c2534a94be35b49dff9cd03522ed77a4df7a02bace267c4b35ee8943ee
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.15
+
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+function is_timos_userauth()
+{
+  if(host_info_key_val['remote_ssh_userauth_banner'] =~ "^TiMOS")
+  {
+    dbg::log(src:'is_timos_userauth()', msg:'SSH userauth banner matches "^TiMOS".');
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# timos_pre_check_fail
+# check if this is a timos device based on information collected
+#
+function timos_pre_check_fail()
+{
+  # have we already checked that the host is not timos?
+  if(host_info_key_val['host_not_timos'])
+  {
+    # already checked that host is not timos, no need to check again
+    return TRUE;
+  }
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ "^TiMOS")
+    return TRUE;
+
+  # Not TiMOS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  # Not TiMOS if post login buffer has "Cisco Firepower"
+  if("Cisco Firepower" >< host_info_key_val['post_login_buffer'])
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "TiMOS..." in show version
+#
+function handle_timos(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+  report += '\nThe output of "show version" is :\n' + cmd_res + '\n';
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  failure_kb_msg = "OS Security Patch Assessment is not supported for TiMOS.";
+  failure_kb_type = lcx::ISSUES_INFO;
+  replace_kb_item(name:'Host/timos', value:TRUE);
+
+  var buf, match, vendor, os_name = "TiMOS";
+  match = pregmatch(pattern:"^TiMOS-([^ ]+) .+ ((ALCATEL|Nokia).+?) Copyright", string:cmd_res);
+  if (!isnull(match)) os_name += " " + match[1] + ' on ' + match[2];
+
+  set_kb_item(name:"Host/OS/showver", value:os_name);
+  set_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  set_kb_item(name:"Host/OS/showver/Type", value:"router");
+
+  buf = run_command(
+          cmd               : "show uptime",
+          session           : session,
+          use_shell_handler : use_shell_handler,
+          channel           : channel
+        );
+  if (buf && "System Up Time" >< buf)
+    set_kb_item(name:"Host/last_reboot", value:buf);
+
+  if (match[3]) vendor = match[3];
+  else vendor = 'Alcatel-Lucent';
+
+  report +=
+    '\nOS Security Patch Assessment is not supported for ' + vendor +
+    ' TiMOS.\n';
+
+  return TRUE;
+}
+
+#
+# callback for systems without "TiMOS..." in show version
+#
+function handle_not_timos(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_timos'] = TRUE;
+  }
+}

@@ -1,0 +1,97 @@
+#TRUSTED 3cb3d5c15b8fc1dd69ec4030608baf875dc6e2c1f7cec4e08f243c8954fb77618eedb5b99a98b79075b32d17eb877d32d4afaf41d0fe63408cb4f1dcb0c12d453fd2f6d090b3759bc53906308212bce9058bc2695d473cad083b98b1dc3ccd9767792f38a932bd0693e522e1740da99ccea294ab123a0741700abb36e391747a06a0075b65abc4ca9cfe5440226173f0de2d81e679a12b2724ba8b40fc56649db272b28e455d4084d3b59c4581486a015ce5b1f1f120694cb7418db3980ee6d3c9e85d810513bffc9be088d4942d6ebd8c549b50e22763f933fa989304b393ef6c39f86c1df0b35f61b8fde02884a981c258dd30e08b5f37b66141f7372859b668f5ac7ebc7e93450e5709dd602dcec0ca865a85f37522b1aea64ca46710dc1de8094270138982280ccbdc0019d9d5f1f46e8824f4b1bac2d07e913e5e4ffc923b431f717e572859eeec38765019fd1e1402a205a97e35c1c7923960931787ab3669abe267507bb9ccc539c93d03653b87b8d6191643915c1523183aab44bf11df6a7041baaadeb9617a1827168ce297ae5856e2435a3cb8852687ae4f9916c317ec31807b70934ae125386b23eb59b9d1edecbc8a74754db2b251abf59ce7417f3d8a850f88d69f1a51a52a143099f45e2d36bac420250a090028e870a2f3b471e89eb523d64b056894e12f267893efd84e32cc1eab4778c9af532e54a4965c
+#TRUST-RSA-SHA256 abe7ccfb5db7ea65837ab6e3d6b697e52aee9eb7f9f0344fe41add6cebf2488a01325c3bf90bc1683818a8ef5a90ba23d5d05fe27a34d42f18694aaedc4955551c478fca1e995ae8575c1277e916f1f70de9612bb245b8d51364ecbceaa0f88db0a1152420e738364facf364313a77e5d3c67ef3859232006880ec879f5527967981d6e3bb07b76a134961dff5a8387737dd8150c7bb1a61edc2312a5651b5bd831aea5f239ca78848d60cf67ae49879531eac04623aa244561e7cac52566ba28f86c51ce6edd97811352cf218e39b30f5414c1adc8d6f94cce59a0e92c858f53ead619ee19869c02c03f7fbca007f7ef37bc7364006b140a94fe3a25f008588727fe55b64a7e52b928fc538744ad1a647f46c7d14f701ebd6954594840267b1e4c7e7492053efccd4bd8bb6537b0ee23cfdbfd9dbe4ba1a121151c37287623d5a67888f64abd86e3e3b0ce8feebcf677dddb117db7b2c995ac3b3ce9afbbfbc2b6dd802043b173019e1924d50620d68fd0360c1f8e6665c68c00d9bafdcf9468a237d9331230fdf8ee5ce319cdbaf7adf49022cedfb00663fe446552c51cbba34acd63eee5c8cce9850ecdc0cb1d2e7213b38f98a1d995ec6c5b7808519a6dbc283a388c307da360e9641164a9a5e29091e5f3b710989d195537d46ba5a858291cee5e1c769f639795658e71242716b1584994acf060510da7b6723346a566b
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.11
+
+function is_asyncos()
+{
+  if("AsyncOS" >< host_info_key_val['post_login_buffer'])
+  {
+    dbg::detailed_log(lvl:1, src:'is_acos()', msg:'Post login buffer contains "AsyncOS".');
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+# If we already know our target isn't Cisco AsyncOS, move on with our lives
+function cisco_asyncos_pre_check_fail()
+{
+  # already checked that host is not asyncos, no need to check again
+  if(host_info_key_val['host_not_asyncos'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['version_unrecognized']) &&
+     host_info_key_val['version_unrecognized'] !~ asyncos_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not ASyncOS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_cisco_nxos() ||
+      is_adtran() ||
+      is_acos() ||
+      is_viptela_ssh() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  return FALSE;
+}
+
+function handle_cisco_asyncos(session, use_shell_handler, &channel, cmd_res)
+{
+  var appliance;
+
+  if(cmd_res =~ "IronPort.+Web Security (Virtual )?Appliance" ||
+     cmd_res =~ "Cisco.+Web Security (Virtual )?Appliance" ||
+     cmd_res =~ "Cisco.+Secure Web (Virtual )?Appliance")
+    appliance = "Cisco Web Security Appliance";
+  else if(cmd_res =~ "IronPort.+Messaging Gateway" ||
+          cmd_res =~ "Cisco.+Email Security (Virtual )?Appliance")
+    appliance = "Cisco Email Security Appliance";
+  else if(cmd_res =~ "IronPort.+Security Management" ||
+          cmd_res =~ "Cisco.+(Content )?Security (Virtual )?Management(\(tm\))? Appliance")
+    appliance = "Cisco Content Security Management Appliance";
+
+  if (!empty_or_null(appliance))
+  {
+    replace_kb_item(name:'Host/AsyncOS/' + appliance, value:TRUE);
+    replace_kb_item(name:'Host/AsyncOS/version_cmd', value:cmd_res);
+
+    report += '\n' + 'Local checks have been enabled for ' + appliance + '.\n';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_asyncos.static', value: 75);
+  }
+  else
+  {
+    return TRUE;
+  }
+
+  report += '\n' + 'OS Security Patch Assessment is available for ' + appliance + '.\n';
+}
+
+function handle_not_cisco_asyncos(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/version", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['host_not_asyncos'] = TRUE;
+    host_info_key_val['version_unrecognized'] = cmd_res;
+  }
+}

@@ -1,0 +1,211 @@
+#TRUSTED 74658e2ffec174ae8f41ef4b622ac6ec1c6a0cd58b21bce054c54d83b2ab66cd42c674851e3999510fcdbad410141c370773660653e9786858037004a319f5e766a35f1762612184aaef3adde14554d72f47412b0b3827ed0c347f12d23655942c5f7efdd7a2f50935819cbe493ee1c09acd79c88e0b2e1d62866a684f34e08a2864eda0f96bee91b42adcc33d3cbe27cdcdf978dc9b9590753568180b3a64549897b76c0505e5f4da22f77df1540ffb14acf256eb205c9d280f9ef3eccb683f87df3d33f7e887d458b848301e59428c265cb5e5ed14c0e98f1da47b0053e215556ffdb467af53b1453d3ea1f161f779503ea7215b56090ffc04482ebb40d54593904380d3719e6e5367c068ea594235acff8985941507fe0a6916c22aee5fb97dbd2a02b1efa04ac7b57a65d91039facbbbfafe62c7efb05f3f4d2574cd1df28f436ceefc2b02a0dda5db537d775f7095cb076927d0dd1a862ef4c377aa7dff2bfe79a1772adb9bd18dc5a4e8cbbca4bcf9a532947b4d6d09fb8b3e798bc2e833c269b9cca123bb893c92909b08fedc608b879640f490ab71b134ca4c5d369cd6bc5786d1c1ef6f59d6ff6237bee5463365e465febd23e0603dd08c63594bb26aa127b9daf3269580e62fda44a49b59e9445345573350da455b4bc824c678202857c724c2eef2a3cd2cede11f0d178e7309eb2d0e2dd2691c07be8f9b574b29
+#TRUST-RSA-SHA256 50d659a265d6ab315ccd913ed9be7e5f0f40ea6a0df8e5a3d151f636658ad3a016971820beb5fbd0cc2edd696b529c68fd42cfaa4030a9cfc96c3c8e7104a7af5547f6557362e22d302cd43b78cbe1498adbcb02431324e9104bdb001e5098245108d9818f658abe3fcd051c179f499eef838137fe1c62aa837822b0d86e40bd681fa48666fb466c98f8e03ee9ee5c7d8d725f585a807098af40f8f55e46b3b0b35a57af4c37d99821cbda22b24fafe8d48160c367e241ac8fc2a5c5d6ed5a0c66661c25164b0f4cc864abf7c1ad29b22f93ecedd7716ca63ac72ec43586c1ebe8b31212cfad8fcb7ba91a6526a9cbac7a5d7a1f86f19212664c75bea09a19dc7e1630f0ce7459d152f363e6c0bdd20597e04d08b66a03e2c4307f4a768d2a7eb7ebc875ec751b4a729338f60720e32396c06d249605a7b817453b25668de1d19a5cca6782f7b755212f4026f4d069b8448e9b045eb53b3044b5411db77a27c922d29614a38bd15ec9a9768d35602370841dc235653d83ee15db3c879dfd2738442ab35596cf2b5bf875c03eda16f076cdac06256cd04a985c916ab59983fac9d03b85a577c10a5ba63cd2789bf09ea31633206f4329b668fbcb5dc3f3c52ca87180bc3e800049613444685f25908bb3434a82fe64ae0d5c9583c9fa5e4bcf11caeaafb5003acbf08dfc12d6269a2228b88d6ff6155cf6ee9665f7348142818b
+###
+# Object for classifying MAC addresses.
+#
+# @license
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+# @library mac_address_func.inc
+#
+# @remark
+# This code only supports MAC addresses from ARP responses at this time.
+###
+namespace mac_address
+{
+  # Classified MAC addresses to be populated with the MAC address as the key and a list of types as the value.
+  #  - Populated example:
+  #     classified_mac_addresses = {
+  #       '00:50:43:AC:6D:10' : {
+  #         type : 'remote',
+  #         methods : {
+  #           'ARP' : ['gateway MAC address', 'multi-hop traceroute']
+  #         },
+  #         reliable : "no"
+  #       }
+  #     }
+  var classified_mac_addresses = {};
+
+
+  ##
+  # Classifier object - classifies the specified MAC address 
+  ##
+  object classifier
+  {
+    var mac_address;
+  
+    ##
+    # Constructor
+    #
+    # @anonparam [str] MAC address to classify 
+    ##
+    function classifier()
+    {
+      mac_address = _FCT_ANON_ARGS[0];
+      mac_address = validate_and_normalize_mac(mac_address);
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Classifying MAC address: ' + mac_address);
+    }
+  
+
+    ##
+    # Add MAC address to the classified array.
+    #
+    # @param [type:str]      type of MAC address (e.g. 'local', 'remote', 'combined')
+    # @param [method:str]    method used to classify the MAC address (e.g. 'ARP', 'SNMP', 'SSH')
+    # @param [source:str]    source of the classification (e.g. 'gateway MAC address', 'multi-hop traceroute')
+    # @param [reliable:bool] reliability of the source (e.g. true, false)
+    #
+    # @remark
+    # This function updates the ``classified_mac_addresses`` namespace variable.
+    #
+    # @return [bool] true if successful; false otherwise
+    ##
+    public function add_to_classifieds(type, method, source, reliable)
+    {
+      # Argument checks
+      var required_arg;
+      var required_args = { type:type, method:method, source:source, reliable:reliable };
+      for (required_arg in required_args)
+      {
+        if (empty_or_null(required_args[required_arg]))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Missing required argument "', required_arg, '"'));
+          return false;
+        }
+      }
+
+      # Argument: type
+      if (empty_or_null(classified_mac_addresses[mac_address].type))
+        classified_mac_addresses[mac_address].type = type;
+
+      # Determine if the type should be set to combined.
+      else if (
+        (classified_mac_addresses[mac_address].type == 'remote' && type == 'local') ||
+        (classified_mac_addresses[mac_address].type == 'local' && type == 'remote')
+      )
+
+      classified_mac_addresses[mac_address].type = 'combined';
+
+
+      # Argument: method
+      if (empty_or_null(classified_mac_addresses[mac_address].methods[method]))
+        classified_mac_addresses[mac_address].methods[method] = [];
+
+      if (!contains_element(var:classified_mac_addresses[mac_address].methods[method], value:source))
+        append_element(var:classified_mac_addresses[mac_address].methods[method], value:source);
+
+
+      # Argument: reliable
+      #  - Only change reliability to "false" if not set since we do not want to override "true" if set by another method.
+      if (!empty_or_null(reliable) && classified_mac_addresses[mac_address].reliable != true)
+        classified_mac_addresses[mac_address].reliable = reliable;
+
+
+      # Log the addition of the classified MAC address
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:strcat('Added classified MAC address for ', mac_address));
+    
+      return true;
+    }
+
+
+    ##
+    # Classify MAC address from ARP response
+    #
+    # @remark
+    # This function updates the ``classified_mac_addresses`` namespace variable.
+    #
+    # @return [NULL] always
+    ##
+    public function classify_arp()
+    {
+      var method = 'ARP';
+
+      if (!mac_address) return NULL;
+
+      var checks = new mac_address::checks(mac_address, method);
+
+      # Run checks and check if any check matches.
+      var any_check_matched = checks.multi_hop_traceroute();
+
+      # If none of checks matched, use the standard source.
+      if (!any_check_matched)
+        add_to_classifieds(type:'remote', method:method, source:'standard', reliable:true);
+
+      delete(checks);
+    }
+  }
+
+
+  ##
+  # Checks object - runs the checks to assist in classifying the MAC address
+  ##
+  object checks : mac_address::classifier
+  {
+    # Method being classified (e.g. 'ARP')
+    var method;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] method being processed (e.g. ARP, SNMP, SSH)
+    ##
+    function checks() : super(_FCT_ANON_ARGS[0])
+    {
+      method = _FCT_ANON_ARGS[1];
+    }
+
+
+    ##
+    # Check if there is more than one hop from the traceroute from the sensor to the target host.
+    #
+    # @remark
+    # traceroute.nasl (10287) must be run before this function is called
+    #
+    # @remark
+    # This is meant to be a backup where islocalnet() is returning true even though the host is on a different subnet.
+    #
+    # @remark
+    # This function updates the inherited ``classified_mac_addresses`` namespace variable.
+    #
+    # @return [bool] true if matches and is classified; false otherwise
+    ##
+    public function multi_hop_traceroute()
+    {
+      # Check if the traceroute plugin (10287) was successfully run.
+      if (!get_one_kb_item('Success/10287'))
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'The required traceroute plugin (10287) was not run.');
+        return false;
+      }
+
+      # Get the hops from the traceroute plugin.
+      var hops = get_kb_list('traceroute-hop/*');
+
+      # At least one hop is expected, which is indicative of a host on the same subnet.
+      #  - Note: traceroute.nasl will not run on Agent or localhost scans
+      if (empty_or_null(hops))
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Missing "traceroute-hop/" KB item.');
+        return false;
+      }
+
+      # More than one hop detected, indicating that the host is on a different subnet.
+      if (len(hops) > 1)
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:strcat('Multi-hop traceroute detected: ', mac_address));
+        return add_to_classifieds(type:'remote', method:method, source:'multi-hop traceroute', reliable:false);
+      }
+      
+      return false;
+    }
+  }
+}

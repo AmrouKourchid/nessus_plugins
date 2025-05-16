@@ -1,0 +1,578 @@
+#TRUSTED 18d099aa877398282aef22d0c7599a7d8d679366c47d38425f00630c98a26df102e9f4eb89e2a2c337a42c27f1f34ba3895d36771aede307ff3d34f5b828275502a8da9a4bcfbae573f13424b882326728d3b1541333888a92ea0cea37f99c212a5ec24536eb2807295825a1ef92bfe3eeff512d38ec7a3dbe4a6a852b4f2acc5e906170f8145fc9a943e9eb4f95f1508e2495e18f01c7ea2d746223f65aa14587a56bc4632e309c1fd5388869e22c2ee36e9b471752c870e8ec9c59fcd9f73333bcf997f78cb658444b4f90790b1015ef637ab638f5dcc2b13dc01905b374c2de0ab569bb86cb7d4b87d59658bebaa2caa24b215a9dbad002a3b62f7bc722c99e6ff583777a9338f14d59b82a98970569d797d2a5b3324b108cc57340a91d1c453537131a3b94984be27d99cece8bb470bfc414f36e9335cd46a008d0d673b848159a58aa8f22dbfa8dd1a1d257994ba07d42b6ae4a885c22fc34e14c2f86dbcc60d7c6ead13ef7271bea151e5eb6d2cfed1e54513889e55806fac6a2b5b8768fdf45aaeff7224cc35580945257f8b96ba54730a500acd5925f89b9012fa1eed8c81f324a866aca9c3c72e369eac43f104d1e298c804795d41f269ebb1f859122a988ddf35670ed36765516c35435be12c6f104677b901cf5e67281554f607eabbed8b319d5543762c6b6b39be332dc6d4742eb35c822d60db9d8057d4e2f35
+#TRUST-RSA-SHA256 5d535c90008bae963f12385c8f090b9a6f7abad1d87fd03638752bc4b9c636c074439b71e63f1201a7e2e99d5aef2077f70176890d303d26769aa6b0162e75509ab520c8f596b6ef8066c6c674efa1fc7e52644cdcc6c30f7d84071c2b587ebe207ccb9df469a43cb5ea960831c51b302432d20794d07061908684eeca0895c5e196f184bdc73b32258b07f10e1b9b604f43a70a375bae04d0720ca63dc74fbf88a4ff7b63d97c8ee4b7405691716ee0aa883aa70844359447d95ea8a7885adfc3b72bcfe6d885b6da457f7c5e9b441a72e458f18323ed0ad8b7c76bf0df3b4e92accfabdd0689754cbef4ad44c6720ef32afdd4d69aa19a8c36eedf286004886672a54f29f65b339edab21de72848ee2d887e0335ca9fa0bf9d4f5412750856460b47da025d2d26e724a9cfb4d8decd6771a812804571171eca83a43b01f55c7e223d991ff47c42cb882e0d98675272949114cfd50d35ed539030ccc4d5a2ad9120f46c02bbf4afeca19b2a1b04242ead463cc9e49d1b29c776daf6f265f97824e9ccfb76e2a61469b3acd85be11b02ac32b55a1924a9dca110e779d4ce49a578a79a19094975448addf7d76bf33061aacedbb32ea388460a85702e1acfec205c59e46e66136c40f8e11bd971ec15d1875a7bdef70a0e7605f8fb893cb09192a54b44dda4462279ed47e33f417c554714a019a24cab9b6d0a80e4b429872441
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 0
+###
+
+namespace qianxin
+{
+  var NONCE_LENGTH = 32;
+  var IDENTIFY_ENDPOINT = '/PAM-SSO/v1/identify/config';
+  var LOGIN_ENDPOINT = '/PAM-OAuth/oauth2/token';
+  var CHECKOUT_ENDPOINT = '/PAM-Privilege/v1/external/accounts/check-out-with-prop';
+  # This is the byte values for the Chinese for "Service Error" in UTF-8.
+  # It is used by the _service_error function, this is the only place where the
+  # integration looks at Chinese language in the responses.
+  var SERVICE_ERROR = '\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x87\xba\xe9\x94\x99';
+  # Map database types (found in database_settings.nasl to possible platforms).
+  # Note that Sybase and Cassandra are not currently supported.
+  var database_type_map = {
+    "Oracle" : "ORACLE",
+    "SQL Server" : "SQL_SERVER",
+    "PostgreSQL" : "POSTGRESQL",
+    "MongoDB" : "MONGODB",
+    "DB2" : "DB2",
+    "MySQL" : "MYSQL"
+  };
+  object QiAnXinConfig : integrations::IntegrationConfig
+  {
+    var token;
+    var client_id;
+    var client_secret;
+    var credential_username;
+    var escalation_username;
+    var elevate;
+    var region_id;
+    var address;
+    var platform;
+    var protocol;
+    var referer;
+    var timestamp;
+    var cache_key;
+    var esc_cache_key;
+
+    ##
+    # Initialize QiAnXin configuration.
+    #
+    # @param [prefix:string] The prefix of the UI string for the config element
+    # @param [postfix:string] The postfix of the UI string for the config element
+    # @param [default_platform:string] The default platform (e.g. LINUX) when querying accounts.
+    #
+    # @return [boolean] true always
+    ##
+    public function init(prefix, postfix, default_platform)
+    {
+      this.int_name = 'QiAnXin';
+      this.host = script_get_preference(prefix + 'Host' + postfix);
+      this.port = script_get_preference(prefix + 'Port' + postfix);
+      this.ssl = integrations::boolean(script_get_preference(prefix + 'SSL' + postfix));
+      this.ssl_verify = integrations::boolean(script_get_preference(prefix + 'Verify SSL Certificate' + postfix));
+      this.client_id = script_get_preference(prefix + 'API User' + postfix);
+      this.client_secret = script_get_preference(prefix + 'API Key' + postfix);
+      this.credential_username = script_get_preference(prefix + 'Credential ID' + postfix);
+      this.elevate = script_get_preference("Elevate privileges with" + postfix);
+      this.escalation_username = script_get_preference(prefix + 'Escalation Account Name' + postfix);
+      this.region_id = script_get_preference(prefix + 'Region ID' + postfix);
+
+      this.address = script_get_preference(prefix + 'Address' + postfix);
+      if (!this.address)
+      {
+        this.address = get_host_ip();
+      }
+      this.platform = script_get_preference(prefix + 'Platform' + postfix);
+      if (!this.platform)
+      {
+        this.platform = default_platform;
+      }
+      this.referer = 'https://' + this.host;
+
+      # If you chose to escalate but did not specify an username,
+      # this sets it to the same value as credential_username.
+      _set_default_escalation_username();
+
+      # Sets this.cache_key and this.esc_cache_key (the latter only if using escalation)
+      _set_cache_keys();
+
+      integrations::logger(msg:'QiAnXin Settings ~' +
+        '\nHost: ' + this.host +
+        '\nPort: ' + this.port +
+        '\nSSL: ' + this.ssl +
+        '\nVerify SSL: ' + this.ssl_verify +
+        '\nCredential Account Username: ' + this.credential_username +
+        '\nAccount Asset Address: ' + this.address +
+        '\nAccount Asset Platform: ' + this.platform +
+        '\nRegion ID: ' + this.region_id +
+        '\nCredential Account Username: ' + this.credential_username +
+        '\nCredential Cache Key: ' + this.cache_key +
+        '\nElevate with: ' + this.elevate +
+        '\nEscalation Account Username: ' + this.escalation_username +
+        '\nEscalation Credential Cache Key: ' + this.esc_cache_key
+        , config:this, lvl:3
+      );
+
+      return true;
+    }
+
+    ##
+    # Scrub sensitive data from logs
+    # @param [msg:string] msg to remove sensitive data from
+    #
+    # @return [string] scrubbed string
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(
+        msg:msg,
+        '"access_token":"(.+?)"',
+        '"password":"(.+?)"',
+        '"passphrase":"(.+?)"',
+        '"sshKey":"(.+?)"'
+      );
+      return integrations::convert_to_ascii_and_hex(data:msg);
+    }
+
+    ##
+    # Set cache_key and esc_cache_key variables.
+    #
+    # @return [boolean] true always
+    ##
+    function _set_cache_keys()
+    {
+      this.cache_key = this.credential_username + '@' + this.address + ':' + this.platform;
+      if (this.region_id)
+      {
+        this.cache_key += 'region' + this.region_id;
+      }
+      if (this.escalation_username)
+      {
+        this.esc_cache_key = this.escalation_username + '@' + this.address + ':' + this.platform;
+        if (this.region_id)
+        {
+          this.esc_cache_key += 'region' + this.region_id;
+        }
+      }
+      return true;
+    }
+
+    ##
+    # If escalation_username is not already set, set escalation_username to
+    # credential_username.
+    #
+    # @return [boolean] true always
+    ##
+    function _set_default_escalation_username()
+    {
+      if (this.escalation_username)
+      {
+        return true;
+      }
+      if (this.elevate && this.elevate != "Nothing")
+      {
+        this.escalation_username = this.credential_username;
+      }
+      return true;
+    }
+
+    ##
+    # Set cache but only for certain fields.
+    #
+    # @ramark This is a wrapper for integrations::set_cache, so
+    # that we don't need to cache the entire response body.
+    #
+    # @param [secret:string] the secret for the kv item. Used as a key.
+    # @param [kv:array] Object containing all the keys to cache. Looped and stored.
+    #
+    # @return [boolean] true always
+    ##
+    function _cache_credential(secret, kv)
+    {
+      integrations::logger(msg:'Setting ' + secret + ' in the cache', lvl:2, config:this);
+      var kv_to_cache = {};
+      var cache_fields = [
+        'username',
+        'password',
+        'sshKey',
+        'passphrase',
+        'isEncrypted'
+      ];
+      foreach (var field in cache_fields)
+      {
+        if (kv[field])
+        {
+          kv_to_cache[field] = kv[field];
+        }
+      }
+      integrations::set_cache(secret:secret, kv:kv_to_cache);
+      return true;
+    }
+
+    ##
+    # Extract an error message from QiAnXin result.
+    #
+    # @param [result:array]: Result returned from one of the integrations HTTP functions.
+    #
+    # @return [string] error message that best describes the error.
+    ##
+    function _get_request_error(result)
+    {
+      if (result.header.code)
+      {
+        return 'HTTP ' + result.header.code + '.';
+      }
+      return string(result.message);
+    }
+
+    ##
+    # Return true if a service error was encountered.
+    #
+    # The API occasionally returns HTTP 200 codes with the
+    # message "Service error" in Chinese.
+    #
+    # @param [result:array]: Result returned from one of the integrations HTTP functions.
+    #
+    # @return [boolean] true if ``result`` contains an error message, false otherwise.
+    ##
+    function _service_error(result)
+    {
+      return typeof(result.body) == 'array' && result.body.msg == SERVICE_ERROR;
+    }
+
+    ##
+    # Generate a random ``NONCE_LENGTH`` string.
+    #
+    # @return [string] The generated ``NONCE_LENGTH`` string.
+    ##
+    function _gen_nonce()
+    {
+      var alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      var nonce = '';
+      for (var i=0; i<NONCE_LENGTH; i++)
+      {
+        nonce += alphabet[rand() % len(alphabet)];
+      }
+      return nonce;
+    }
+
+    ##
+    # Strip PKCS7 padding. Helper for decrypt_password.
+    #
+    # @param [decrypted_password:string]: Decrypted password from QiAnXin with padding.
+    #
+    # @return [string] decrypted password with padding removed.
+    ##
+    function _strip_pkcs7_padding(decrypted_password)
+    {
+      # In PKCS7 padding, the value of every padding byte is equal to the
+      # number of total bytes of padding. Values have up to 16 bytes of padding.
+      var total_bytes, last_byte, diff;
+      total_bytes = len(decrypted_password);
+      last_byte = decrypted_password[total_bytes-1];
+      if (last_byte > '\x10')
+      {
+        # The case when the last byte is NOT a padding byte (i.e. there is
+        # no padding). Not sure this is possible, because 16-byte passwords
+        # end up with 16 bytes of 0x10's (16's) added on.
+        return decrypted_password;
+      }
+      diff = total_bytes - int(bn_raw2dec(last_byte)) - 1;
+
+      return substr(decrypted_password, 0, diff);
+    }
+
+    ##
+    # Decrypt a password returned from QiAnXin using AES-CBC decryption.
+    #
+    # @param [encrypted_password:string] Encrypted password from QiAnXin.
+    #
+    # @return [string] decrypted password
+    ##
+    function decrypt_password(encrypted_password)
+    {
+      var iv, password_data, key, result;
+      # iv: first 8 chars of encrypted password + 16-24 of encrypted password.
+      iv = substr(encrypted_password, 0, 7) + substr(encrypted_password, 16, 23);
+      # data: 8-16 or encrypted_password + 24+ of encrypted password
+      # (basically the remaining bits not in iv), decoded from base64.
+      password_data = base64_decode(str:substr(encrypted_password, 8, 15) + substr(encrypted_password, 24));
+      # key: first 16 chars of client secret.
+      key = substr(this.client_secret, 0, 15);
+
+      result = aes_cbc_decrypt(data:password_data, key:key, iv:iv);
+
+      return _strip_pkcs7_padding(decrypted_password:result[0]);
+    }
+
+    ##
+    # Get timestamp.
+    #
+    # @remark When making requests to QiAnXin, you're required to
+    # supply a timestamp within 2 min of the server time.
+    # This is the way the API documentation instructs.
+    #
+    # @remark Sets timestamp instance variable when successful.
+    #
+    # @return [array] The array containing the success status and error message. {success:bool, message:str}
+    ##
+    function get_timestamp()
+    {
+      var headers, result;
+      if (this.timestamp)
+      {
+        # If we have already fetched the timestamp
+        return {success:true};
+      }
+      headers = {
+        'Referer': this.referer,
+        'Content-Type': 'application/json'
+      };
+      result = integrations::get(config:this, command:IDENTIFY_ENDPOINT, headers:headers);
+      if (!result.success)
+      {
+        return {success: false, message:_get_request_error(result:result)};
+      }
+      if (_service_error(result:result))
+      {
+        return {success: false, message:'QiAnXin service error.'};
+      }
+      if (!result.body.timestamp)
+      {
+        return {success:false, message:'Result did not contain timestamp.'};
+      }
+      this.timestamp = result.body.timestamp;
+      return {success:true};
+    }
+
+    ##
+    # Login to QiAnXin PAM.
+    #
+    # @remark Sets token instance variable when successful.
+    #
+    # @return @return [array] The array containing the success status and error message. {success:bool, message:str}
+    ##
+    function login()
+    {
+      var timestamp, nonce, signed_string, digest_auth_info, headers, auth_result;
+      if (this.token)
+      {
+        # If we have already logged in
+        return {success:true};
+      }
+
+      nonce = _gen_nonce();
+      signed_string = base64(
+        str:HMAC_SHA256(key:this.client_secret,
+                        data:this.client_id+ '/' + nonce + '/' + this.timestamp)
+      );
+      digest_auth_info = base64(str:this.client_id+':'+signed_string);
+
+      headers = {
+        'Referer': this.referer,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'x-pam-nonce': nonce,
+        'x-pam-timestamp': this.timestamp,
+        'Authorization': 'digest ' + digest_auth_info
+      };
+      auth_result = integrations::post(config:this, command:LOGIN_ENDPOINT, headers:headers);
+      if (!auth_result.success)
+      {
+        return {success:false, message:_get_request_error(result:auth_result)};
+      }
+      if (_service_error(result:auth_result))
+      {
+        return {success:false, message:'QiAnXin service error.'};
+      }
+      if (!auth_result.body.access_token)
+      {
+        return {success:false, message:'Result did not contain access token.'};
+      }
+      this.token = auth_result.body.access_token;
+      return {success:true};
+    }
+
+    ##
+    # Get a single account from QiAnXin.
+    #
+    # @param [account_username:string] The username to fetch.
+    #
+    # @return [array] The array contining the account data.
+    #         {success:bool, creds:array {username, password, ...}, message:str}
+    ##
+    function get_account(account_username)
+    {
+      var timestamp_result, login_result, headers, request_data, qax_account_result;
+
+      # The API requires fetching a timestamp first and all subsequent requests have that timestamp
+      # in the request's headers, and it must be within 2 minutes of the server time. This will
+      # fetch the timestamp once and reuse it for subsequent requests.
+      timestamp_result = get_timestamp();
+      if (!timestamp_result.success)
+      {
+        return {success:false, message:'Failed to get timestamp. ' + timestamp_result.message};
+      }
+      login_result = login();
+      if (!login_result.success)
+      {
+        return {
+          success:false,
+          message:'Failed to log in. Please review client ID and client secret. ' + login_result.message
+        };
+      }
+
+      headers = {
+        'Referer': this.referer,
+        'Content-Type': 'application/json',
+        'x-pam-nonce': _gen_nonce(),
+        'x-pam-timestamp': this.timestamp,
+        'Authorization': this.token
+      };
+      request_data = {
+        'address': this.address,
+        'platform': this.platform,
+        'username': account_username
+      };
+      if (this.region_id)
+      {
+        request_data['regionId'] = this.region_id;
+      }
+      qax_account_result = integrations::put(
+        config:this, command:CHECKOUT_ENDPOINT, headers:headers, data:request_data, json:true
+      );
+      if (!qax_account_result.success)
+      {
+        return {success:false, message:_get_request_error(result:qax_account_result)};
+      }
+      if (_service_error(result:qax_account_result))
+      {
+        return {success:false, message:'QiAnXin service error.'};
+      }
+      if (empty_or_null(qax_account_result.body.data))
+      {
+        return {success:false, message:'Could not find a matching account. '
+                                       'Please review address, platform, username and region ID.'};
+      }
+      return {success:true, account:qax_account_result.body.data[0]};
+    }
+
+    ##
+    # Get both login and escalation accounts from QiAnXin, checking in cache.
+    #
+    # @return [array] The array contining the account data.
+    #         {success:bool, account:array {username, password, ...}, message:str}
+    ##
+    public function get_login_and_escalation_accounts()
+    {
+      var account, esc_account, cache_result, esc_cache_result, err_message, creds;
+
+      cache_result = integrations::get_cache(secret:this.cache_key);
+      if (cache_result.success)
+      {
+        integrations::logger(msg:'Cache hit for credential: '+this.cache_key, lvl:2, config:this);
+        account = {account: {username: cache_result.kv.username,
+                             password: cache_result.kv.password,
+                             sshKey: cache_result.kv.sshKey,
+                             passphrase: cache_result.kv.passphrase}};
+      }
+      else
+      {
+        account = this.get_account(account_username:this.credential_username);
+        if (!account.success)
+        {
+          err_message = 'Failed to get account. ' + account.message;
+          return {success:false, message:err_message};
+        }
+        this._cache_credential(secret:this.cache_key, kv:account.account);
+      }
+
+      if (this.escalation_username)
+      {
+        esc_cache_result = integrations::get_cache(secret:this.esc_cache_key);
+        if (esc_cache_result.success)
+        {
+          integrations::logger(msg:'Cache hit for escalation credential: '+this.esc_cache_key, lvl:2, config:this);
+          esc_account = {account: {password: esc_cache_result.kv.password,
+                                   isEncrypted: esc_cache_result.kv.isEncrypted}};
+        }
+        else
+        {
+          esc_account = this.get_account(account_username:this.escalation_username);
+          if (!esc_account.success)
+          {
+            err_message = 'Failed to get escalation account. ' + esc_account.message;
+            return {success:false, message:err_message};
+          }
+          this._cache_credential(secret:this.esc_cache_key, kv:esc_account.account);
+        }
+      }
+
+      integrations::logger(msg:'Successfully fetched QiAnXin credentials.', lvl:2, config:this);
+
+      if (account.account.isEncrypted)
+      {
+        integrations::logger(msg:'Decrypting password.', lvl:3, config:this);
+        account.account.password = decrypt_password(
+          encrypted_password:account.account.password
+        );
+      }
+
+      # If we have an SSH key, use that, otherwise use username/password.
+      # All QAX accounts have a password but don't always have an SSH key,
+      # so if an SSH key is present that means that's what they want to use.
+      if (account.account.sshKey)
+      {
+        creds = {
+          username:account.account.username,
+          private_key:account.account.sshKey,
+          passphrase:account.account.passphrase
+        };
+      }
+      else
+      {
+        creds = {
+          username:account.account.username,
+          password:account.account.password,
+        };
+      }
+
+      if (esc_account)
+      {
+        if (esc_account.account.isEncrypted)
+        {
+          integrations::logger(msg:'Decrypting escalation password.', lvl:3, config:this);
+          esc_account.account.password = decrypt_password(
+            encrypted_password:esc_account.account.password
+          );
+        }
+        creds.sudo_password = esc_account.account.password;
+      }
+
+      return {
+        success:true,
+        creds:creds
+      };
+    }
+  }
+
+  ##
+  # Get credentials from QiAnXin.
+  #
+  # @param [prefix:string] The prefix of the UI string for the config element
+  # @param [postfix:string] The postfix of the UI string for the config element
+  # @param [default_platform:string] The default platform (e.g. LINUX) when querying accounts.
+  #
+  # @return [array] The array result containing credentials.
+  ##
+  function get_credential(prefix, postfix, default_platform)
+  {
+    var result;
+    var config = new qianxin::QiAnXinConfig();
+    config.init(prefix:prefix, postfix:postfix, default_platform:default_platform);
+    integrations::logger(msg:'Waiting to acquire lock to acquire QiAnXin credentials', lvl:3, config:config);
+    mutex_lock(SCRIPT_NAME);
+    integrations::logger(msg:'Lock acquired.', lvl:3, config:config);
+    result = config.get_login_and_escalation_accounts();
+    if (!result.success)
+    {
+      integrations::logger(msg:'Error: ' + result.message, lvl:1, config:config);
+    }
+    mutex_unlock(SCRIPT_NAME);
+    return result;
+  }
+}

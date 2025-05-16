@@ -1,0 +1,273 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The descriptive text and package checks in this plugin were
+# extracted from Oracle Linux Security Advisory ELSA-2024-2571.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(195159);
+  script_version("1.2");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2024/11/02");
+
+  script_cve_id("CVE-2023-3758");
+
+  script_name(english:"Oracle Linux 9 : sssd (ELSA-2024-2571)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote Oracle Linux host is missing a security update.");
+  script_set_attribute(attribute:"description", value:
+"The remote Oracle Linux 9 host has packages installed that are affected by a vulnerability as referenced in the
+ELSA-2024-2571 advisory.
+
+    [2.9.4-6.0.1]
+    - Restore default debug level for sss_cache [Orabug: 32810448]
+
+    [2.9.4-6]
+    - Resolves: RHEL-27209 - Race condition during authorization leads to GPO policies functioning
+    inconsistently [rhel-9.4.0]
+
+    [2.9.4-5]
+    - Resolves: RHEL-28161 - Passkey cannot fall back to password
+
+    [2.9.4-4]
+    - Resolves: RHEL-28161 - Passkey cannot fall back to password
+
+    [2.9.4-3]
+    - Resolves: RHEL-22340 - socket leak
+    - Resolves: RHEL-28161 - Passkey cannot fall back to password
+
+Tenable has extracted the preceding description block directly from the Oracle Linux security advisory.
+
+Note that Nessus has not tested for this issue but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://linux.oracle.com/errata/ELSA-2024-2571.html");
+  script_set_attribute(attribute:"solution", value:
+"Update the affected packages.");
+  script_set_cvss_base_vector("CVSS2#AV:A/AC:H/Au:S/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:A/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2023-3758");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2024/04/18");
+  script_set_attribute(attribute:"patch_publication_date", value:"2024/05/07");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2024/05/08");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"cpe:/a:oracle:linux:9:4:appstream_patch");
+  script_set_attribute(attribute:"cpe", value:"cpe:/a:oracle:linux:9::appstream");
+  script_set_attribute(attribute:"cpe", value:"cpe:/a:oracle:linux:9::codeready_builder");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:oracle:linux:9");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:oracle:linux:9:4:baseos_patch");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:oracle:linux:9::baseos_latest");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libipa_hbac");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_autofs");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_certmap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_idmap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_nss_idmap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_nss_idmap-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_simpleifp");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:libsss_sudo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:python3-libipa_hbac");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:python3-libsss_nss_idmap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:python3-sss");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:python3-sss-murmur");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:python3-sssdconfig");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-ad");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-client");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-common");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-common-pac");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-dbus");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-idp");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-ipa");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-kcm");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-krb5");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-krb5-common");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-ldap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-nfs-idmap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-passkey");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-polkit-rules");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-proxy");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-tools");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:oracle:linux:sssd-winbind-idmap");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Oracle Linux Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2024 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl");
+  script_require_keys("Host/OracleLinux", "Host/RedHat/release", "Host/RedHat/rpm-list", "Host/local_checks_enabled");
+
+  exit(0);
+}
+
+
+include('rpm.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+if (!get_kb_item('Host/OracleLinux')) audit(AUDIT_OS_NOT, 'Oracle Linux');
+var os_release = get_kb_item("Host/RedHat/release");
+if (isnull(os_release) || !pregmatch(pattern: "Oracle (?:Linux Server|Enterprise Linux)", string:os_release)) audit(AUDIT_OS_NOT, 'Oracle Linux');
+var os_ver = pregmatch(pattern: "Oracle (?:Linux Server|Enterprise Linux) .*release ([0-9]+(\.[0-9]+)?)", string:os_release);
+if (isnull(os_ver)) audit(AUDIT_UNKNOWN_APP_VER, 'Oracle Linux');
+os_ver = os_ver[1];
+if (! preg(pattern:"^9([^0-9]|$)", string:os_ver)) audit(AUDIT_OS_NOT, 'Oracle Linux 9', 'Oracle Linux ' + os_ver);
+
+if (!get_kb_item('Host/RedHat/rpm-list')) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 'aarch64' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'Oracle Linux', cpu);
+
+var pkgs = [
+    {'reference':'libipa_hbac-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_autofs-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_certmap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_nss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_nss_idmap-devel-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_simpleifp-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_sudo-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-libipa_hbac-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-libsss_nss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sss-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sss-murmur-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sssdconfig-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ad-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-client-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-common-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-common-pac-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-dbus-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-idp-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ipa-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-kcm-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-krb5-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-krb5-common-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ldap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-nfs-idmap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-passkey-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-polkit-rules-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-proxy-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-tools-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-winbind-idmap-2.9.4-6.0.1.el9_4', 'cpu':'aarch64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libipa_hbac-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_autofs-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_certmap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_nss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_nss_idmap-devel-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_simpleifp-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_sudo-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-libipa_hbac-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-libsss_nss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sss-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sss-murmur-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sssdconfig-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ad-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-client-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-common-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-common-pac-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-dbus-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-idp-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ipa-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-kcm-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-krb5-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-krb5-common-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ldap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-nfs-idmap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-passkey-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-polkit-rules-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-proxy-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-tools-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-winbind-idmap-2.9.4-6.0.1.el9_4', 'cpu':'i686', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libipa_hbac-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_autofs-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_certmap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_nss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_nss_idmap-devel-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_simpleifp-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'libsss_sudo-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-libipa_hbac-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-libsss_nss_idmap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sss-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sss-murmur-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'python3-sssdconfig-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ad-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-client-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-common-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-common-pac-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-dbus-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-idp-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ipa-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-kcm-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-krb5-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-krb5-common-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-ldap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-nfs-idmap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-passkey-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-polkit-rules-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-proxy-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-tools-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'sssd-winbind-idmap-2.9.4-6.0.1.el9_4', 'cpu':'x86_64', 'release':'9', 'rpm_spec_vers_cmp':TRUE}
+];
+
+var flag = 0;
+foreach var package_array ( pkgs ) {
+  var reference = NULL;
+  var _release = NULL;
+  var sp = NULL;
+  var _cpu = NULL;
+  var el_string = NULL;
+  var rpm_spec_vers_cmp = NULL;
+  var epoch = NULL;
+  var allowmaj = NULL;
+  var exists_check = NULL;
+  if (!empty_or_null(package_array['reference'])) reference = package_array['reference'];
+  if (!empty_or_null(package_array['release'])) _release = 'EL' + package_array['release'];
+  if (!empty_or_null(package_array['sp'])) sp = package_array['sp'];
+  if (!empty_or_null(package_array['cpu'])) _cpu = package_array['cpu'];
+  if (!empty_or_null(package_array['el_string'])) el_string = package_array['el_string'];
+  if (!empty_or_null(package_array['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = package_array['rpm_spec_vers_cmp'];
+  if (!empty_or_null(package_array['epoch'])) epoch = package_array['epoch'];
+  if (!empty_or_null(package_array['allowmaj'])) allowmaj = package_array['allowmaj'];
+  if (!empty_or_null(package_array['exists_check'])) exists_check = package_array['exists_check'];
+  if (reference && _release) {
+    if (exists_check) {
+        if (rpm_exists(release:_release, rpm:exists_check) && rpm_check(release:_release, sp:sp, cpu:cpu, reference:reference, epoch:epoch, el_string:el_string, rpm_spec_vers_cmp:rpm_spec_vers_cmp, allowmaj:allowmaj)) flag++;
+    } else {
+        if (rpm_check(release:_release, sp:sp, cpu:_cpu, reference:reference, epoch:epoch, el_string:el_string, rpm_spec_vers_cmp:rpm_spec_vers_cmp, allowmaj:allowmaj)) flag++;
+    }
+  }
+}
+
+if (flag)
+{
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_WARNING,
+      extra      : rpm_report_get()
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'libipa_hbac / libsss_autofs / libsss_certmap / etc');
+}

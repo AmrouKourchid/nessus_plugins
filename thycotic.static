@@ -1,0 +1,1683 @@
+#TRUSTED 467c0e6eabdd683a2b4d7cc1c6938c4704378e08692072b1f41a00b8f5a1812c880b4438c444c80d8a849b508d1ec4ad4cef708a7539a95eaf30718be5412cbebb623acfbdc9fa5e5e694c231d76b003cd2f13ba6dc873d35d853f918e681219c177bfdc0af8961a661951886568c9878f8ae3d2992e29269a3da1154b96cf5186a0d49e56c81f62da096271cf08d5079d10ee248018b49cd0545bb0a8ca8657836596f48120311340db953d653eaadbdc12214d108beaa242c97f13d444684152b2cbae197b2200fd21e3afea61d1c51fd708e03e0da17c95ab1e576923087d152009b24b6dd793b3cab4328143eb34182d93bef26dccc67071a0c35d6e3c48804596b45b1a16004e9a2f94764777fb9d3c0116758b68dae78d4ad2180bd4fe4b6ae0112ec58a117179a6080acc3e4f1ca68a84bf67174d12bea2abc757cab2a4595cb6c91be9713ad4bfb55fa127e43cbff486b7b27b32a8b998d140a72bd5c6553dcf6ed3ba7a8655c87666bc3e69ad33ebae26a8e6ecaeb12a98daf1c7ee5dc7484b03eb164815021e8a354431e0776886f6b4bc8071f779615bbbeeca28ee6447df08fd71ab4817c0705a09b87344555c2f1f3883b97ebeb41ea497ffe37e0f9ea87ebf3b10adae8a61a78b54d715328f02d735463373b2be957524276a0679ac25658efebf885d3c449fe1da217730a9ee97472cf5846bf204f4ea246f
+#TRUST-RSA-SHA256 4a97b5ddc7fe6d053c967b735c1cfffa8d4d54e62e7b35a5c8d185b5ec8ae53e08cc00235a6429131b53e740054ff3c38160b7665c512bd588b1bbf65bc04f51b43a780b4df462021d6a400ee36e2d22a232b376aa940b9d0d52d10b0732da67b5b453c5df32c7854546989a4cfbe2ccefe50e5f35f7669e37a18e6b03e811080453e5164105faa59a69d16b7036904f9175e6192393b8a7aabb1439c6ba6f04c23bf90112c318c8d5a6e89c847f5cf1fb060346e5748fe1883dc06c4cebfcbaae2091f550495a9b376c1b2dbfd6220853ec32bae935cef81f21d6a817f7f453aa32197e65d8a4aa93b8b48d8badda1dbdec3e68d8edf190be514937133093095946b836ede0d352eaa35613490dffd9d8fee216d245cb3713e732f061692c004af50c1d5b0963b56bec0fa87f6acd88669da45d23c98968ee89cc9668a5d0471a38f0436fecea9a0c9732d75cbf6490d60e481b6679688c0855b2cefb91b040452d6a849390ca6220c0ba83d7053d0fed49cff06dc57b3fed8b6477fcaca00c3b3926afb6e2d76cf331cfeb922171c597351d944a1be3b64b1744045d69787de2a703a9a1487da1452e4e0df53c3c80823a563e6b386f38d4d363d29c1601209d9203662509e8594e5c241f1355b255667985f6caaddd36dd43845c6fb1f1282c27660f51d519b21d251fca5f96f1ecc52ea3996a099156869bdbd6a8deb323
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.7
+###
+
+global_var THYCOTIC_LAST_ERROR, ERROR_EXIT, ERROR_LOG;
+global_var THYCOTIC_USERNAME, THYCOTIC_PASSWORD,THYCOTIC_ORGANIZATION,
+  THYCOTIC_DOMAIN,THYCOTIC_TARGET,THYCOTIC_PORT,THYCOTIC_TRANSPORT,
+  THYCOTIC_TOKEN, THYCOTIC_DIR, THYCOTIC_PRIVATE_KEY, THYCOTIC_USE_CACHE;
+global_var logins_last_error = "";
+
+ERROR_EXIT = 1;
+ERROR_LOG = 0;
+
+##############################
+## Debug and Error Handling ##
+##############################
+
+##
+# Log error messages for thycotic to the debugging API
+#
+# @remark If xml is supplied try to find a password in it and if 
+# a password is found, replace all instances of it with "***"
+#
+# @param [msg:string] the message to log
+# @param [xml:string] the xml data to attach to the debug log
+# @param [lvl:integer] the debug level to give to ``detailed_log()`` (optional, defaults to 3)
+#
+# @return NULL
+##
+function thycotic_log_debug(msg, xml, lvl)
+{
+  var msg_as_xml, secrets;
+  var msg_details = NULL;
+  if (empty_or_null(lvl))
+    lvl = 3;
+
+  if (xml)
+  {
+    xml = ereg_replace(icase: TRUE, pattern: '(<value>)[^<]*(</value>)', replace: '\\1***\\2', string: xml);
+    xml = ereg_replace(icase: TRUE, pattern: '(<FileAttachment>)[^<]*(</FileAttachment>)', replace: '\\1***\\2', string: xml);
+    msg_details = {"XML":{"lvl":3, "value":xml}};
+  }
+  
+  dbg::detailed_log(
+    name: SCRIPT_NAME + "~Thycotic",
+    src: FUNCTION_NAME,
+    lvl: lvl,
+    msg: msg,
+    msg_details: msg_details);
+}
+
+##
+# Log errors produced from thycotic api and plugins
+#
+# @anonparam [1st:integer] exit code 0 or 1
+# @anonparam [2nd:string] exit message
+# @param [report_error_title:string] report_error title
+# @param [report_error_severity:string] report_error severity
+# @param [severity:integer] ERROR_EXIT or ERROR_LOG depending on what is required
+#
+# @return NULL
+##
+function thycotic_error(report_error_title, report_error_severity, severity)
+{
+  # Log any bad error messages
+  if (_FCT_ANON_ARGS[0] != 0 && _FCT_ANON_ARGS[0] != 1)
+  {
+    thycotic_error(1, "Bad error code in thycotic_error.", severity:severity);
+
+    return NULL;
+  }
+
+  if (empty_or_null(_FCT_ANON_ARGS[1]))
+  {
+    thycotic_error(1, "No message supplied for thycotic_error.", severity:severity);
+
+    return NULL;
+  }
+
+  THYCOTIC_LAST_ERROR = _FCT_ANON_ARGS[1];
+  thycotic_log_debug(lvl:1, msg:THYCOTIC_LAST_ERROR);
+
+  if (report_error_title && report_error_severity)
+  {
+    report_error(title:SCRIPT_NAME + ": " + report_error_title, message:_FCT_ANON_ARGS[1], severity:report_error_severity);
+  }
+
+  if (severity == ERROR_EXIT)
+  {
+    exit(_FCT_ANON_ARGS[0], _FCT_ANON_ARGS[1]);
+  }
+
+  return NULL;
+}
+
+##
+# Get the last error from thycotic
+##
+function thycotic_get_last_error()
+{
+  return THYCOTIC_LAST_ERROR;
+}
+
+######################
+## Public Functions ##
+######################
+
+##
+# The the Thycotic private key.
+#
+# @return [string] The private key.
+##
+function thycotic_privatekey_enabled()
+{
+  return THYCOTIC_PRIVATE_KEY;
+}
+
+##
+# Prepare settings for thycotic.
+# Secret Server URL
+#
+# @param [username:string] The username for the Thycotic API
+# @param [password:string] The password for the Thycotic API
+# @param [organization:string] The organization's name
+# @param [domain:string] The Thycotic domain
+# @param [secret_server_url:string] The secret server URL to parse
+# @param [ssl_verify:boolean] Boolean to verify the SSL certificate. See the definition of ``ssl_transport()``.
+# @param [private_key:string] The private key to use in the API.
+# @param [debug:boolean] UNUSED
+#
+# @return NULL if an error occurred, 1 otherwise.
+##
+function thycotic_init(username, password, organization, domain, secret_server_url, ssl_verify, private_key, debug)
+{
+  var parsed_url;
+
+  # Parse the secret server url into target and the SecretServer root install location
+  # http://192.168.1.11/SecretServer/
+  parsed_url = pam_parse_url(url:secret_server_url);
+
+  if (empty_or_null(parsed_url))
+  {
+    thycotic_error(0, "Failed to parse the Thycotic Secret Server URL.", severity:ERROR_LOG);
+    return NULL;
+  }
+
+  if (empty_or_null(username))
+  {
+    thycotic_error(0, "Thycotic is missing username parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(password))
+  {
+    thycotic_error(0, "Thycotic is missing password parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(secret_server_url))
+  {
+    thycotic_error(0, "Thycotic is missing secret_server_url parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  if (empty_or_null(username) || empty_or_null(password) || empty_or_null(secret_server_url))
+  {
+    thycotic_error(0, "Thycotic is missing required parameter.", severity:ERROR_LOG);
+    
+    return NULL;
+  }
+
+  thycotic_log_debug(lvl:2, msg:'Setting Thycotic Global Variables');
+
+  THYCOTIC_USERNAME = username;
+  THYCOTIC_PASSWORD = password;
+  THYCOTIC_ORGANIZATION = organization;
+  THYCOTIC_DOMAIN = domain;
+  THYCOTIC_TARGET = parsed_url["target"];
+  THYCOTIC_DIR = parsed_url["directory"];
+  THYCOTIC_PORT = parsed_url["port"];
+  THYCOTIC_TRANSPORT = ssl_transport(ssl:parsed_url["ssl"], verify:ssl_verify);
+  THYCOTIC_TOKEN = NULL;
+  THYCOTIC_PRIVATE_KEY = private_key;
+
+  thycotic_log_debug(lvl:3, msg:'THYCOTIC USERNAME: ' + THYCOTIC_USERNAME);
+  thycotic_log_debug(lvl:3, msg:'ORGANIZATION: ' + THYCOTIC_ORGANIZATION);
+  thycotic_log_debug(lvl:3, msg:'DOMAIN: ' + THYCOTIC_DOMAIN);
+  thycotic_log_debug(lvl:3, msg:'TARGET: ' + THYCOTIC_TARGET);
+  thycotic_log_debug(lvl:3, msg:'DIRECTORY: ' + THYCOTIC_DIR);
+  thycotic_log_debug(lvl:3, msg:'PORT: ' + THYCOTIC_PORT);
+  thycotic_log_debug(lvl:3, msg:'SSL: ' + parsed_url["ssl"]);
+  thycotic_log_debug(lvl:3, msg:'Verify: ' + ssl_verify);
+  thycotic_log_debug(lvl:3, msg:'TRANSPORT: ' + THYCOTIC_TRANSPORT);
+
+  return 1;
+}
+
+##
+# Authenticate to the Thycotic server to get a
+# Token for future queries via a POST request
+#
+# @param [searchTerm:string] The string to search for in the thycotic global KB items. (optional)
+#
+# @remark ``searchTerm`` is used to search the KB to determine if a previous auth was successful, and use the cached creds of that auth.
+#
+# @return TRUE if the auth was successful, "CACHED" if using cached creds, null on failure
+##
+function thycotic_authenticate(searchTerm)
+{
+  var req, res, http_status, token, error_string, val_table;
+  var xml_stack, i, obj, obj2, headers, cached_creds;
+  
+  if(!empty_or_null(searchTerm))
+  {
+    # if the request is already cached we do not need to authenticate again
+    if (!empty_or_null(get_global_kb_item("thycotic/global/"+searchTerm+"/status")))
+    {
+      THYCOTIC_USE_CACHE = TRUE;
+      thycotic_log_debug(lvl:2, msg:'Using cached credentials for ' + searchTerm + '\n');
+
+      return "CACHED";
+    }
+    else
+    {
+      THYCOTIC_USE_CACHE = FALSE;
+    }
+  }
+  
+  req += "username="+urlencode(str:THYCOTIC_USERNAME);
+  req += "&password="+urlencode(str:THYCOTIC_PASSWORD);
+  req += "&organization="+urlencode(str:THYCOTIC_ORGANIZATION);
+  req += "&domain="+urlencode(str:THYCOTIC_DOMAIN);
+
+  headers = make_array("Content-type", "application/x-www-form-urlencoded");
+  
+  thycotic_log_debug(lvl:3, msg:"Request ~ "+ THYCOTIC_DIR +"webservices/sswebservice.asmx/Authenticate");
+  res =  http_send_recv3(
+    target       : THYCOTIC_TARGET,
+    method       : "POST",
+    item         : THYCOTIC_DIR + "webservices/sswebservice.asmx/Authenticate",
+    data         : req,
+    port         : THYCOTIC_PORT,
+    transport    : THYCOTIC_TRANSPORT,
+    add_headers  : headers,
+    exit_on_fail : FALSE
+  );
+
+  if (empty_or_null(res))
+  {
+    thycotic_error(1,"Thycotic did not respond to request (Authenticate).",severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else
+  {
+    thycotic_log_debug(lvl:2, msg:"HTTP AUTHENTICATE STATUS ~ " + res[0] );
+    thycotic_log_debug(lvl:3, msg:"HTTP AUTHENTICATE HEADERS ~ " + res[1] );
+    thycotic_log_debug(lvl:3, msg:"HTTP AUTHENTICATE BODY ~ ", xml: res[2] );
+  }
+
+  http_status = thycotic_ValidateResp(status_line:res[0]);
+  
+  if (http_status == 404)
+  {
+    thycotic_error(0, "Authentication Failed : " + res[0], severity:ERROR_LOG);
+
+    return NULL;
+    # exit scan if there is an Authentication failure.
+    exit();
+  }
+  else if (http_status == 200)
+  {
+    val_table = xmlparse(res[2]);
+
+    if (empty_or_null(val_table))
+    {
+      thycotic_error(0, "Invalid XML response, failed to parse soap response.", severity:ERROR_LOG);
+
+      return NULL;
+    }
+
+    xml_stack = make_list("soap:Envelope","soap:Body","AuthenticateResponse");
+    i = 0; # index counter into xml_stack
+    
+    while (TRUE)
+    {
+      if (val_table["name"] == xml_stack[i])
+      {
+        val_table = val_table["children"][0]; # change the table pointer to the child unit
+
+        if (val_table)
+        {
+          i++;
+
+          continue;
+        }
+        else
+        {
+          thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+          return NULL;
+        }
+      }
+      else
+      {
+        # Once the chain is validated one final validation is done here before parsing out
+        # the creds from the containing tags
+        if (val_table["name"] == "AuthenticateResult")
+        {
+          foreach obj (val_table["children"])
+          {
+            if (obj["name"] == "Token")
+            {
+              token = obj["value"];
+            }
+            else if (obj["name"] == "Errors")
+            {
+              foreach obj2 (obj["children"])
+              {
+                if (obj2["name"] == "string")
+                {
+                  error_string = obj2["value"];
+                  if (error_string == "Login Failed")
+                  {
+                    thycotic_error(0, "Authenticate Error String from Server: " + error_string + " - incorrect Thycotic Login Name. Please review scan credentials.");
+                  }
+                  else if (error_string == "Login failed.")
+                  {
+                    thycotic_error(0, "Authenticate Error String from Server: " + error_string + " - incorrect Thycotic Password. Please review scan credentials.");
+                  }
+                  else
+                  {
+                    thycotic_error(0, "Authenticate Error String from Server: " + error_string);
+                  }
+                  return NULL;
+                }
+              }
+            }
+          }
+          break;
+        }
+        else
+        {
+          thycotic_error(0, "Invalid XML response : invalid tag = " + val_table["name"], severity:ERROR_LOG);
+
+          return NULL;
+        }
+      }
+    }
+
+    THYCOTIC_TOKEN = token;
+
+    return TRUE;
+  }
+  else
+  {
+    thycotic_error(0, "Authentication Failed : " + res[0], severity:ERROR_LOG);
+
+    return NULL;
+  }
+}
+
+##
+# Perform the thycotic API Request SearchSecretsByFieldValue.
+#
+# @remark This function searches for Secrets that match a field name / search term. This will return all Secrets
+# that have a field that is an exact match of the fieldName value and that field has a value
+# that is an exact match of the fieldSearchTerm parameter.
+#
+# @remark This function requires ``THYCOTIC_TOKEN`` to be set. It contains the token to identify the user making
+# the request. See Concepts: Token for more information about tokens and how to obtain one.
+#
+# @param [fieldName:string] The name of the Secret Field to search for.
+# For Example: If searching for Secrets with a userName field value of ‘admin’, this value
+# would be userName.
+#
+# @param [fieldSearchTerm:string] The value to search for. For Example: If
+# searching for Secrets with a userName field value of ‘admin’, this value would be admin.
+#
+# @param [showDeleted:boolean] Whether or not the resulting Secrets will
+# include deleted Secrets.
+#
+# @param [showRestricted:boolean] Whether or not the resulting Secrets will
+# include Require View Comment and Require Approval For Access Secrets.
+#
+# @return A list containing the retrieved values, or NULL if an error occurred.
+##
+function thycotic_SearchSecretsByFieldValue(fieldName, searchTerm, showDeleted, showRestricted)
+{
+  var req, http_headers, res, http_status, val_table, xml_stack, i, j, val_table_cache, items, creds, obj, SecretIds, error_string;
+
+  if (empty_or_null(fieldName))
+  {
+    thycotic_error(0, "Thycotic is missing fieldName parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(searchTerm))
+  {
+    thycotic_error(0, "Thycotic is missing searchTerm parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(showDeleted))
+  {
+    thycotic_error(0, "Thycotic is missing showDeleted parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(showRestricted))
+  {
+    thycotic_error(0, "Thycotic is missing showRestricted parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  if (empty_or_null(fieldName) || empty_or_null(searchTerm) || empty_or_null(showDeleted) || empty_or_null(showRestricted))
+  {
+    thycotic_error(0, "Thycotic is missing required parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  req = '<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <SearchSecretsByFieldValue xmlns="urn:thesecretserver.com">
+      <token>'+THYCOTIC_TOKEN+'</token>
+      <fieldName>'+fieldName+'</fieldName>
+      <searchTerm>'+searchTerm+'</searchTerm>
+      <showDeleted>'+showDeleted+'</showDeleted>
+      <showRestricted>'+showRestricted+'</showRestricted>
+    </SearchSecretsByFieldValue>
+  </soap:Body>
+</soap:Envelope>';
+
+  thycotic_log_debug(lvl:3, msg:"Request ~ " + req );
+  http_headers = make_array("Content-Type","text/xml; charset=utf-8", "SOAPAction","urn:thesecretserver.com/SearchSecretsByFieldValue");
+  res =  http_send_recv3(
+    target       : THYCOTIC_TARGET,
+    method       : "POST",
+    item         : THYCOTIC_DIR+"webservices/sswebservice.asmx",
+    data         : req,
+    add_headers  : http_headers,
+    port         : THYCOTIC_PORT,
+    transport    : THYCOTIC_TRANSPORT,
+    exit_on_fail : FALSE
+  );
+
+  if (empty_or_null(res))
+  {
+    thycotic_error(1,"Thycotic did not respond to request (SearchSecretsByExposedValues).",severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else
+  {
+    thycotic_log_debug(lvl:2, msg:"HTTP SearchField STATUS ~ " + res[0] );
+    thycotic_log_debug(lvl:3, msg:"HTTP SearchField HEADERS ~ " + res[1] );
+    thycotic_log_debug(lvl:3, msg:"HTTP SearchField BODY ~ ", xml: res[2] );
+  }
+
+  http_status = thycotic_ValidateResp(status_line:res[0]);
+
+  if (http_status != 200)
+  {
+    thycotic_error(1,"Thycotic responded with " + res[0],severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  val_table = xmlparse(res[2]);
+  xml_stack = make_list("soap:Envelope","soap:Body","SearchSecretsByFieldValueResponse", "SearchSecretsByFieldValueResult", "SecretSummaries");
+  i = 0; # index counter into xml_stack
+  j = 0; # used to increase the counter in the list values
+
+  while (TRUE)
+  {
+    if (val_table["name"] == xml_stack[i])
+    {
+      if (empty_or_null(xml_stack[i+1]))
+      {
+        break; # break out of the loop once we reach the last index value;
+      }
+
+      val_table_cache = val_table; # used to cache the last position for indexing
+      val_table = val_table["children"][j]; # change the table pointer to the child unit
+
+      if (val_table)
+      {
+        if (val_table["name"] == "Errors")
+        {
+          foreach obj (val_table["children"])
+          {
+            if (obj["name"] == "string")
+            {
+              error_string = obj["value"];
+              thycotic_error(0, "Error String : " + error_string);
+
+              return NULL;
+            }
+          }
+        }
+        j = 0; # if the index has matched then you need to reset the index values
+        i++;
+
+        continue; # move to the next index value;
+      }
+      else
+      {
+        thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+        return NULL;
+      }
+    }
+    else
+    {
+      j++;
+      val_table = val_table_cache["children"][j];
+
+      if (val_table)
+      {
+        continue;
+      }
+      else
+      {
+        thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+        return NULL;
+      }
+    }
+  }
+
+  items = val_table;
+  creds = make_array();
+  SecretIds = make_list();
+
+  for (i=0;i<20;i++)
+  {
+    val_table = items;
+    val_table = val_table["children"][i];
+
+    if (empty_or_null(val_table))
+    {
+      break;
+    }
+
+    if (val_table["name"] == "SecretSummary")
+    {
+      foreach obj (val_table["children"])
+      {
+        if (obj["name"] == "SecretId")
+        {
+          SecretIds[max_index(SecretIds)] = obj["value"];
+
+          break;
+        }
+      }
+    }
+    else
+    {
+      continue;
+    }
+  }
+
+  return SecretIds;
+}
+
+
+##
+# Perform the thycotic API Request SearchSecretsByExposedValues
+#
+# @remark This function requires ``THYCOTIC_TOKEN`` to be set. It contains the token to identify the user making
+# the request. See Concepts: Token for more information about tokens and how to obtain one.
+#
+# @param [searchTerm:string] The value to search for. For Example: If searching
+# for Secrets with a userName field value of ‘admin’, this value would be admin.
+#
+# @param [showDeleted:boolean] Whether or not the resulting Secrets
+# will include deleted Secrets.
+#
+# @param [showRestricted:boolean] Whether or not the resulting Secrets
+# will include Require View Comment and Require Approval For Access Secrets.
+#
+# @return A list containing the retrieved values, or NULL if an error occurred.
+##
+function thycotic_SearchSecretsByExposedValues(searchTerm, showDeleted, showRestricted, showPartialMatches)
+{
+  var req, http_headers, res, http_status, val_table, xml_stack, i, j, val_table_cache, items, creds, obj, SecretIds, error_string;
+
+  if (empty_or_null(searchTerm))
+  {
+    thycotic_error(0, "Thycotic is missing searchTerm parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(showDeleted))
+  {
+    thycotic_error(0, "Thycotic is missing showDeleted parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(showRestricted))
+  {
+    thycotic_error(0, "Thycotic is missing showRestricted parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else if (empty_or_null(showPartialMatches))
+  {
+    thycotic_error(0, "Thycotic is missing showPartialMatches parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+  if (empty_or_null(searchTerm) || empty_or_null(showDeleted) || empty_or_null(showRestricted) || empty_or_null(showPartialMatches))
+  {
+    thycotic_error(0, "Thycotic is missing required parameter.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  req = '<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <SearchSecretsByExposedValues xmlns="urn:thesecretserver.com">
+      <token>'+THYCOTIC_TOKEN+'</token>
+      <searchTerm>'+searchTerm+'</searchTerm>
+      <showDeleted>'+showDeleted+'</showDeleted>
+      <showRestricted>'+showRestricted+'</showRestricted>
+      <showPartialMatches>'+showPartialMatches+'</showPartialMatches>
+    </SearchSecretsByExposedValues>
+  </soap:Body>
+</soap:Envelope>';
+
+  thycotic_log_debug(lvl:3, msg:"Request ~ " + req );
+  http_headers = make_array("Content-Type","text/xml; charset=utf-8", "SOAPAction","urn:thesecretserver.com/SearchSecretsByExposedValues");
+  res =  http_send_recv3(
+    target       : THYCOTIC_TARGET,
+    method       : "POST",
+    item         : THYCOTIC_DIR+"webservices/sswebservice.asmx",
+    data         : req,
+    add_headers  : http_headers,
+    port         : THYCOTIC_PORT,
+    transport    : THYCOTIC_TRANSPORT,
+    exit_on_fail : FALSE
+  );
+
+  if (empty_or_null(res))
+  {
+    thycotic_error(1,"Thycotic did not respond to request (SearchSecretsByExposedValues).",severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else
+  {
+    thycotic_log_debug(lvl:2, msg:"HTTP SearchSecret STATUS ~ " + res[0] );
+    thycotic_log_debug(lvl:3, msg:"HTTP SearchSecret HEADERS ~ " + res[1] );
+    thycotic_log_debug(lvl:3, msg:"HTTP SearchSecret BODY ~ ", xml: res[2] );
+  }
+
+  http_status = thycotic_ValidateResp(status_line:res[0]);
+
+  if (http_status != 200)
+  {
+    thycotic_error(1,"Thycotic responded with " + res[0],severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  val_table = xmlparse(res[2]);
+  xml_stack = make_list("soap:Envelope","soap:Body","SearchSecretsByExposedValuesResponse", "SearchSecretsByExposedValuesResult", "SecretSummaries");
+  i = 0; # index counter into xml_stack
+  j = 0; # used to increase the counter in the list values
+
+  while (TRUE)
+  {
+    if (val_table["name"] == xml_stack[i])
+    {
+      if (empty_or_null(xml_stack[i+1]))
+      {
+        break; # break out of the loop once we reach the last index value;
+      }
+
+      val_table_cache = val_table; # used to cache the last position for indexing
+      val_table = val_table["children"][j]; # change the table pointer to the child unit
+      if (val_table)
+      {
+        if (val_table["name"] == "Errors")
+        {
+          foreach obj (val_table["children"])
+          {
+            if (obj["name"] == "string")
+            {
+              error_string = obj["value"];
+              thycotic_error(0, "Error String : " + error_string);
+
+              return NULL;
+            }
+          }
+        }
+        j = 0; # if the index has matched then you need to reset the index values
+        i++;
+        continue; # move to the next index value;
+      }
+      else
+      {
+        thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+        return NULL;
+      }
+    }
+    else
+    {
+      j++;
+      val_table = val_table_cache["children"][j];
+
+      if (val_table)
+      {
+        continue;
+      }
+      else
+      {
+        thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+        return NULL;
+      }
+    }
+  }
+
+  items = val_table;
+  creds = make_array();
+  SecretIds = make_list();
+
+  for (i=0;i<20;i++)
+  {
+    val_table = items;
+    val_table = val_table["children"][i];
+    
+    if (empty_or_null(val_table))
+    {
+      break;
+    }
+
+    if (val_table["name"] == "SecretSummary")
+    {
+      foreach obj (val_table["children"])
+      {
+        if (obj["name"] == "SecretId")
+        {
+          SecretIds[max_index(SecretIds)] = obj["value"];
+
+          break;
+        }
+      }
+    }
+    else
+    {
+      continue;
+    }
+  }
+
+  return SecretIds;
+}
+
+##
+# Look up the KB for cached credentials.
+#
+# @param [searchTerm:string] The value to search for. For Example: If searching
+# for Secrets with a userName field value of 'admin', this value would be admin.
+#
+# @return An array containing the cached credentials, NULL if an error occurred.
+##
+function _thycotic_lookup_cached_credentials(searchTerm)
+{
+  var cached_password_status, cached_creds_list, cached_creds,cached_secret_ids,
+  secret_id, cached_secret_ids_list;
+
+  if (!empty_or_null(searchTerm))
+  {
+    cached_password_status = get_global_kb_item("thycotic/global/"+searchTerm+"/status");
+
+    if (!empty_or_null(cached_password_status))
+    {
+      dbg::detailed_log(src:FUNCTION_NAME, lvl:2, msg:"Thycotic: Global Credentials status : success");
+
+      cached_secret_ids_list = make_list(get_global_kb_list("thycotic/global/"+searchTerm+"/secretIds/*"));
+
+      foreach secret_id (cached_secret_ids_list)
+      {
+        cached_creds_list = make_list();
+
+        cached_creds = make_array();
+        cached_creds["username"] = get_global_kb_item("Secret/thycotic/global/" + searchTerm + "/" + secret_id + "/username");
+        cached_creds["password"] = get_global_kb_item("Secret/thycotic/global/" + searchTerm + "/" + secret_id + "/password");
+        cached_creds["PrivateKey"] = get_global_kb_item("Secret/thycotic/global/" + searchTerm + "/" + secret_id + "/PrivateKey");
+        cached_creds["PrivateKeyPassphrase"] = get_global_kb_item("Secret/thycotic/global/" + searchTerm + "/" + secret_id + "/PrivateKeyPassphrase");
+
+        cached_creds_list[max_index(cached_creds_list)] = cached_creds;
+      }
+
+      return cached_creds_list;
+    }
+    else
+    {
+      return NULL;
+    }
+  }
+}
+
+##
+# Gather the credentials from thycotic secret server
+#
+# @param [searchTerm:string] The SecretName
+# @param [machine:string] The ip address of the machine we're seaching for. In normal usage, ``machine`` will be the scan target
+#                         and used as a fallback for if ``searchTerm`` is not provided.
+#
+# @remark At least one of ``searchTerm`` or ``machine`` should be provided provided.
+#
+# @return An array with username and password values, or NULL if an error occurred.
+##
+function thycotic_get_password(searchTerm, machine)
+{
+  var res, req, creds, http_headers, http_status, value, i, j, PrivateKey,
+  val_table, xml_stack, items, item_id, id, obj, FieldDisplayName, IsPassword, val_table_cache,
+  PrivateKeyPassphrase, secretIds, secretId, creds_list, cached_creds_list,
+  cached_password_status, error_string;
+
+  if (THYCOTIC_USE_CACHE)
+  {
+    cached_creds_list = _thycotic_lookup_cached_credentials(searchTerm:searchTerm);
+
+    return cached_creds_list;
+  }
+
+  if (searchTerm)
+  {
+    secretIds = thycotic_SearchSecretsByExposedValues(searchTerm:searchTerm, showDeleted:"false", showRestricted:"true", showPartialMatches:"false");
+  }
+  else if (machine)
+  {
+    secretIds = thycotic_SearchSecretsByFieldValue(fieldName: "Machine", searchTerm:machine, showDeleted:"false", showRestricted:"true");
+  }
+  else
+  {
+    thycotic_error(1,"Thycotic not provided with machine or searchTerm.", severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  creds_list = make_list();
+
+  foreach secretId (secretIds)
+  {
+    req = '<?xml version="1.0" encoding="utf-8"?>
+  <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+      <GetSecret xmlns="urn:thesecretserver.com">
+        <token>'+THYCOTIC_TOKEN+'</token>
+        <secretId>'+secretId+'</secretId>
+        <loadSettingsAndPermissions>1</loadSettingsAndPermissions>
+      </GetSecret>
+    </soap:Body>
+  </soap:Envelope>';
+
+    thycotic_log_debug(lvl:3, msg:"Request ~ " + req );
+    http_headers = make_array("Content-Type","text/xml; charset=utf-8", "SOAPAction","urn:thesecretserver.com/GetSecret");
+    res =  http_send_recv3(
+      target       : THYCOTIC_TARGET,
+      method       : "POST",
+      item         : THYCOTIC_DIR+"webservices/sswebservice.asmx",
+      data         : req,
+      add_headers  : http_headers,
+      port         : THYCOTIC_PORT,
+      transport    : THYCOTIC_TRANSPORT,
+      exit_on_fail : FALSE
+    );
+
+    http_disable_keep_alive();
+
+    if (empty_or_null(res))
+    {
+      thycotic_error(1,"Thycotic did not respond to request (GetSecret).",severity:ERROR_LOG);
+
+      return NULL;
+    }
+    else
+    {
+      thycotic_log_debug(lvl:2, msg:"HTTP GetSecret STATUS ~ " + res[0] );
+      thycotic_log_debug(lvl:3, msg:"HTTP GetSecret HEADERS ~ " + res[1] );
+      thycotic_log_debug(lvl:3, msg:"HTTP GetSecret BODY ~ ", xml: res[2] );
+    }
+
+    http_status = thycotic_ValidateResp(status_line:res[0]);
+
+    if (http_status != 200)
+    {
+      thycotic_error(1,"Thycotic responded with " + res[0],severity:ERROR_LOG);
+
+      return NULL;
+    }
+
+    val_table = xmlparse(res[2]);
+    xml_stack = make_list("soap:Envelope","soap:Body","GetSecretResponse", "GetSecretResult", "Secret", "Items");
+    i = 0; # index counter into xml_stack
+    j = 0; # used to increase the counter in the list values
+
+    while (TRUE)
+    {
+      if (val_table["name"] == xml_stack[i])
+      {
+        if (empty_or_null(xml_stack[i+1]))
+        {
+          break; # break out of the loop once we reach the last index value;
+        }
+
+        val_table_cache = val_table; # used to cache the last position for indexing
+        val_table = val_table["children"][j]; # change the table pointer to the child unit
+
+        if (val_table)
+        {
+          if (val_table["name"] == "Errors")
+          {
+            foreach obj (val_table["children"])
+            {
+              if (obj["name"] == "string")
+              {
+                error_string = obj["value"];
+                thycotic_error(0, "Error String : " + error_string);
+
+                return NULL;
+              }
+            }
+          }
+          j = 0; # if the index has matched then you need to reset the index values
+          i++;
+
+          continue; # move to the next index value;
+        }
+        else
+        {
+          thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+          return NULL;
+        }
+      }
+      else
+      {
+        j++;
+        val_table = val_table_cache["children"][j];
+
+        if (val_table)
+        {
+          continue;
+        }
+        else
+        {
+          thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+          return NULL;
+        }
+      }
+    }
+
+    items = val_table;
+    i = 0;
+    creds = make_array();
+
+    for (i=0;i<20;i++)
+    {
+      val_table = items;
+      val_table = val_table["children"][i];
+
+      if (empty_or_null(val_table))
+      {
+        break;
+      }
+
+      if (val_table["name"] == "SecretItem")
+      {
+        value = FieldDisplayName = IsPassword = PrivateKey = PrivateKeyPassphrase = NULL;
+
+        foreach obj (val_table["children"])
+        {
+          if (obj["name"] == "Value")
+          {
+            value = obj["value"];
+          }
+          else if (obj["name"] == "FieldDisplayName")
+          {
+            FieldDisplayName = obj["value"];
+          }
+          else if (obj["name"] == "IsPassword")
+          {
+            IsPassword = obj["value"];
+          }
+          else if (obj["name"] == "Id")
+          {
+            id = obj["value"];
+          }
+        }
+
+        if (FieldDisplayName == "Password" && IsPassword == "true")
+        {
+          creds["password"] = value;
+        }
+
+        if (FieldDisplayName == "Username")
+        {
+          creds["username"] = value;
+        }
+
+        if (FieldDisplayName == "Private Key Passphrase" && IsPassword == "true")
+        {
+          creds["PrivateKeyPassphrase"] = value;
+        }
+
+        if (FieldDisplayName == "Private Key")
+        {
+          item_id = id;
+        }
+      }
+      else
+      {
+        continue;
+      }
+    }
+
+    # download Private key
+    if (thycotic_privatekey_enabled())
+    {
+      creds["PrivateKey"] = thycotic_DownloadFileAttachment(secretId:secretId, item_id:item_id);
+    }
+
+    # Cache passwords based on search term
+    if(!empty_or_null(searchTerm))
+    {
+      cached_password_status = get_global_kb_item("thycotic/global/"+searchTerm+"/status");
+    }
+
+    if (empty_or_null(cached_password_status))
+    {
+      dbg::detailed_log(src:FUNCTION_NAME, lvl:2, msg:"Thycotic: Global Credentials status : success");
+      set_global_kb_item(name:"thycotic/global/"+searchTerm+"/status", value:'success');
+
+      set_global_kb_item(name:"thycotic/global/"+searchTerm+"/secretIds/" + secretId, value:secretId);
+
+      if (!empty_or_null(creds["username"]))
+      {
+        set_global_kb_item(name:"Secret/thycotic/global/"+searchTerm+"/" + secretId + "/username", value:creds["username"]);
+      }
+
+      if (!empty_or_null(creds["password"]))
+      {
+        set_global_kb_item(name:"Secret/thycotic/global/"+searchTerm+"/" + secretId + "/password", value:creds["password"]);
+      }
+
+      if (!empty_or_null(creds["PrivateKey"]))
+      {
+        set_global_kb_item(name:"Secret/thycotic/global/"+searchTerm+"/" + secretId + "/PrivateKey", value:creds["PrivateKey"]);
+      }
+
+      if (!empty_or_null(creds["PrivateKeyPassphrase"]))
+      {
+        set_global_kb_item(name:"Secret/thycotic/global/"+searchTerm+"/" + secretId + "/PrivateKeyPassphrase", value:creds["PrivateKeyPassphrase"]);
+      }
+    }
+
+    creds_list[max_index(creds_list)] = creds;
+  }
+
+  return creds_list;
+}
+
+##
+# Perform the thycotic API Request DownloadFileAttachmentByItemId
+#
+# @remark This function requires ``THYCOTIC_TOKEN`` to be set. It contains the token to identify the user making
+# the request. See Concepts: Token for more information about tokens and how to obtain one.
+#
+# @param [secretId:integer] The Id of the Secret that the file attachment
+# will be downloaded from.
+# @param [item_id:integer] The ID of the item
+#
+# @return The private key returned by the request, or NULL if an error occurred.
+##
+function thycotic_DownloadFileAttachment(secretId,item_id)
+{
+  var private_key,req,http_headers,res,http_status,val_table,xml_stack,
+            i,j,val_table_cache,items,creds,obj, error_string;
+
+  req = '<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <DownloadFileAttachmentByItemId xmlns="urn:thesecretserver.com">
+      <token>'+THYCOTIC_TOKEN+'</token>
+      <secretId>'+secretId+'</secretId>
+      <secretItemId>'+item_id+'</secretItemId>
+    </DownloadFileAttachmentByItemId>
+  </soap:Body>
+</soap:Envelope>';
+
+  thycotic_log_debug(lvl:3, msg:"Request ~ " + req );
+  http_headers = make_array("Content-Type","text/xml; charset=utf-8", "SOAPAction","urn:thesecretserver.com/DownloadFileAttachmentByItemId");
+  res =  http_send_recv3(
+        target       : THYCOTIC_TARGET,
+        method       : "POST",
+        item         : THYCOTIC_DIR+"webservices/sswebservice.asmx",
+        data         : req,
+        add_headers  : http_headers,
+        port         : THYCOTIC_PORT,
+        transport    : THYCOTIC_TRANSPORT,
+        exit_on_fail : FALSE
+        );
+
+  if (empty_or_null(res))
+  {
+    thycotic_error(1,"Thycotic did not respond to request (DownloadFileAttachment).",severity:ERROR_LOG);
+
+    return NULL;
+  }
+  else
+  {
+    thycotic_log_debug(lvl:2, msg:"HTTP GetSecret STATUS ~ " + res[0] );
+    thycotic_log_debug(lvl:3, msg:"HTTP GetSecret HEADERS ~ " + res[1] );
+    thycotic_log_debug(lvl:3, msg:"HTTP GetSecret BODY ~ ", xml: res[2] );
+  }
+
+  http_status = thycotic_ValidateResp(status_line:res[0]);
+
+  if (http_status != 200)
+  {
+    thycotic_error(1,"Thycotic responded with " + res[0],severity:ERROR_LOG);
+
+    return NULL;
+  }
+
+  val_table = xmlparse(res[2]);
+  xml_stack = make_list("soap:Envelope","soap:Body","DownloadFileAttachmentByItemIdResponse");
+  i = 0; # index counter into xml_stack
+  j = 0; # used to increase the counter in the list values
+
+  while (TRUE)
+  {
+    if (val_table["name"] == xml_stack[i])
+    {
+      if (empty_or_null(xml_stack[i+1]))
+      {
+        break; # break out of the loop once we reach the last index value;
+      }
+
+      val_table_cache = val_table; # used to cache the last position for indexing
+      val_table = val_table["children"][j]; # change the table pointer to the child unit
+
+      if (val_table)
+      {
+        if (val_table["name"] == "Errors")
+        {
+          foreach obj (val_table["children"])
+          {
+            if (obj["name"] == "string")
+            {
+              error_string = obj["value"];
+              thycotic_error(0, "Error String : " + error_string);
+
+              return NULL;
+            }
+          }
+        }
+        j = 0; # if the index has matched then you need to reset the index values
+        i++;
+
+        continue; # move to the next index value;
+      }
+      else
+      {
+        thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+        return NULL;
+      }
+    }
+    else
+    {
+      j++;
+      val_table = val_table_cache["children"][j];
+
+      if (val_table)
+      {
+        continue;
+      }
+      else
+      {
+        thycotic_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+
+        return NULL;
+      }
+    }
+  }
+
+  items = val_table;
+  i = 0;
+  creds = make_array();
+
+  for (i=0;i<20;i++)
+  {
+    val_table = items;
+    val_table = val_table["children"][i];
+
+    if (empty_or_null(val_table))
+    {
+      break;
+    }
+
+    if (val_table["name"] == "DownloadFileAttachmentByItemIdResult")
+    {
+      private_key = NULL;
+
+      foreach obj (val_table["children"])
+      {
+        if (obj["name"] == "FileAttachment")
+        {
+          private_key = obj["value"];
+        }
+      }
+    }
+    else
+    {
+      continue;
+    }
+  }
+
+  return private_key;
+}
+
+#######################
+## Private Functions ##
+#######################
+
+##
+# Validate the HTTP status
+#
+# @param [status_line:string] the HTTP status line
+#
+# @return integer status code or NULL if error or status_line does not
+#             contain an HTTP status of 20x, 40x, or 50x
+##
+function thycotic_ValidateResp(status_line)
+{
+  var errorMsg;
+
+  if (status_line =~ '^HTTP/1\\.[01] +200')
+  {
+    return 200;
+  }
+  else if (status_line =~ '^HTTP/1\\.[01] +404')
+  {
+    return 404;
+  }
+  else if (status_line =~ '^HTTP/1\\.[01] +40[0-9]')
+  {
+    thycotic_error(1, chomp(status_line) + " returned", severity:ERROR_LOG);
+
+    return 400;
+  }
+  else if (status_line =~ '^HTTP/1\\.[01] +50[0-9]')
+  {
+    errorMsg = chomp(status_line) + " returned";
+
+    thycotic_error(1, errorMsg, severity:ERROR_LOG);
+
+    return 500;
+  }
+  else
+  {
+    thycotic_error(1, chomp(status_line) + " returned", severity:ERROR_LOG);
+  }
+
+  return NULL;
+}
+
+##
+# Gather the SSH password from thycotic server
+#
+# @param [account:string] the account name to look up
+# @param [ssh_prefix:string] used to prefix for additional values
+# @param [ssh_postfix:string] used to postfix for additional values
+#
+# @return An array containing the credentials, or NULL if an error occurred.
+##
+function thycotic_get_ssh_password(account, ssh_prefix, ssh_postfix)
+{
+  var thycotic_token, thycotic_creds, thycotic_cred, thycotic_init_ret, thycotic_username, thycotic_password,
+            thycotic_organization, thycotic_domain, thycotic_secret_server_url, thycotic_port, thycotic_ssl,
+            thycotic_ssl_verify, thycotic_secretId, password, thycotic_secret_name, debug_report, thycotic_pk,
+            thycotic_private_key;
+
+  #gather parameter
+  thycotic_secret_name = script_get_preference(ssh_prefix+"SSH Thycotic Secret Name"+ssh_postfix); # secretId of the current credential
+  thycotic_secret_server_url = script_get_preference(ssh_prefix+"SSH Thycotic Secret Server URL"+ssh_postfix);
+  # ^ secret server url Admin->Configuration->General->Application Settings-> Secret Server URL
+  thycotic_username = script_get_preference(ssh_prefix+"SSH Thycotic Login Name"+ssh_postfix); # Thycotic username
+  thycotic_password = script_get_preference(ssh_prefix+"SSH Thycotic Password"+ssh_postfix); # Thycotic password
+  thycotic_organization = script_get_preference(ssh_prefix+"SSH Thycotic Organization"+ssh_postfix); #Thycotic organization (optional)
+  thycotic_domain = script_get_preference(ssh_prefix+"SSH Thycotic Domain"+ssh_postfix); # Thycotic domain (optional)
+  thycotic_ssl_verify = script_get_preference(ssh_prefix+"SSH Thycotic Verify SSL Certificate"+ssh_postfix); # ssl verify setup?
+  thycotic_private_key = pam_from_boolean(script_get_preference(ssh_prefix+"SSH Use Private Key"+ssh_postfix)); # use private key?
+
+  password = NULL;
+
+  # log parameters
+  thycotic_log_debug(lvl:3, msg:'(SSH) Original Thycotic Parameters');
+  thycotic_log_debug(lvl:3, msg:'Secret Server URL: ' + thycotic_secret_server_url);
+  thycotic_log_debug(lvl:3, msg:'Username: ' + thycotic_username);
+  thycotic_log_debug(lvl:3, msg:'Organization: ' + thycotic_organization);
+  thycotic_log_debug(lvl:3, msg:'Domain: ' + thycotic_domain);
+  thycotic_log_debug(lvl:3, msg:'SSL Verify: ' + thycotic_ssl_verify);
+
+  if (thycotic_ssl_verify == "yes")
+  {
+    thycotic_ssl_verify = TRUE;
+    thycotic_log_debug(lvl:2, msg:'SSL Verify has been set to TRUE');
+  }
+  else
+  {
+    thycotic_ssl_verify = FALSE;
+    thycotic_log_debug(lvl:2, msg:'SSL Verify has been set to FALSE');
+  }
+
+  thycotic_init_ret = thycotic_init(username:thycotic_username,
+                           password:thycotic_password,
+                           organization:thycotic_organization,
+                           domain:thycotic_domain,
+                           secret_server_url:thycotic_secret_server_url,
+                           ssl_verify:thycotic_ssl_verify,
+                           private_key:thycotic_private_key);
+
+  if (empty_or_null(thycotic_init_ret))
+  {
+    thycotic_log_debug(lvl:1, msg:'Thycotic Error : ' + thycotic_get_last_error());
+
+    return NULL;
+  }
+  else
+  {
+    if (thycotic_init_ret == 1)
+    {
+      thycotic_log_debug(lvl:2, msg:'(SSH) Thycotic global variables were set successfully.');
+    }
+
+    thycotic_token = thycotic_authenticate(searchTerm:thycotic_secret_name);
+
+    if (empty_or_null(thycotic_token))
+    {
+      thycotic_log_debug(lvl:1, msg:'Thycotic Error : Failed to authenticate to Thycotic.');
+
+      return NULL;
+    }
+
+    thycotic_creds = thycotic_get_password(searchTerm:thycotic_secret_name, machine: get_host_ip());
+
+    if (empty_or_null(thycotic_creds))
+    {
+      thycotic_log_debug(lvl:1, msg:'Thycotic Error : Failed to gather credentials from Thycotic for account (' + account + ').');
+
+      return NULL;
+    }
+  }
+
+  thycotic_log_debug(lvl:3, msg:'SSL Verify (after gathering SSH password from Thycotic server): ' + thycotic_ssl_verify);
+  thycotic_log_debug(lvl:2, msg:'(SSH) Returning Thycotic credentials.');
+  
+  return thycotic_creds;
+}
+
+##
+# Gather the SMB password from thycotic server
+#
+# @param [account:string] the account name to look up
+# @param [prefix:string] used to prefix for additional values
+# @param [postfix:string] used to postfix for additional values
+#
+# @return A string containing the SMB password, or NULL if an error occurred.
+##
+function thycotic_smb_get_password(account, prefix, postfix)
+{
+  var thycotic_token, thycotic_creds, thycotic_cred, thycotic_init_ret, thycotic_username, thycotic_password,
+            thycotic_organization, thycotic_domain, thycotic_secret_server_url,
+            thycotic_ssl_verify, thycotic_secretId, password, thycotic_secret_name;
+
+  thycotic_secret_name = script_get_preference(prefix+"SMB Thycotic Secret Name"+postfix); # secretId of the current credential
+  # secret server url Admin->Configuration->General->Application Settings-> Secret Server URL
+  thycotic_secret_server_url = script_get_preference(prefix+"SMB Thycotic Secret Server URL"+postfix);
+  thycotic_username = script_get_preference(prefix+"SMB Thycotic Login Name"+postfix); # Thycotic username
+  thycotic_password = script_get_preference(prefix+"SMB Thycotic Password"+postfix); # Thycotic password
+  thycotic_organization = script_get_preference(prefix+"SMB Thycotic Organization"+postfix); #Thycotic organization (optional)
+  thycotic_domain = script_get_preference(prefix+"SMB Thycotic Domain"+postfix); # Thycotic domain (optional)
+  thycotic_ssl_verify = script_get_preference(prefix+"SMB Thycotic SSL verify"+postfix); # ssl verify setup?
+  password = NULL;
+
+  # log parameters
+  thycotic_log_debug(lvl:3, msg:'(SMB) Original Thycotic Parameters');
+  thycotic_log_debug(lvl:3, msg:'Secret Server URL: ' + thycotic_secret_server_url);
+  thycotic_log_debug(lvl:3, msg:'Thycotic Username: ' + thycotic_username);
+  thycotic_log_debug(lvl:3, msg:'Organization: ' + thycotic_organization);
+  thycotic_log_debug(lvl:3, msg:'Domain: ' + thycotic_domain);
+  thycotic_log_debug(lvl:3, msg:'SSL Verify: ' + thycotic_ssl_verify);
+
+  ### Removing this block of code due to issue found in CS-60110
+  #if (empty_or_null(thycotic_secret_name))
+  #{
+  # logins_log_error(error:'Thycotic Error : SMB Thycotic Secret Name missing.');
+  #
+  #  return NULL;
+  #}
+  if (empty_or_null(thycotic_secret_server_url))
+  {
+    logins_log_error(error:'Thycotic Error : SMB Thycotic Secret Server URL missing.');
+
+    return NULL;
+  }
+  else if (empty_or_null(thycotic_username))
+  {
+    logins_log_error(error:'Thycotic Error : SMB Thycotic Login Name missing.');
+
+    return NULL;
+  }
+  else if (empty_or_null(thycotic_password))
+  {
+    logins_log_error(error:'Thycotic Error : SMB Thycotic Password missing.');
+
+    return NULL;
+  }
+
+  if (thycotic_ssl_verify == "yes")
+  {
+    thycotic_ssl_verify = TRUE;
+    thycotic_log_debug(lvl:2, msg:'SSL Verify has been set to TRUE');
+  }
+  else
+  {
+    thycotic_ssl_verify = FALSE;
+    thycotic_log_debug(lvl:2, msg:'SSL has been set to FALSE');
+  }
+
+  thycotic_init_ret = thycotic_init(username:thycotic_username,
+                           password:thycotic_password,
+                           organization:thycotic_organization,
+                           domain:thycotic_domain,
+                           secret_server_url:thycotic_secret_server_url,
+                           ssl_verify:thycotic_ssl_verify);
+
+  if (empty_or_null(thycotic_init_ret))
+  {
+    logins_log_error(error:'Thycotic Error : ' + thycotic_get_last_error());
+
+    return NULL;
+  }
+  else
+  {
+    if (thycotic_init_ret == 1)
+    {
+      thycotic_log_debug(lvl:2, msg:'(SMB) Thycotic global variables were set successfully.');
+    }
+
+    thycotic_token = thycotic_authenticate(searchTerm:thycotic_secret_name);
+
+    if (empty_or_null(thycotic_token))
+    {
+      logins_log_error(error:'Thycotic Error : Failed to authenticate to Thycotic.');
+
+      return NULL;
+    }
+
+    # Search for all matching Secret Name
+    thycotic_creds = thycotic_get_password(searchTerm:thycotic_secret_name, machine: get_host_ip());
+
+    if (empty_or_null(thycotic_creds))
+    {
+      logins_log_error(error:'Thycotic Error : Failed to gather credentials from Thycotic for account (' + account + ').');
+
+      return NULL;
+    }
+  }
+
+  thycotic_log_debug(lvl:3, msg:'Thycotic looking for user: (' + account + ')');
+  
+  # Cycle through all Secret Names that match
+  foreach thycotic_cred (thycotic_creds)
+  {
+    thycotic_log_debug(lvl:3, msg:'Thycotic found user: (' + thycotic_cred["username"] + ')');
+    
+    # match on the first username supplied
+    if (account == thycotic_cred["username"])
+    {
+      password = thycotic_cred["password"];
+
+      if (empty_or_null(password))
+      {
+        thycotic_log_debug(lvl:1, msg:'Password returned is null. Can not continue.');
+
+        return NULL;
+      }
+      break;
+    }
+  }
+
+  if (empty_or_null(password))
+  {
+    # If no response matched both the Secret Name and the account name trigger an error.
+    logins_log_error(error:'Thycotic Error : The account username ' + account + ' does not match the one gathered from Thycotic.');
+
+    return NULL;
+  }
+
+  thycotic_log_debug(lvl:3, msg:'SSL Verify (after gathering SMB password from Thycotic server): ' + thycotic_ssl_verify);
+  thycotic_log_debug(lvl:2, msg:'(SMB) Returning Thycotic credentials.');
+
+  return password;
+}
+
+##
+# Gather the SSH password from thycotic server and massage the results in an array.
+#
+# @remark Quick and dirty function to bring thycotic more in line with the other PAMs.
+# Moving logic from ssh_settings and massaging it into a standard format.
+#
+# @param [account:string] the account name to look up
+# @param [prefix:string] used to prefix for additional values
+# @param [postfix:string] used to postfix for additional values
+#
+# @return An array containing the credentials, or NULL if an error occurred.
+##
+function thycotic_get_credential(username,prefix,postfix)
+{
+  var thycotic_result, thycotic_creds, thycotic_cred;
+  thycotic_creds = thycotic_get_ssh_password(account:username, ssh_prefix:prefix, ssh_postfix:postfix);
+  thycotic_result['sudo'] = script_get_preference(prefix+"SSH Thycotic elevate privileges with"+postfix);
+  
+  if (thycotic_result['sudo'] == "Nothing" || empty_or_null(thycotic_result['sudo']))
+  {
+    thycotic_result['sudo'] = NULL;
+  }
+  else
+  {
+    thycotic_result['su_login'] = script_get_preference(prefix+"su login" + postfix);
+    thycotic_result['sudo_path'] = script_get_preference(prefix+"Privilege elevation binary path (directory)" + postfix);
+    thycotic_result['root'] = script_get_preference(prefix+"SSH Thycotic escalation account"+postfix);
+    
+    if(empty_or_null(thycotic_result['root']))
+    {
+      thycotic_result['root'] = "root";
+    }
+  }
+
+  if (empty_or_null(thycotic_creds))
+  {
+    thycotic_log_debug(lvl:1, msg:'Thycotic Error : Failed to obtain password from thycotic_get_ssh_password for account ' + username);
+  }
+  else
+  {
+    foreach thycotic_cred (thycotic_creds)
+    {
+      thycotic_log_debug(lvl:3, msg:'Thycotic found user: ' + thycotic_cred["username"]);
+
+      if (username == thycotic_cred["username"])
+      {
+        if ( !empty_or_null(thycotic_cred["PrivateKey"]) )
+        {
+          thycotic_result['private_key'] = base64_decode(str:thycotic_cred["PrivateKey"]);
+
+          if ( !(thycotic_result['private_key'] =~ "BEGIN (RSA|DSA) PRIVATE KEY") )
+          {
+            thycotic_log_debug(lvl:1, msg:'Thycotic Error : The private key obtained is not in openssh format.');
+          }
+
+          if (strlen(thycotic_cred["PrivateKeyPassphrase"]) > 0)
+          {
+            thycotic_result["passphrase"] = thycotic_cred["PrivateKeyPassphrase"];
+          }
+        }
+        else
+        {
+          if (empty_or_null(thycotic_cred["password"]))
+          {
+            thycotic_log_debug(lvl:1, msg:'Thycotic Error : No password available for supplied user ' + username);
+          }
+
+          thycotic_result['password'] = thycotic_cred["password"];
+        }
+      }
+
+      if(!empty_or_null(thycotic_result['root']))
+      {
+        if (thycotic_result['root'] == thycotic_cred["username"])
+        {
+          if (empty_or_null(thycotic_cred["password"]))
+          {
+            thycotic_log_debug(lvl:1, msg:'Thycotic Error : No sudo password available for supplied root ' + thycotic_result['root']);
+          }
+
+          thycotic_result['sudo_password'] = thycotic_cred["password"];
+        }
+      }
+    }
+
+    if (empty_or_null(thycotic_result['password']) && empty_or_null(thycotic_result['private_key']))
+    {
+      thycotic_log_debug(lvl:1, msg:'Unable to obtain credentials from Thycotic.');
+    }
+    else
+    {
+      thycotic_log_debug(lvl:2, msg:'Successfully obtained credentials from Thycotic.');
+      thycotic_result['success'] = TRUE;
+    }
+  }
+
+  return thycotic_result;
+}
+
+####
+### Error Handling
+####
+
+##
+# Log error messages
+#
+# @param [error:string] the error message to get logged
+##
+function logins_log_error(error)
+{
+  dbg::detailed_log(src:FUNCTION_NAME, lvl:1, msg:error);
+  logins_last_error = error;
+}
+
+##
+# Return last error logged
+##
+function logins_get_last_error()
+{
+  return logins_last_error;
+}
+
+## Example Demo ##
+##################
+
+##
+# Demo on how to use thycotic
+##
+function thycotic_demo()
+{
+  var token, creds, init_ret;
+
+  init_ret = thycotic_init(private_key:TRUE,
+                           username:"admin",
+                           password:"password",
+                           organization:"",
+                           domain:"",
+                           secret_server_url:"http://<hostname>/SecretServer/",
+                           ssl_verify:FALSE,
+                           debug:TRUE);
+
+  if (isnull(init_ret))
+  {
+    exit(0, thycotic_get_last_error());
+  }
+
+  # Check cache by giving search term here
+  token = thycotic_authenticate(searchTerm:"SSH key machine");
+
+  # Request cred and cache it based on search term.
+  creds = thycotic_get_password(searchTerm:"SSH key machine", machine:"10.10.10.10");
+  dump_table(table:creds);
+
+}

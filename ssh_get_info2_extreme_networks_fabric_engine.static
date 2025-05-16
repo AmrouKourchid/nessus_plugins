@@ -1,0 +1,141 @@
+#TRUSTED 5f784a40d876dfb953ce77f9f4a532a7681ce74046acd87fd363ce4fc5a15ef500c3fa6f278b39c32cce759775c9b0cc5db13480bb633084760bff5df97bbb328fb8b6a3c7d33046c120ca062c19671dac37b717a524b95dc76c7d582c9cebce57bbaf85f1def3d8734f5777558198bb55f62017a5e8e1fe99d56ba6b577fd24eb9475d84ba2a489ee6067716242e37c895c00ca2e5022f5396843ea690abfff1c8012ed26a3c9bf032f0daa0793bf84b873eb13c7efb236e7f6d64d51a7f5dab4268f2a12a3184a2f2c06ca13d27d829e57da2c87b89ee80f0c9b1627c2907bbe605c692796515f0205d09f8900d37084f41d7c51fed27a310eca3acba788ddfe0d8af518e62205f2f07efef95181f0a539e9b9efe9a9a28318614009a491ba781849bc31b55f4d5fd4e3a5a2a91de2ce84f49c486231448b91edfec9e2fb7dcbb73c8add83e4a940f75b2482411184c69685b9cf9fa0168c838b77af27428cf8a3d71251c770149eabf1fa774f6e06bc573819bb09fa8823d882e464ee63768c2c2635a27a4506a70619f96e3c6babfe8e5632cfbf5b8c4c1eafde56f0939740220ed8a87d8cc4af6202d39584a12b939cc82dfa5cc7988aa00ea4576a1000c56e96e646769c65ad6a9d3266aae9489e38252040c2daac824181489f760a42e4d5fe1e1865319941b6cda733e35c8ed71189bdd6bb64c4bed51570f4c2b0c0
+#TRUST-RSA-SHA256 4490de5e8ce42a9f1a0f9849f2db3a9794366ebea7604b35963d8a9b61f88e5b529f114b1bb82cacfb80c0bccfa677f934934ecaa485ff58e93c62031d1ab55222c660a48492dc910a4b1c05a5edec413364600d6ffb075d13064824ebc822894ee3c0ebf75c823f186450782ebbd6abe7e2f9ccdd7313a73421265839cb15386f9e6948a04448e736df651ae10acf7faf64739a2c2f2e56e9e3a7df93af886ca7618475433a9d537b4d82f6c92091f3b7799feba9d8fe42456e8cde7af94c3482eac0d6684f58fa3ef42102590ab7b9e9e74a52c454f3c48bc9ade386d0699b1fa283f5f2691aab893d97076cfb11c9cb6fba4584320872aa622aa0ad744b704477b08427ce05de51ac170bb93fadcc4d74caabcab3d0dba2ac0870ff3848bb547ca62afd24a599f8815e4b87237ef6d4090e2e913c90d185205f8549642d850d884b1aab342ff6f4d4f90f0550b7006bd2df2092cccaf52fb6a36f0006773f1029ddbe6c3fae3a57aad4d99fda18618f9664b3211fe64204cc8943e7468e597b7bc0cda9786e643f8864eff8bd1e79986d38b989d34fb90ae064ff55d8c6d32183b328816e0c1c6f0cd64438c8e762cc1165f0284de99e10af10cedc67980db7014133f6680ecbe5bdb84346bb53a074254fd82d208ca2d77d258b8895b9e6d54873216bf64bb887e896968a703fcba52e99f7823d60598f416dc138f60a2d
+
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Inc.
+#
+# Revision: 1.14
+
+# Note: These checks do not account for the VOSS operating system as we do not have engough
+#       information on confidently write detections. See the link below for device<>OS mappings
+# https://documentation.extremenetworks.com/FABRICENGINE/SW/902/FabricEngineUserGuide/GUID-9AF3BDF6-2300-46F6-931E-E21C95BAC71C.shtml
+
+function extreme_networks_fabric_engine_pre_check_fail()
+{
+  if(host_info_key_val['host_not_extreme_networks_fabric_engine'])
+    return TRUE;
+
+  # Not Fabric Engine if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+function handle_extreme_networks_fabric_engine(session, use_shell_handler, &channel, cmd_res)
+{
+  if ('Extreme Networks' >!< cmd_res) 
+    return FALSE;
+  
+  var info = parse_show_sysinfo(output:str_replace(string:cmd_res, find:'\r\n', replace:'\\n'));
+
+  # Fabric Engine used to be named VOSS
+  if ('FabricEngine' >!< cmd_res || !looks_like_voss(model_name:info['ModelName']))
+    return FALSE;
+  
+  replace_kb_item(name: 'Host/FabricEngineOS', value: TRUE);
+  
+  if(info['Chassis']) replace_kb_item(name: 'Host/FabricEngineOS/Chassis', value: info['Chassis']);
+  if(info['ModelName']) replace_kb_item(name: 'Host/FabricEngineOS/ModelName', value: info['ModelName']);
+  if(info['SerialNumber']) replace_kb_item(name: 'Host/FabricEngineOS/SerialNumber', value: info['SerialNumber']);
+
+  var res = run_command(
+    cmd:"show sys software | no-more",
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel
+  );
+
+  info = parse_show_sys_software(output:str_replace(string:res, find:'\r\n', replace:'\\n'));
+  if(info['Version']) replace_kb_item(name: 'Host/FabricEngineOS/Version', value: info['Version']);
+  if(info['Release']) replace_kb_item(name: 'Host/FabricEngineOS/Release', value: info['Release']);
+
+  return TRUE;
+}
+
+
+function handle_not_extreme_networks_fabric_engine(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/show_sys-info", value:cmd_res);
+    host_info_key_val['host_not_extreme_networks_fabric_engine'] = TRUE;
+  }
+}
+
+##
+# VOSS was renamed to Fabric Engine so we attempt to gather info from older VOSS devices
+# by trying to identify the model number that the system is running.
+##
+function looks_like_voss(model_name)
+{
+  # References: 
+  #  - https://documentation.extremenetworks.com/FABRICENGINE/SW/902/FabricEngineUserGuide/GUID-9AF3BDF6-2300-46F6-931E-E21C95BAC71C.shtml
+  #  - https://documentation.extremenetworks.com/VOSS/SW/83/VOSSUserGuide/GUID-AD4BF843-C879-4957-AF1A-86BC82B16D0C.shtml
+  #  - https://documentation.extremenetworks.com/VOSS/SW/
+  var vsp_models = '4450|4900|5420|5520|7200|7400|8200|8284|8400|8600';
+
+  if (model_name =~ "^(?:VSP-)?(?:" + vsp_models + ")")
+    return TRUE;
+
+  return FALSE;
+}
+
+function parse_show_sysinfo(output)
+{
+  var ret = {}, match;
+  
+  # Chassis            : 5520-24T-FabricEngine
+  match = pregmatch(pattern:"\\n\s*Chassis\s+:\s(.*?)\\n", string:output);
+  if(!empty_or_null(match))
+    ret['Chassis'] = match[1];
+    
+  # ModelName          : 5520-24T-FabricEngine
+  match = pregmatch(pattern:"\\n\s*ModelName\s+:\s(.*?)\\n", string:output);
+  if(!empty_or_null(match))
+    ret['ModelName'] = match[1];
+
+  # Serial#            : SIM5231-0000
+  match = pregmatch(pattern:"\\n\s*Serial#\s+:\s(.*?)\\n", string:output);
+  if(!empty_or_null(match))
+    ret['SerialNumber'] = match[1];
+  
+  return ret;
+}
+
+function parse_show_sys_software(output)
+{
+  var ret = {}, match;
+
+  # Version : Build 8.10.1.0 (GA) on Wed Jun 21 16:01:35 EDT 2023
+  match = pregmatch(pattern:"\\nVersion\s+:\sBuild\s(\d+(?:\.\d+){1,3})\s\((.*)\)\s", string:output);
+  if(!empty_or_null(match))
+  {
+    ret['Version'] = match[1];
+    ret['Release'] = match[2];
+  }
+  
+  return ret;
+}

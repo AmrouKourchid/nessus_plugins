@@ -1,0 +1,651 @@
+#TRUSTED 33c162dbd1895c9652cbf95abae9aa4ac622fdcc00d93ce91e3564c89119676d0ecf6c0722f8cdbadb33cbb6b432983761ae071be80b0058d7e8e5ba97d4fa76044ba053cd354afc92d2736319e590bb9020d10adb9674ef001bd3cbaaebfc81c6919cdd7230f57307d10109a358d143e2b502f3570b7c3b774f8b77af956c2ceb7fefb51354978778fc1aacc41123fac2efaad6e6daf0f640de3186f700692ff08da779e908d1ac5e4e191d5c2b1f8fa5f92b18b25c3457f25c916055bb7e3037a8abd2fbd7922e7b04cb2428079cecbe8fc2c6b60f2ae93ccf5270e5667382360aec7165f2efbe4a0dab026aa90fd31748fd832b503539c93ad8ae9285f23186528227a89f86651b5f56e46cd167fc06770d2dc02305a2a3d89cf996457d2fe86858645b8b41190fbecfad93eb9b1060f2ecd070f801150a3b275203367b60f952df165d571ec89e44a52062daa85595c5eef1435d7876e0df56a9f8263648198e4d6db3dab3e775e37fb357257d6cb851c5a5ff0e1f8a9e2f849df122b686a257f18a97f9e0b6b54abdd3113ff0491d06e2e8363eee825a43556021230088b3c5341739291ce4a407ddd57c9c7b002308ec84c27fed7a52f1ea003e8e3c49878845080794a8199c228532777411eb7bdc52725bf97eba5cdb89961bca6b698f468c6067113daae505b29e839eec16ce9f4fff8393f41b360d31e56701dd74
+#TRUST-RSA-SHA256 6d0045331da5ca3fbb0286eacaef94e72af5edb63c21db82fef964d175b06488b3c146e4cd473b492ae853ab20b3915cddf6147a5e4df63b4f1f2f091372f66f9a9941ed0db7f2266b3e73c4178a267ef4ace0cbd818fbd239994a0fb9ca36cb53256b590695756fa3d5809043cb3a68683631ef8fb884d914b65beea7dcb14bb6a989b186e150b1af2042a79a050f66d8b997c3f3601b3ec9d450b126a274085a5c5bc045cd89cd41e6834c3efb4a063fde559734a0ac08395c905077cd3dc63da891db1804a217d7410797c28cd26ac93f64bfeaaea8bc47e972958439911f3dbdbcc27b662c954a2f59b4eea45f5ac9be437c76a6bd6063c7b9fa192a2530a5c3dd34d697a4a81d9ea0df1b4df03e206107a15593c317b5e19dd81f7e3d024b3238176ba325ceeb83a649433a848bc6827d722a165d69c8ff36835724b0cd541f74ef17556bf4c87c30348bf0668cb67e34174b9c22fe158e737dc602daa56ebb6d57573ab4ec6c621503b3a314870004d5e43f63cd532bc7efe7feaae8789d727172be91a8b22cd60414a53fdeec74bfcfdb00f097444c0e350ca70783549b46a3f3ae801cd95d52abe2d0fc7cac1079167c858daf07b25bce0df35c1e179dc4e635b62b895370dcdf7ce6fa5fbe84702b0ad6f31db8e93c5d5237a8d8b3a2b203ebe446a4b0faaa68066a7b51456d08d463f91ecdfdfacfa950b11075a9
+#------------------------------------------------------------------------------
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.4
+#
+# @library local_detection_nix.inc
+#
+###
+
+namespace ldnix
+{
+  namespace associations
+  {
+    var associated_packages = []; # Tracker of detection specific packages that are found to be associated with a path
+
+    var defaults = {
+      macos : {
+        system_directories : [ '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib' ],
+        commands : {
+          pkgutil : 'pkgutil --file-info $1$',
+          sqlite3 : '/usr/bin/sqlite3'
+        },
+        macports : {
+          database : '/opt/local/var/macports/registry/registry.db',
+          query    : '"SELECT name, version, revision, variants FROM ports WHERE id = ' +
+                        '(SELECT id FROM files WHERE actual_path = \'$2$\');"'
+        }
+      }
+    };
+
+    ##
+    # Handling of package assoication by path
+    #
+    # @param  [installed:array] install info from install_info()
+    # @remark sets associated package and managed 1
+    #
+    # @return array of modified install info meant for register_install()
+    #
+    # workaround originated from CS-66849
+    ##
+    function handle_assoication_overrides(installed)
+    {
+      # hardcoded default paths and assoicated packages
+      var association_overrides = [
+        {
+          'path':'/opt/traps/lib/',
+          'package':'cortex-agent'
+        }
+      ];
+
+      var inst_path, override, installed_assoc_pkg, assoc_pkg, extra, extra_no_report;
+
+      foreach inst_path (keys(installed))
+      {
+        installed_assoc_pkg = installed[inst_path]['extra']['Associated Package'];
+
+        # only attempt to match paths to package if assoication is not present.
+        if (empty_or_null(installed_assoc_pkg))
+        {
+          foreach override (association_overrides)
+          {
+            if (override['path'] >< inst_path)
+            {
+              dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'assoication overrides applied to path: ' + inst_path + ' ' + override['package']);
+
+              installed[inst_path].extra = make_nested_array('Associated Package', override['package']);
+              installed[inst_path].extra_no_report = make_nested_array('Managed', 1);
+            }
+          }
+        }
+      }
+        return installed;
+    }
+
+    ##
+    # Get, parse, and set any package associations for specified files.
+    #
+    # @param [path:str]       file path to check for any package associations
+    # @param [packages:array] package info returned from ldnix::packages::search_and_process() (optional)
+    #
+    # @return list of associated packages, if any were found
+    #         NULL otherwise
+    ##
+    function associate_paths_with_packages(paths, packages)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ paths:paths }))
+        return NULL;
+
+      var files, path, package, association;
+
+      var associations = {};
+
+      # Retrieve detection specific packages
+      files = ldnix::packages::get_files(packages:packages);
+
+      foreach path (paths)
+      {
+        association = ldnix::associations::associate_path_with_packages(path:path, packages:packages, files:files);
+        associations[path] = association;
+      }
+
+      return associations;
+    }
+
+
+    ##
+    # Get, parse, and set any package associations for specified file.
+    #
+    # @param [path:str]       file path to check for any package association
+    # @param [packages:array] package info returned from ldnix::packages::search_and_process() (optional)
+    # @param [files:array]    files list returned from ldnix::packages::get_files() (optional)
+    #
+    # @return association array with keys similar to register_install()
+    ##
+    function associate_path_with_packages(path, packages, files)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path }))
+        return NULL;
+
+      var association, package, file, associated_package;
+
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Processing path: ' + path);
+
+      if (!empty_or_null(packages) && !empty_or_null(files))
+        association = ldnix::associations::associate_path_with_main_package(path:path, packages:packages, files:files);
+
+      if (empty_or_null(association))
+        association = ldnix::associations::associate_component_path_with_packages(path:path, packages:packages);
+  
+      return association;
+    }
+
+
+    ##
+    # Associate file path with product specific packages.
+    #
+    # @param [path:str]       file path to check for package association
+    # @param [packages:array] package info returned from ldnix::packages::search_and_process()
+    # @param [files:array]    files list returned from ldnix::packages::get_files()
+    #
+    # @remark Example: /usr/bin/curl with curl-7.15.1-19.30.1
+    #
+    # @return association array with keys similar to register_install()
+    #         NULL otherwise
+    ##
+    function associate_path_with_main_package(path, packages, files)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path, packages:packages, files:files }))
+        return NULL;
+  
+      var package, file, associated_package, association;
+
+      for (package of packages)
+      {
+        if (empty_or_null(files[package.name]))
+          continue;
+
+        # Attempt to associate path with package from package's file list
+        file = ldnix::search_package_file_list(file:path, file_list:files[package.name]);
+
+        # If not association is found, attempt a reverse search of file path to a package.
+        if (empty_or_null(file))
+          continue;
+
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - Path is associated with ' + package.name);
+
+        association = {
+          path : path,
+          version : package.version,
+          extra : {
+            'Associated Package' : package.name,
+            'Managed by OS'      : 'True'
+          },
+          extra_no_report : {
+            'Managed' : TRUE
+          }
+        };
+
+        # Add to list of associated packages
+        append_element(var:associated_packages, value:package.name);
+
+        return association;
+      }
+    }
+
+
+    ##
+    # Check for package association with any package.
+    #
+    # @param [path:str]       file path to check for any package association
+    # @param [packages:array] package info returned from ldnix::packages::search_and_process() (optional)
+    #
+    # @remark Association example: /opt/sc/support/lib/libcurl.so.4.7.0 with SecurityCenter-5.23.1-5.el7.x86_64
+    #
+    # @return association array with keys similar to register_install()
+    ##
+    function associate_component_path_with_packages(path, packages)
+    {
+     # Argument checks
+     if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path }))
+      return NULL;
+
+      var package_associations, package_association, index, package, association, version, extra;
+  
+      package_associations = ldnix::associations::get_associations(path:path);
+      if (empty_or_null(package_associations))
+        return NULL;
+
+      extra = {};
+
+      # Additional check to associate with path with a main package.
+      for (index in package_associations)
+      {
+        package_association = package_associations[index];
+
+        for (package of packages)
+        {
+          # Attempt to match on base package name excluding the version but only on packages with a space (e.g. curl 8.4.0).
+          #  - Example:
+          #   - package.name: 'curl 8.4.0'
+          #   - package_association: 'curl'
+          if (package.name =~ '^' + package_association)
+          {
+            dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - Path is associated with ' + package.name);
+
+            append_element(var:associated_packages, value:package.name);
+            package_associations[index] = package.name;
+
+            version = package.version;
+            extra['Managed by OS'] = 'True';
+          }
+        }
+      }
+
+      if (len(package_associations) > 1)      
+        extra['Associated Packages'] = package_associations;
+      else
+        extra['Associated Package'] = package_associations[0]; 
+
+      association = {
+        path : path,
+        version : version,
+        extra_no_report : { 'Managed' : TRUE },
+        extra           : extra
+      };
+
+      return association;
+    }
+
+
+    ##
+    # Get, parse, and set any package associations from ldnix::get_package_association().
+    #
+    # @param [path:str] file path to check for any package associations
+    #
+    # @return list of associated packages, if any were found
+    #         NULL otherwise
+    ##
+    function get_associations(path)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path }))
+        return NULL;
+ 
+      if (unit_tests[FUNCTION_NAME][path]) return unit_tests[FUNCTION_NAME][path];
+
+      var package_associations, packages, extra;
+
+      package_associations = ldnix::get_package_association(binpath:path);
+      packages = ldnix::associations::parse_associations(package_associations:package_associations, path:path);
+
+      if (empty_or_null(packages))
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'No packages associated with ' + path);
+        return NULL;
+      }
+
+      return packages;
+    }
+
+
+    ##
+    # Parse package associations from ldnix::get_package_association().
+    #
+    # @param [package_associations:array] return value from ldnix::get_package_association()
+    # @param [path:str]                   file path associated with the package
+    #
+    # @return list of parsed packages
+    ##
+    function parse_associations(package_associations, path)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME,
+          args:{ package_associations : package_associations, path:path }))
+        return NULL;
+ 
+      var packages, package;
+
+      packages = package_associations[path].packages;
+  
+      return packages;
+    }
+
+
+    ##
+    # Build install info for register_install()
+    #
+    # @param [paths:list]         list of processed file paths
+    # @param [packages:array]     processed packages return value from ldnix::packages::find_and_process() (optional)
+    # @param [associations:array] associations of paths with packages return value from ldnix::associations::associate_packages_with_paths() (optional)
+    #
+    # @return array of install info meant for register_install()
+    ##
+    function install_info(paths, packages, associations)
+    {
+      var installs, path, package;
+
+      installs = {};
+  
+      # Add associations to installs
+      if (!empty_or_null(associations))
+        installs = associations;
+
+      for (path of paths)
+      {
+        # No associations found for this path.
+        if (empty_or_null(installs[path]))
+          installs[path].path = path;
+      }
+
+      # In case a detection specific package was not associated with a path, report the path as a package.
+      for (package of packages)
+      {
+        if (contains_element(var:ldnix::associations::associated_packages, value:package.name))
+        {
+          dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'File is already associated with ' + package.name);
+          continue;
+        }
+
+        installs[package.name] = ldnix::packages::report_info(package:package);
+      }
+
+      return installs;
+    }
+
+
+    ##
+    # Check if the path is associated with the macOS system file
+    #
+    # @param [path:str] path to be checked
+    #
+    # @remark There doesn't appear to be a way of performing this other than based on the location.
+    #
+    # @return 'macOS system file' string if the path matches
+    #         NULL otherwise
+    ##
+    function associate_path_with_macos_system(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      var system_directory;
+
+      foreach system_directory (defaults.macos.system_directories)
+      {
+        # Append / if it does not already exist
+        if (system_directory !~ '/$')
+          system_directory += '/';
+  
+        if (path =~ '^' + system_directory)
+          return 'macOS system file';
+      }
+
+      return NULL;
+    }
+
+    ##
+    # Check if the path is associated with macOS Installer package.
+    #
+    # @param [path:str] path to be checked
+    #
+    # @return package name if path is associated with a package
+    ##
+    function associate_path_with_macos_installer_package(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      var package_name, cmd_results, matches;
+
+      # pkgutil detection
+      #  - pkgutil --file-info output example:
+      #      volume: /
+      #      path: /usr/bin/curl
+      #      
+      #      pkgid: com.apple.pkg.Core
+      #      pkg-version: 10.14.0.1.1.1537503053
+      #      install-time: 1539796099
+      #       ...
+      cmd_results = ldnix::run_cmd_template_wrapper(template:defaults.macos.commands.pkgutil, args:[path]);
+
+      if (empty_or_null(cmd_results))
+        return NULL;
+    
+      matches = pregmatch(pattern:'\\n *pkgid: +(.+)', string:cmd_results);
+      if (empty_or_null(matches))
+        return NULL;
+
+      package_name = matches[1];
+
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Path is associated with a pkgutil package: ' + package_name);
+      return package_name;
+    }
+
+    ##
+    # Check if the path is associated with a Homebrew package.
+    #
+    # @param [path:str] path to be checked
+    #
+    # @remark There doesn't appear to be a better method to do this other than to examine if the file in the Cellar.
+    #
+    # @return package name if path is associated with a package
+    ##
+    function associate_path_with_homebrew_package(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+
+      if (!get_kb_item('MacOSX/homebrew'))
+        return NULL;
+
+      # Retrieve the "Cellar" - the base file path where packages are installed
+      #  - Example: /usr/local/Cellar
+      var cellar;
+      cellar = get_kb_item('MacOSX/homebrew/cellar');
+      if (empty_or_null(cellar))
+      { # This shouldn't happen, so log it.
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'KB item "MacOSX/homebrew/cellar" does not exist.');
+        return NULL;
+      }
+
+      # Detect and parse the package name from the file path.
+      #  - There are several ways to get the package name and version but this effective and keeps it simple.
+      #  - Example: "/usr/local/Cellar/curl/8.3.0/bin/curl" - parse out 'curl' and '8.3.0'
+      var pattern, matches, package_name;
+
+      pattern = strcat('^', cellar, '/([^/]+)/([0-9]+\\.[^/]+)?');
+      matches = pregmatch(string:path, pattern:pattern); 
+      if (empty_or_null(matches))
+        return NULL;
+
+      # Put together the package name with the version
+      #  - Example: "curl 8.3.0"
+      package_name = matches[1];
+
+      # It has been observed that there is always a version but let's be defensive.
+      if (!empty_or_null(matches[2]))
+        package_name += ' ' + matches[2];
+
+      package_name += ' (homebrew managed)';
+
+      append_element(var:associated_packages, value:package_name);
+      
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Path is associated with a Homebrew package: ' + package_name);
+      return package_name;
+    }
+
+    ##
+    # Check if the path is associated with a MacPorts package.
+    #
+    # @param [path:str] path to be checked
+    #
+    # @return package name if path is associated with a package
+    ##
+    function associate_path_with_macports_package(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+
+      if (!get_kb_item('MacOSX/macports'))
+        return NULL;
+
+      var command, database, query, command_builder, template, command_results;
+
+      # We only support default MacPorts installs in our package enumeration so use the default database as well.
+      database = defaults.macos.macports.database;
+      if (!verify_and_cache_macports_registry(path:database))
+        return NULL;
+
+      # Use sqlite3 to query the registry database.
+      command  = defaults.macos.commands.sqlite3;
+      command_builder = new command_builder::command(command);
+
+      command_builder.init_cmd();
+      if (!command_builder.cmd_exists)
+        return NULL;
+
+      # Run SQL query
+      #  - Example:
+      #    sqlite3 /opt/local/var/macports/registry/registry.db "SELECT name, version, revision, variants FROM ports WHERE id = (SELECT id FROM files WHERE actual_path = '/opt/local/bin/curl');"
+      query = defaults.macos.macports.query;
+
+      template = strcat(command, ' $1$ ', query);
+
+      command_results = ldnix::run_cmd_template_wrapper(template:template, args:[database, path]);
+
+      if (empty_or_null(command_results))
+        return NULL;
+
+      command_results = chomp(command_results);
+
+      # Parse the command output.
+      #  -Example (with header added):
+      #   name|version|revision|variants
+      #   curl|8.4.0|0|+http2+ssl
+      var columns, matches, package, full_package_name;
+
+      columns = split(command_results, sep:'|', keep:FALSE);
+
+      # The resulting list should always have at least 3 elements even if some are empty.
+      if (max_index(columns) < 3)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Unexpected number of columns returned in SQLite output.');
+        return NULL;
+      }
+
+      package = {};
+      package.name     = columns[0]; # curl
+      package.version  = columns[1]; # 8.4.0
+      package.revision = columns[2]; # 0
+      package.variants = columns[3]; # +http2+ssl
+
+      # Package name is required
+      if (empty_or_null(package.name))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Package name is empty or NULL');
+        return NULL;
+      }
+
+      # Build the package name.
+      #  - Format : <name> <version>_<revision><variants>
+      #  - Example: curl 8.4.0_0+http2+ssl
+      full_package_name = package.name;
+
+      if (!empty_or_null(package.version))
+        full_package_name += ' ' + package.version;
+        
+      if (!empty_or_null(package.revision))
+        full_package_name += '_' + package.revision;
+
+      if (!empty_or_null(package.variants))
+        full_package_name += package.variants;
+
+      full_package_name +=  ' (macports managed)';
+      append_element(var:associated_packages, value:full_package_name);
+      
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Path is associated with a MacPorts package: ' + full_package_name);
+      return full_package_name;
+    }
+
+    ##
+    # Simple verify and cache of the MacPorts registry
+    #
+    # @param  [path:str]  file path to the MacPorts registry database
+    #
+    # @remark The KB item 'MacOSX/macports/registry' will be set to TRUE
+    #
+    # @return true if the registry appears valid
+    #         false if the registry appears invalid
+    #         NULL otherwise
+    ##
+    function verify_and_cache_macports_registry(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      var cached, command_results;
+
+      # Check cache first
+      #  - This will be set to TRUE or FALSE
+      cached = get_kb_item('MacOSX/macports/registry');
+      if (!isnull(cached)) return cached;
+
+      command_results = ldnix::files::get_file_type(path:path);
+      if (empty_or_null(command_results))
+      {
+        replace_kb_item(name:'MacOSX/macports/registry', value:FALSE);
+        return false;
+      }
+
+      if ('SQLite' >!< command_results && 'database' >!< command_results)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:path + ' does not appear to be a database.');
+        replace_kb_item(name:'MacOSX/macports/registry', value:FALSE);
+        return false;
+      }
+
+      replace_kb_item(name:'MacOSX/macports/registry', value:TRUE);
+      return true;
+    }
+  }
+}

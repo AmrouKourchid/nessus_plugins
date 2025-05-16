@@ -1,0 +1,238 @@
+#TRUSTED 2f06d7f8b6df828b271d9bc82611a363514fc7cffde25374f39619f0e30701aea288782ab14c9413c8f4ad10d08e96893ca92de81402d487fa066b955a15a45c6d2608a33c836026367afe50e6807d409f78230e5817f5b5d8e14e5c243bacf261381d65dcc4bbbe5887da084f221fdee9c97e5711996c88fa2002a6e173f56ff6879884201a94295d5e1862fb63ba157b8c76d54cbf294b748c1d1ed82f9ead5648c7cc6ec7fa229a0e914dacb5c36dab90c820b452546b51617ea4af86f0f9864591551b996999a482bb94f7c5be309965f40195bc88552c31a0be342039a97162f95009e67a83b0c912a22d43b14feabd56fde9c1bbce7bd5094a827ea029d99b77ca80217ff38b9023255cff0b8df56c3f2169de1fc39dec147bbbf79c362325bac39fc7dc2194ac9841232808e931c17bc2e12ffcffdbfbae0c8ca12416bf33ecbc9c4ef66e8ac4b534ef07ed3fc4310d2e200e08be8b6c0e3ec0ece903125606c66370810c319f5e953d8c38ee5005ed48e9ba15d38546dfb42e41c97cefa222837ddeb683f61cf46cf96d42639d77805e6cc4c141880d6231ea4ae3afc11e89631e145fa6c4ee6d2be6ee03f87ac61e45a653bbaaac3c26dfee2788315a27c5fa8f5a2ff896158628af640470f7003c0bd0ef027ae0335217280788b3ad4cdb9ba46224946ecdc0dc74d3e4a03d6071e3ee72c8f37740348a7caf4f96
+# -*- Fundamental -*-
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# http_login5.inc
+# Revision: 1.01
+
+global_var HttpLogin_reauthentication_OK, HttpLogin_reauthentication_KO;
+
+function http_check_authentication(port, check_page, regex, re_invert, re_headers, re_icase, follow_redirect)
+{
+  local_var r, s, flag;
+
+  if (strlen(check_page) == 0 || strlen(regex) == 0) return "";
+
+  r = http_send_recv3(method:"GET", item: check_page, port: port, follow_redirect: follow_redirect);
+  if (isnull(r))
+  {
+    return "request failed: GET " + check_page;
+  }
+  if (re_headers)
+    s = egrep(string: r[0]+r[1], pattern: regex, icase: re_icase);
+  else
+    s = egrep(string: r[2], pattern: regex, icase: re_icase);
+  flag = (strlen(s) > 0);
+  if (flag)
+    debug_print(level: 3, 'http_check_authentication extracted pattern: ', chomp(s));
+  if (re_invert) flag = ! flag;
+  if (! flag)
+  {
+    if (report_verbosity > 1)
+      return "post-authentication test failed" + '.\nThe web server answered :\n\n' + r[0] + r[1] + '\n' + r[2];
+    else
+      return "post-authentication test failed";
+  }
+  return "OK";
+}
+
+# This function returns an empty string for "maybe", "OK" if authentication 
+# succeeded (the control page could be check). Any other string is an error 
+# message.
+function http_form_login(port, page, form, fields, follow_redirect, 
+	 		 save_cookies, check_page, regex, re_invert,
+			 re_headers, re_icase, method)
+{
+  local_var	r, trp, h, e;
+
+  h = make_array();
+  e = "";
+
+  if (page)
+  {
+    r = http_send_recv3(port: port, item: page, method: 'GET', follow_redirect: follow_redirect);
+    if (isnull(r))
+    {
+      debug_print("Broken connection on port ", port, " after GET ", page);
+      return "request failed: GET " + page;
+    }
+
+    trp = get_port_transport(port);
+    h["Referer"] = build_url(port: port, qs: page);
+  }
+
+  if (! method) method = "POST";
+
+  if (method == "POST")
+  {
+  h["Content-Type"] = "application/x-www-form-urlencoded";
+  r = http_send_recv3( port: port, method: 'POST', 
+      		       follow_redirect: follow_redirect,
+      		       add_headers: h, 
+    		       item: form, data: fields);
+  }
+  else
+  {
+    r = http_send_recv3( port: port, method: 'GET', 
+      		       follow_redirect: follow_redirect,
+    		       item: form + "?" + fields);
+  }
+  if (isnull(r))
+  {
+    debug_print("Broken connection on port ", port, " after ", method, " ", form);
+    return "request failed: " + method + " " + form;
+  }
+
+  # Failed - permission denied or bad gateway or whatever
+  # This happens sometimes when we follow redirections, but we might be 
+  # authenticated anyway.
+  if (r[0] =~ "^HTTP/[01.]+ +[45][0-9][0-9] ")
+  {
+    debug_print("Permission denied: code=", r[0]);
+    e =  "Permission denied or other HTTP error on "+method+" request";
+  }
+  # All other codes are considered as OK. We might get a 30x code too!
+
+  r = http_check_authentication(port: port, check_page: check_page, regex: regex, re_invert: re_invert, re_headers: re_headers, re_icase: re_icase, follow_redirect: follow_redirect);
+
+  if (r == "")
+  {
+    # We could not check if we are authenticated but we got an error first. 
+    # Let's return it.
+    if (e != "") return e;
+  } else if (r != "OK")	# Error
+    return r;
+
+  # Here, we are sure that we are authenticated (OK) 
+  # or nothing proves that we are not.
+  if (! CookieJar_is_disabled && save_cookies) store_cookiejar("FormAuth");
+  return r;
+}
+
+
+function http_login_take_lock(port, now, delay)
+{
+  local_var	k, t, v;
+
+
+  k = "/tmp/http_login/"+port+"/lock";
+  t = get_kb_item(k);
+  if (t)
+  {
+    v = split(t, sep:'-', keep: 0);
+    t = now - int(v[0]);
+    if (t > delay || t < 0)
+    {
+      debug_print("http_login_take_lock: old lock (", t, " s ago) deleted (port=", port, ")");
+      rm_kb_item(name:k);
+    }
+    else
+    {
+      debug_print(level: 2, "http_login_take_lock: lock taken ", t, " s ago");
+      return 0;
+    }
+  }
+  v = now + '-' + rand();
+  replace_kb_item(name:k, value: v);
+
+  if (get_kb_item(k) != v)
+  {
+    debug_print("http_login_take_lock: lock stolen");
+    return 0;
+  }
+  return 1;
+}
+
+function http_login_release_lock()
+{
+  local_var	k, port;
+  port = _FCT_ANON_ARGS[0];
+  k = "/tmp/http_login/"+port+"/lock";
+  rm_kb_item(name: k); 
+  return 1;
+}
+
+
+# This function should only be called if a lock has been taken
+function http_login_incr_count(port, kb)
+{
+  local_var	k, n;
+
+  k = "www/"+port+"/"+kb;
+    n = get_kb_item(k);
+    n ++;
+    replace_kb_item(name: k, value: n);
+  }
+
+function http_reauthenticate_if_needed(port, save_cookies)
+{
+  local_var	page, form, fields, time, e, delay, now;
+  local_var	cp, re, iv, hd, ic, fr, i, mt;
+
+  cp = get_kb_item("www/"+port+"/check_page");
+  re = get_kb_item("www/"+port+"/check_regex");
+  iv = get_kb_item("www/"+port+"/regex_invert");
+  hd = get_kb_item("www/"+port+"/regex_headers");
+  ic = get_kb_item("www/"+port+"/regex_icase");
+  fr = get_kb_item("www/"+port+"/login_follow_30x");
+
+  e = http_check_authentication(port: port, check_page: cp, regex: re, re_invert: iv, re_headers: hd, re_icase: ic, follow_redirect: fr);
+  if (e == "OK") return;
+
+  # Ideally, we should take a mutex here, but the functions are privileged
+  # and we do not want to sign all web scripts.
+
+  if (e != "")		# use a tiny delay if we are disconnected
+    delay = get_read_timeout();
+  else
+    delay = get_kb_item("www/"+port+"/login_delay");
+  if (delay <= 0) return;
+
+    time = get_kb_item("www/"+port+"/login_time");
+  now = unixtime();
+  if (time + delay > now)
+    {
+    debug_print(level: 2, 'Will not try to re-authenticate on port ', port, ' before ', time + delay - now, ' seconds\n');
+      return;
+    }
+
+  if (! http_login_take_lock(port: port, now: now, delay: delay))
+  {
+    # Try to reload the cookie jar, in case another plugin updated it
+    if (e != "") sleep(get_read_timeout());
+    load_cookiejar(jar:"FormAuth");
+    return;
+  }
+
+  page = get_kb_item("www/"+port+"/login_page");
+  form = get_kb_item("www/"+port+"/login_form");
+  fields = get_kb_item("www/"+port+"/login_fields");
+  mt = get_kb_item("www/"+port+"/login_meth");
+
+  e = http_form_login(port: port, page: page, form: form, fields: fields,
+    save_cookies: save_cookies, method: mt, 
+        check_page: cp, regex: re, re_invert: iv, re_headers: hd, re_icase: ic);
+  if (e == "OK")
+  {
+    replace_kb_item( name: "www/"+port+"/"+SCRIPT_NAME+"/auth_OK", 
+    		     value: ++ HttpLogin_reauthentication_OK);
+    debug_print("Successful authentication on port ", port);
+  }
+  else if (e != "")
+  {
+    replace_kb_item( name: "www/"+port+"/"+SCRIPT_NAME+"/auth_KO", 
+    		     value: ++ HttpLogin_reauthentication_KO);
+    debug_print("Web authentication failed on port ", port, ": ", e);
+  }
+  replace_kb_item(name: "www/"+port+"/login_time", value: unixtime());
+
+  http_login_release_lock(port);
+}
+

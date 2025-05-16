@@ -1,0 +1,296 @@
+#TRUSTED 089bc8d9921f8eda6f5d0fdffcd03620f88aab415377e20173bf3a17eba49d7f6bc83a92f809b594d2b9bba01f0f00093e1d9033614ac5069928a445a05b4fc29cc88dffb9afc91cb788dd5233c3d48b6d5f56c15fd5ebf62cc50a3310f66983eef1f998f57a2bc45ca211c62182939b4091f7395a0530ce123aab5e5364dd718be4993828120f83997af413e0e86ce029e716d2cbef884276a400d7d769f68fec60ef606a301d5f894679ed8e7b20d1cc2fe6fb817c4af22a8811270a11ccb56239cba01c54e13599b6347ea4ce045fdf14f57abed80b3f283e3cb865d95d0e8fe3579264ee96d8c0dda511a449fb11bac83fda1d2bd2ab0d06cf5576d1992784496a261a4af9154b0cbd2325953b2fca2e72e1deb13c4cb1a5cc552ead47dc28479fc1c764f25a59c85d63fb161de40c3c5ff5788566696e3e7a32b4e9cf148b38dba3ceb2be34897a045a3a46eb626ae4588a929fb1550876c24fbc8ef7610676e22476ee0a41b093548c0095ee7f61459ef220d8f00ac531ae6e569f01353d8834aaa2f1bd0bb8e7ddc91094bcc1ead456928b5a0c67b7d3c8b7a8b278fc96bbf3ffa02a2b9aed418c19c628c8a0a17a12d21b821b4a7a62097e318d3dbd0ffe4873c11c74e139586e96370684b7eb7214f7a44d5d5bf83dbdfaab661ab308142eea2d991cc06f1356587bd997b3c2a7a02e529b7b3afa8d658d8eac29b9
+#TRUST-RSA-SHA256 882b8ba0fb3553cc82fcf4a28ae30b6914e2a3796d20980b009b3dbeda4fb48dd54ac00c67511a36622b207bb26ed710bcd6a5c54ed7489a3f42d766d8d59cf2ccd14eac94af2479b9f1fa1a3a1aadc56610a6179f229a83ce9085bb6ec2e06d355f9702e08006726ea9a7cdc367fe1287d42c48c34d72c1fde7a727eceb0088682204a7a3d93e27507960158c26428e8b2e2146e86227417122ebe3f5e3722283c6586f007e5e50ffdc2fa4d3109c8c44452665de2bacc00e73ae7c69be21c60d2f3f6b539381047c83e19f57c7fc06740ee03c5105ed809004f5b59c0104b1dee83386961c620eb85abd9a3c679fbb3d26349cbbbd66ac514049b8f343afaabf69135ebbdb39b6eb1b8a8327a27b0c82e81255559750a7a50d3103c5c7c48dea9092b5dba5754979513b0a2986b12366b0d0e5dc262717376ad9cd93d0564c23acef65afdb1f2869e3bf10cd2671d20c6487ae3085e511896b87a8c5c4d08ddf392f8c9dc1d67178f0737ce11a92798eb64e4cd82d5886de6dfc3d31f614a83b04ed23a13f0c00006fc09b3bc1c8ea6a2a7506aa52ceab1f36f63b95aeba84463fe8275c01a58fb3f70d6989a753b0629c6ed3c9b828c0b8e5a462f24cabcafe65271d2f7a48423c5e67a7aa88a87c30b4f56e79c220ec05c91ec26ccfefe70d81361bdcb915f10ee6191026acec23f3575516ef6e202d54d5fb074255064d
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.20
+#
+
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+function is_cisco_ucos()
+{
+  if ("Command Line Interface is starting up, please wait" >< host_info_key_val['uname-a_unrecognized'])
+    return TRUE;
+
+  if ("Command Line Interface is starting up, please wait" >< host_info_key_val['showversion_unrecognized'])
+    return TRUE;
+
+  return FALSE;
+}
+
+
+#
+# cisco_ucos_pre_check_fail
+#
+function cisco_ucos_pre_check_fail()
+{
+  if(host_info_key_val['host_not_cisco_ucos'])
+    return TRUE;
+
+  # Not UCOS if one of the following devices
+  if (is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_cisco_firepower() ||
+      is_timos_userauth() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+
+#
+# callback for systems with a UCOS component in show version active
+#
+function handle_cisco_ucos(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var buf, command, show_ver, file_list, show_packages, match, services;
+  local_var vendor, version, product, confidence, os_name = "Cisco UCOS";
+
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.\n';
+
+  ##
+  #  All Cisco UCOS systems support 'show version active',
+  ##
+  command = "show version active";
+  show_ver = run_command(cmd:command,
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  match = pregmatch(string:show_ver, pattern:'Active Master Version: ([0-9.-]+)');
+  if(isnull(match) || isnull(match[1]))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find version in output of "' + chomp(command) + '".');
+    session.close_connection();
+    return FALSE;
+  }
+  version = match[1];
+  version = str_replace(string:match[1], find:"-", replace:".");
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Version determined to be ' + version + '.\n');
+
+  ##
+  #  Version established.
+  #  Now try to identify product using
+  #  product-specific patch names
+  ##
+  product = "Unknown";
+  if ("finesse-cce" >< show_ver)
+    product = "Cisco VOSS Finesse";
+  else if ("ciscocuic" >< show_ver)
+    product = "Cisco VOSS CUIC";
+  else if ("ciscovb" >< show_ver)
+    product = "Cisco VOSS Virtual Voice Browser";
+  else if ("ciscocm" >< show_ver)
+    product = "Cisco VOSS Unity (CUC)";
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'After checking patch data, product determined to be ' + product + '.\n');
+  ##
+  #  If product is still unknown...
+  #  either the target is unpatched, or Tenable has
+  #  not yet identified patch-product relationship
+  ##
+
+  # Try to identify 'Cisco TelePresence Multipoint Switch
+  if (product == "Unknown")
+  {
+    command = 'file list activelog /\n';
+    file_list = run_command(cmd:command,
+                              session:session,
+                              use_shell_handler:use_shell_handler,
+                              channel:channel);
+
+    if (file_list =~ '<dir>[ \t]*ctms[\n\r <]')
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'file list activelog' returned data confirms UCOS (Cisco TelePresence Multipoint Switch)");
+
+      product = 'Cisco TelePresence Multipoint Switch';
+      replace_kb_item(name:'Host/UCOS/' + product + '/version', value:version);
+      sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+      report +=
+        '\nOS Security Patch Assessment is not supported for ' + product + '.\n';
+
+    }
+  }
+
+  # Test for Cisco Unified Communications Manager
+  # The following was observed for CUCM, so also check show tech ccm_service when Cisco VOSS Unity (CUC) is the product
+  # based on show version active output containing 'ciscocm':
+  # Active Master Version: 11.0.1.10000-10
+  # Active Version Installed Software Options:
+  # ciscocm.VMwareTools2016c.cop
+  # cmterm-devicepack11.0.1.25095-2.cop
+  # ciscocm.version3-keys.cop
+  if (product == "Unknown" || product == "Cisco VOSS Unity (CUC)"){
+    command = 'show tech ccm_service\n';
+    services = run_command(cmd:command,
+                              session:session,
+                              use_shell_handler:use_shell_handler,
+                              channel:channel);
+    if ("GroupName: CM Services" >< services)
+    {
+      product = "Cisco Unified Communications Manager";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of " + product + " in service information");
+      set_kb_item(name:"Host/Cisco/CUCM/Version", value:version);
+    }
+  }
+
+  # Try to identify UCOS systems via packages installed
+  confidence = confidence - 10;
+
+  ##
+  #  Test for the Finesse product first,
+  #  since commands that follow may not
+  #  be returned properly on that system
+  ##
+  if (product == "Unknown")
+  {
+    command = "show packages active finesse*";
+    show_packages = run_command(cmd:command,
+                               session:session,
+                               use_shell_handler:use_shell_handler,
+                               channel:channel);
+
+    ##
+    #  Search filter is 'finesse*' but any
+    #  matching packages would be in format 'finesse-<blah>'.
+    #  The hyphen below is important.
+    ##
+    if ("finesse-" >< show_packages)
+    {
+      product = "Cisco VOSS Finesse";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of Finesse in packages");
+    }
+  }
+
+  ##
+  #  After checking Finesse product,
+  #  there are 3 that can be
+  #  identified using the same command
+  ##
+  # The following was observed for IM&P, so also check packages when Cisco VOSS Unity (CUC) is the product based on show
+  # version active output containing 'ciscocm':
+  # Active Master Version: 11.0.1.10000-6
+  # Active Version Installed Software Options:
+  # ciscocm.IMP_VMwareTools2016c.cop
+  if (product == "Unknown" || product == "Cisco VOSS Unity (CUC)")
+  {
+    command = "show packages active cu*";
+    show_packages = run_command(cmd:command,
+                               session:session,
+                               use_shell_handler:use_shell_handler,
+                               channel:channel);
+
+    if ("cuic-reporting-" >< show_packages && "cuic-common-" >< show_packages)
+    {
+      product = "Cisco VOSS CUIC";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of CUIC in packages");
+    }
+    if ("cuc-install-" >< show_packages && "cuc-base-" >< show_packages)
+    {
+      product = "Cisco VOSS Unity (CUC)";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of Unity in packages");
+    }
+    if ("cupadmin-" >< show_packages && "cupuser-" >< show_packages)
+    {
+      product = "Cisco Unified Presence";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of Cisco Unified Presence in packages");
+    }
+  }
+
+  ##
+  #  Look for the last 2 products
+  #  that we have identification for
+  ##
+  if (product == "Unknown" || product == "Cisco VOSS Unity (CUC)")
+  {
+    command = "show packages active *";
+    show_packages = run_command(cmd:command,
+                               session:session,
+                               use_shell_handler:use_shell_handler,
+                               channel:channel);
+
+    if ("UCCX" >< show_packages && "ucplatform_nocluster-postinstall-" >< show_packages)
+    {
+      product = "Cisco VOSS Virtual Voice Browser";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of VVB in packages");
+    }
+    if ("er-ver-" >< show_packages && "er-platform-web-" >< show_packages)
+    {
+      product = "Cisco Emergency Responder (CER)";
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Evidence of Emergency Responder in packages");
+    }
+  }
+
+  ##
+  #  Unknown to us
+  ##
+  if (product == "Unknown")
+  {
+    product = 'Unknown Cisco UCOS Product';
+    dbg::detailed_log(
+      lvl:1,
+      src:FUNCTION_NAME,
+      msg:"Evidence of product not found in packages",
+      msg_details:{
+        "'show version active' returned":{"lvl":1, "value":show_ver},
+        "Packages returned":{"lvl":1, "value":show_packages}
+      });
+    confidence = confidence - 40;
+
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    lcx::log_issue(type:lcx::ISSUES_INFO,
+                   msg:"OS security patch assessment is not supported for " + product + ".");
+    report +=
+      '\nOS Security Patch Assessment is not supported for ' + product + '.\n';
+  }
+  else
+  {
+    replace_kb_item(name:"Host/OS/showver", value:product);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value:confidence);
+    replace_kb_item(name:"Host/Cisco/device_type", value:'General');
+    replace_kb_item(name:"Host/Cisco/show_version_active", value:show_ver);
+
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_ucos.static', value: 273);
+    report += '\nOS Security Patch Assessment is available for ' + product + '.';
+  }
+
+  return TRUE;
+}
+
+
+#
+# callback for systems without a UCOS component in show version
+#
+function handle_not_cisco_ucos(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    # replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    # host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_ucos'] = TRUE;
+  }
+}

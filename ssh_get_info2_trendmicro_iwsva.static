@@ -1,0 +1,167 @@
+#TRUSTED 23de83f8ac495ca59d2f272de2944cb747782061e1b21f71a16e8f90a7dc1fd5d89bded5461794ad30a4d74c0a358d8844583968990ce32e8aea8a18b722c64f9bfd9baf995cdbb6107d8d0599238814fa3be33762579b4003f3867ec2638d3e5506747c51b3c276052a6c2bd4b0630c5d2e398c4c5cb2fa220f99b74ceee45af0a70257009bbcc78c3a27d98f92fd4f788dee2e650b95a2c363e8b4a3ecd3bbf6093127d09ca01f161e6c1c8323964a93e4c4cf334e3ff75480e9c3fbdaca0e37ed45a0a53a8cfd513eccd6a073958eeebe1b76cb38a8e269930086d6c8fa0d1cb279fce524f515226a36eeaaab3706d46f0adf4ab84257c12be0a06b831d779de94a12788384b4fcb379653614e13b245320a3928ea735073e054e6ca3e4ca48a99dab4bfa040e4b4a15e752c479c3b32c91fd28da80ea1d9b96c806a28a0053bcd61367115c1f857358f250754ac02f9c80463f10523dc64b136919b6a96cb36b0e8756d3d979483ba119aee44fbc53981aafe477d9b92f3aab1a476bf2c11e57afd9344d2518cf7889ce1308c74374cca445ba72d004155816825b34efe050368c4220a16d2f92657c3e04ee5110eeae70757f585cf0c03f026d115f3bea17668d24256bf10d9945df1c2882825eef6bd56f129581d7f45d8f2b4df3e7f5a090979a5b499e4f8612c52f37b88c106212f273ede4be2ad4bc1eb35fd5f1d0
+#TRUST-RSA-SHA256 36dc11b73f838f00a486e8999eee8a5324cadafbedb007fa502728791acac7fe217038c6f138336e658fabc45deeaa421a3aaa5426d2c8bd50aae6c2d59afac4101ce955d9a2b2a727c96b44fb663385277e4280e694a82a761e88d1f639ba7aac6b2de2b5a7d203b5e7fb8773ccc42f075100296c09e15fa9ba735299c41a15409ca76f4d358491d0a8661a9060e91709eb9029e908e81d8f97675769a8e162b474172911e2e8036b05ea598f6e634d78b6a889709895ca95c42abb5becf084b36966dc47fe6297b29f868de0fc0163c5c8c41d58e21e8338ba743055169c1aec9261e4b3056fb603585e6a48dd4c93c36eb97fe6839eb4ed3aa40fe8b15eac52339f8f27e1e42a4a03c89f2547979c2c06d2a5ee88aa17412efcf7418c29d11b64a068d7d2cf2bae1a906a465aaae329484aafd23e2513a26e2e81b177972c8d589b243653ed26083dab60007654429556d15eeb40f149cb0c94fb6179caf3069a4ae6d1a2f2a6a1fbb5a301aa82a3d56f1938fde835e165cecd75b607a24b5efe6ec994f26ff2d6943a1b82941803f0a7353a90c2657106bcc7d9ec843b95c6e589c3d738a9dbad134ffb9056ddf51282753605d1b6f8524374e568a47d7a81bdb6e428fafff2347904e64d994e844b684776fc78d862c5aecb3ff50d8ac1dab93dffdf3cc1ab7e8a7d1879f84e4538be936bf5efb4088654dcd12d0a6e25
+#
+# (C) Tenable Network Security, Inc.
+
+# Revision: 1.8
+
+##
+# Callback to see if we can exclude the host as being IWSVA before running
+# any commands against the target.
+#
+##
+function iwsva_pre_check_fail()
+{
+  # we've already checked that the host is not IWSVA previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_iwsva'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['show_system_version_unrecognized']) &&
+     host_info_key_val['show_system_version_unrecognized'] !~ cisco_csp_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not IWSVA if target is one of the following
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "^IWSVA: " in response to 'show system version'
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show system version"
+#
+# @return @Returns TRUE if this is Trend Micro IWSVA
+##
+function handle_iwsva(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name:"Host/TrendMicro/IWSVA/show_system_version", value:cmd_res);
+  report += "Local checks have been enabled for this host.";
+
+  var match = pregmatch(pattern:"IWSVA: (IWSVA [0-9.]+)(?:-(SP\d+))?_[Bb]uild_(?:[Ll]inux_)?[0-9]+($|[^0-9])", string:cmd_res);
+
+  if(!isnull(match) && !isnull(match[1]))
+  {
+    var os_name = match[1];
+    if(!isnull(match[2]))
+      os_name += " " + match[2];
+
+    report += '\nThe remote target is : ' + os_name + '\n';
+
+    replace_kb_item(name:"Host/OS/showver", value:os_name);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/showver/Type", value:"firewall");
+
+    # Uptime.
+    cmd_res = run_command(cmd:"show system uptime", session:session, channel:channel, use_shell_handler:use_shell_handler);
+    if(!isnull(cmd_res))
+      replace_kb_item(name:"Host/last_reboot", value:cmd_res);
+  }
+  else
+  {
+    report += '\nThe remote system appears to based off of the Trend Micro IWSVA, but ' +
+              '\nwe could not determine version or device information.' +
+              '\nOS Security Patch Assessment is not available\n';
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  report += '\nOS Security Patch Assessment is available.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_trendmicro_iwsva.static', value: 98);
+  return NULL;
+}
+
+##
+# Callback for systems without "(^|\n)IWSVA:" in their response to "show system version"
+##
+function handle_not_iwsva(session, use_shell_handler, &channel, cmd_res)
+{
+  if(use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/TrendMicro/IWSVA/show_system_version", value:cmd_res);
+
+    # store details for other OS handlers to use
+    host_info_key_val['show_system_version_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_iwsva'] = TRUE;
+  }
+}
+
+##
+# Handler for IWSVA in root (Linux) shell
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from handle_linux_os: "cat /etc/redhat-release"
+#
+# @return @Returns TRUE if this is Trend Micro IWSVA
+##
+function handle_iwsva_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  var match = pregmatch(pattern:'^IWSVA release ([0-9.]+)', string:cmd_res);
+  if(isnull(match) || isnull(match[1]))
+    return NULL;
+
+  var display = "IWSVA " + match[1];
+
+  cmd_res = run_command(cmd:"/usr/iwss/iwssd -v", session:session, channel:channel, use_shell_handler:use_shell_handler);
+  if(cmd_res && "IWSVA" >< cmd_res)
+  {
+    replace_kb_item(name:"Host/TrendMicro/IWSVA/show_system_version", value:cmd_res);
+    match = pregmatch(pattern:"^(IWSVA [0-9.]+)(?:-(SP\d+))?_[Bb]uild_(?:[Ll]inux_)?[0-9]+($|[^0-9])", string:cmd_res);
+
+    if(!isnull(match) && !isnull(match[1]))
+      display = match[1];
+
+    if(!isnull(match[2]))
+      display += " " + match[2];
+  }
+
+  replace_kb_item(name:"Host/RedHat/release", value:display);
+
+  var res2 = handle_rpm_generic_os(session:session,
+                                   use_shell_handler:use_shell_handler,
+                                   channel:channel,
+                                   cmd_res:display,
+                                   release_file:"/TrendMicro/IWSVA/release",
+                                   display_label:"IWSVA",
+                                   internal_label:"TrendMicro/IWSVA");
+
+  #Fix up release KB if we couldn't get the detailed version
+  if(res2 && isnull(get_kb_item("Host/TrendMicro/IWSVA/show_system_version")))
+    replace_kb_item(name:"Host/TrendMicro/IWSVA/release", value:match[1]);
+
+  return res2;
+
+}

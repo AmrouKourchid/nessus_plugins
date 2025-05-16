@@ -1,0 +1,121 @@
+#TRUSTED 2d8e9218466d660147bedc2066a72d0d23f0ba53a15ed6394e014e3710aee4bd1a0f577e326b8431563d18f1be430b3662816b0ea8746b3bae1fb6ec5038bee63784ec8421e36e34e8fa1c7f9e7484979a37c77ae9f438ff311a1d684e6ea8e5a20f8aaeb6fb667769f49a6edb1ae26833cd6f9f98c675138c1e6402c6c045775c7a5d636be1106de29a26d17dc117565bbd64e36cdbc3b33219bc762790dcd0ea27c8e38b937b3bee46de1ff38381f44e6b981a4fd4fc2e85e014ca3675568546fcbb8bd9fc1d43290994be98801b098137ee7c6d8c15829479742a9a9d08a4d130b69a4d8ecbc5e2dece234c0f00a1913038e9b462f74b4dc75d5246a5cc1caae899ef5a15cd07348ffaa832029f18bdfba3f5e68405fc7ff65cec006bcacbc256b679e0bccaa806036d35f05d2ed38c137115fb00af784a4c1605dabec09fc8800cbed6ae8c070d765efd7d836241d01eadde7140b387c0d8f6ec52f5323aa9ea1ba5420fb5018505d9c70894f9d70464e2abb1d4ec1acfae7660868d2056649e48c55f5687b904bc25c307daedb9794114cdef644fb1f8f97cc41d1e034ea302d587024a5ff2eff2cb09cd33814138dfdcb7ff8fbf93d7a1bfdeb81d2d6ed89cb6fb216006e1d94b4bd73978044dc372f571fb1a9508401223f79528043315a9960e16472ca143aa8ee669592917304dae54737d5d683a691f009a387088
+#TRUST-RSA-SHA256 34fadabbdda92823c2efdd201bf97d840d9d654455cac82bf2f2f47e2477f1396984d5534911b4250bcb495161c518ea267b9f44e7551741eaf0b7bed98597037a818ec91e1d3f3ee5ebb82437eb1e1cbfd9b999ed3ef89b3be836d403570b03b3143fa62f7eb255d4b4c34b6640dff3fd170f9c5ef60fcc27d9d4789776997b2ce04d46510427a1884adcbbbd7ab0a7af1053784fefc2273b96478b268dca4841242912c4cbfc9ce8e4708d3e41ee75c54fd85c997d7dccba18661b31339fffc01822b8ee5ede592ce3bda706a2f492b3d357e9ad4af4e35f449c1873a98b1efef93c1b58cb4ab4d9c4d84e08f4797b3a144764f21b6a0888dc2ee55c9c806645ba8b748c6951405b45c127338b61c6db0fee8cdf2d4e3e04229a201547f2831b40646697f43daa4caeafd4db851e521ef0ff8540171e361187d09b0281dfeb123bf85e7c1a21425b533bde6cc1b3deeb62eff8f296da160208008ada2f7df8fa331fc00626e554c77af6bec89c6c3abca8ae1c064b71846e94965a699a071dfeb410be3466a37ddbf34bf6f33ba91171e42cce2679980824011ac75cdcb3fb101c7d56eca3764c63c2119ea9b884351e09f1647415dcb084760d72e4b292276a763391084aa8aa4b21d0aedd0847aeba15c5569bd9d4bb8bec75a1fbf585538870a3080f7ba915d01bfa8e73c5cfb3132ea1b3d501852f7267d981a64be690
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.15
+
+
+##
+# Provide a way for other handlers to tell that the target is ExtremeXOS
+##
+function is_exos()
+{
+  if("ExtremeXOS" >< host_info_key_val['post_login_buffer'])
+  {
+    dbg::detailed_log(lvl:1, src:'is_exos()', msg:'Post login buffer contains "ExtremeXOS".');
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# exos_pre_check_fail
+# check if this is a exos device based on information collected
+#
+function exos_pre_check_fail()
+{
+  # have we already checked that the host is not exos?
+  if(host_info_key_val['host_not_exos'])
+    return TRUE;
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ exos_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not EXOS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "exos..." in show version
+#
+function handle_exos(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var exos_version_pattern;
+
+  #Local checks just means we can run commands on the target host.
+  report += '\nLocal checks have been enabled for this host.';
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+  exos_version_pattern = pregmatch(pattern:"\S*\: ExtremeXOS version ([0-9.]+)", string:cmd_res, icase:TRUE);
+
+  var os = "ExtremeXOS";
+
+  report += '\nThe output of "show version" is :\n' + pgrep(pattern:"version", string:cmd_res , icase:TRUE);
+
+  if (!isnull(exos_version_pattern) && !isnull(exos_version_pattern[1]))
+  {
+    release = exos_version_pattern[1];
+    os += " " + release;
+    report += '\nThe remote system is :\n' + os + '\n\n';
+    set_kb_item(name:"Host/EXOS/release", value: release);
+  }
+
+  replace_kb_item(name:"Host/EXOS", value:TRUE);
+  replace_kb_item(name:"Host/OS", value: os);
+
+  replace_kb_item(name:"Host/OS/showver", value:os);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"embedded");
+
+  var err_msg = 'OS Security Patch Assessment is not supported for ' + os + '.\n';
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  failure_kb_msg = "OS Security Patch Assessment is not supported for ExtremeXOS.";
+  failure_kb_type = lcx::ISSUES_INFO;
+  report += err_msg;
+  return TRUE;
+
+}
+
+#
+# callback for systems without "exos..." in show version
+#
+function handle_not_exos(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_exos'] = TRUE;
+  }
+}

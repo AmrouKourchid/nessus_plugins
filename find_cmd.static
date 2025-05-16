@@ -1,0 +1,519 @@
+#TRUSTED 3acc63c84aaec1cc23e7cb57318f6425609109262cdcb0603fa31fb622a2537dab02512c7994c0ca1f7eab002fafa829f40b766e85d6d814f6764fd3098bfa8274035701a2b88c582b4b3c355fe0442a53b3c54aa9e9b2620fed3843bdefbc840cca7450ccbf87fc433cc8e9194deea74429689f12ffcaf06c2f8e6a853bfab90ca7c58b42948f7a6364981266d68dfde7ca377ba035f6dbfb83abb844771fdc5ddcf4c12df49aac5dff0f5af639dabf6f5de7e42c4a155e22590989563d8d96447144902b27b4795910ed80289f17879a95c4da39c613980c65695a603b5359f23d6772caab15298c0ce2e0e990f90b96104bebd8141063aa614c0c16da0f4a254a63289a9131a708cb9b443504bef540b147368f97de9d3fdbc97c904957f18e86e2b7405b604352845c16191da4385be43af5b4191342e7a6ceb07f626ae4ea7de20112137277e5377fc2a5c00384a8599bd832ff40e051d7b4532d79f9b44676974133898c15e5bd0cbfc4d77e1a07e8af6cc80e24c77e7f60cade39e72c6159389fe2bb6c7f9482c3a37e959aae18bc16375047082cfedf1b43cb34971ce70e4ad890c20634dec2801e757be6f78ff0d8649073ab26e4249663969548b60657a5ff283913009885bee39826ad1394b1bda6b545caa94f9a65f3d4026c875d1dff568641a599dfedae402b6a577bfb4d825cf9596eeb8eb2522b4c9efd81
+#TRUST-RSA-SHA256 920c19c4fc3677af600f512ff6f769d3932c97d5ebade38aea43df43f5c584432df7a7c9f34e606100d5254175411bf1b3d67c6425b7ccb382539de48fe9a3bef208a1dd190593edf5147bd0ac49fed67a365da69256c94a6480f4baa63cf4f416c5a17e3adb291e128877510a72080965526bbc45524921f966eecb285aa25d3cbeb2f88f398c3e4523f781911593a7cf692ff1a39872f08438c04ab781d8a5af509842f5670cb94aa85912c536d97a1f2b592449dda61fc5c94182b89263ed64a5582aefd13b1ebf0bc965c2468915820178ea97c4d52ebc00b0846bc14c22169130fae4fe9853fab89bf1af1c1caa95e46cb8aa1aa172a7a5b6713d4680ca01edea204bb4c6060b2055a5a01e737f9e2a3e84ec5b0fb1ead95ac540f3b02ddef97b4cb5177ba70c82d6226c91a2120874514a6d13ce2abcb776c33b7c0da4bbe6f57e7a65b8182b94ebe0d3e9348a79613e45a56ae49c31b56844390039bba3d47803f7b75e660366d0eb524b8ab54cedddf4ada3e594a10ddcb36f42292dc0cebd7038fd24c06ebf19fe7a059e3b819f8b04b9eed2b3672d45a14bf5515984b711d7eff16e64fca1c98ece556d20b199d7a9b8256706f3d854954f41ebc9a1eea0c8c6524c43fc3bb566a909dc7bfae171168d79812570de0a3cf5fbca8ae88b3b2bb55a2eeb60843dcf7cf9d4983fe98aeb05749178bb0682ad9fbd425e
+#------------------------------------------------------------------------------
+###
+# Contains the function to run the ``find`` command on nix systems, that can be called by plugins.
+#
+# @license
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.19
+#
+# @library find_cmd.inc
+###
+
+global_var FIND_OK, FIND_FAIL, timedout;
+
+FIND_OK = 1;
+FIND_FAIL = 2;
+
+timedout = FALSE;
+
+##
+# Runs find cmd on *nix systems.
+#
+# @param [path_patterns:list]           List of path / filename pattern(s) we are looking for.
+# @param [exclude_paths:list]           List of paths to exclude if -path option is available.
+# @param [inclusions_paths:list]        List of paths to inclusions.
+# @param [disable_inclusions:boolean]   Bool to disable the inclusions_paths and UI inclusions.
+# @param [start:string]                 Path to start searching from.
+# @param [maxdepth:integer]             Max depth to traverse when searching (optional).
+# @param [mindepth:integer]             Min depth any tests or actions are applied (optional).
+# @param [xdev:boolean]                 Only traverse paths on the same mount point (optional, defaults to FALSE).
+# @param [follow:boolean]               Follow symbolic links (optional, defaults to TRUE).
+# @param [group:string]                 Name of the group to which the files must belong (optional).
+# @param [gid:integer|string]           Group ID of the group to which the files must belong (optional).
+# @param [user:string]                  Name of the user to which the files must belong (optional).
+# @param [uid:integer|string]           User ID of the user to which the files must belong (optional).
+# @param [ctime:integer|string]         File's status was last changed less than, more than or exactly ``ctime*24`` hours ago (optional).
+# @param [mtime:integer|string]         File's data was last modified less than, more than or exactly ``mtime*24`` hours ago (optional).
+# @param [context:string]               Security context pattern the file must match (optional, only available on SELinux kernels).
+# @param [exec:list]                    List of commands from the exec accept-list (optional).
+# @param [timeout:integer]              Timeout parameter for command (optional, defaults to 240 seconds).
+# @param [use_user_timeout:boolean]     Boolean to use the user-supplied timeout from the preferences instead of the
+#                                       value in ``timeout`` (optional, defaults to FALSE).
+# @param [excludable_fstypes_list:list] List of fstypes allowed to be excluded by find command.
+# @param [exit_on_fail:boolean]         If TRUE exit with error message on failure (optional, defaults to FALSE).
+# @param [sanitize_result:boolean]      Determine if the output of the command should be validated for injection before returning (optional, defaults to FALSE).
+#
+# @remark
+# When ``sanitize_result`` is set to TRUE, the output will have to pass through `command_builder::validate_no_injection_denylist()`_.
+# If FALSE, care must be taken to ensure that the return value is not used
+# as part of a new command, otherwise injection could occur.
+#
+# @return [list] The list containing the success status of the function and the output of the command or error message.
+#
+# @remark
+# The returned list is such that:
+#
+# - Index 0: The success status either ``FIND_FAIL`` or ``FIND_OK``.
+# - Index 1: The command's output if successful, or the error message if an error occurred.
+#
+# And if the command timedout, the status is ``FIND_OK`` and the global variable ``timedout`` set to TRUE.
+#
+# @remark
+# This function looks for user supplied path and fstype exclusions and includes
+# them as part of the final command.
+#
+# It also looks for a user-supplied timeout value if ``use_user_timeout`` is given as true.
+# If that's the case and a user-supplied value is found, it will override any value given in ``timeout``
+# or the default value of 240 seconds. Specifically it will override the value even if the
+# user-supplied timeout is smaller than the value in ``timeout`` or the default value.
+#
+# @remark
+# The arguments ``gid``, ``uid``, ``ctime`` and ``mtime`` accept string values in the format ``+/-int``.
+# See the find man-page for more information.
+#
+# On AIX, ``gid`` and ``uid`` are not available, but ``group`` and ``user`` are and behave the same way.
+# In this case this function will automatically use ``group`` and ``user`` instead of ``gid`` and ``uid``.
+#
+# On AIX, the ``-exec`` predicate does not work like on other distros, as such when this function
+# detects ``ls -l`` in an exec entry, it will replace it with ``-ls -long`` which serves the same-ish goal.
+##
+function find_cmd(path_patterns, exclude_paths, inclusions_paths, disable_inclusions, start, maxdepth, mindepth, xdev, follow,
+  group, gid, user, uid, ctime, mtime, context, exec, timeout, use_user_timeout, excludable_fstypes_list, exit_on_fail, sanitize_result)
+{
+  var cmd, buf, array, err, find_cmd_str, find_cmd_list, i, i_max, path, extra_args;
+  var depth_param = [];
+  var exec_param = [];
+  var egrep_str = "";
+  var path_opt = [];
+  var follow_param = [];
+  var xdev_param = [];
+
+  var is_aix_os = get_kb_item("Host/AIX/version");
+  
+  timedout = FALSE;
+
+  if (isnull(timeout))
+    timeout = 240;
+  if (isnull(use_user_timeout))
+    use_user_timeout = FALSE;
+  if (isnull(xdev))
+    xdev = FALSE;
+  if (isnull(follow))
+    follow = TRUE;
+  if (isnull(exit_on_fail))
+    exit_on_fail = FALSE;
+
+  # Off by default due to legacy usage, this should be set to TRUE where possible in the future
+  if (empty_or_null(sanitize_result))
+    sanitize_result = FALSE;
+
+  if(isnull(path_patterns))
+  {
+    err = "find_cmd() : Missing path_patterns argument.";
+    if(exit_on_fail)
+    {
+      ssh_close_connection();
+      dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+    }
+    return [FIND_FAIL, err];
+  }
+
+  if(isnull(start))
+  {
+    err = "find_cmd() : Missing start argument.";
+    if(exit_on_fail)
+    {
+      ssh_close_connection();
+      dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+    }
+    return [FIND_FAIL, err];
+  }
+  
+  start = str_replace(find:' /', replace:'\n/', string:start);
+  start = split(start, sep:'\n', keep:false);
+
+  var init_result = sh_commands_find::init_find(cache_only:TRUE);
+
+  if (init_result[0] == sh_commands::CMD_FAIL)
+  {
+    return [FIND_FAIL, init_result[1]];
+  }
+
+  if(use_user_timeout && sh_commands_find::has_user_timeout)
+  {
+    timeout = sh_commands_find::user_timeout;
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Running command with the ' + timeout + '-second user-supplied timeout.');
+  }
+
+  # Still validate values here to cover egrep fallback
+  for (i=0; i<max_index(path_patterns); i++)
+  {
+    path = path_patterns[i];
+    if(!command_builder::validate_no_injection(path))
+    {
+      err = "find_cmd() : Supplied path string contains disallowed characters.";
+      if(exit_on_fail)
+      {
+        ssh_close_connection();
+        dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+      }
+      return [FIND_FAIL, err];
+    }
+
+    # prepare path for egrep
+    if (is_aix_os)
+    {
+      path = pregmatch(string:path, pattern:"^\*\/(.+)$");
+      if (!empty_or_null(path) && !empty_or_null(path[1]))
+      {
+        path_patterns[i] = path[1];
+      }
+    }
+    else if (!sh_commands_find::find_builder.named_argument_exists_on_host("-path"))
+    {
+      path = str_replace(find:"\", replace:"\\", string:path);
+      path = str_replace(find:".", replace:"\.", string:path);
+      path = str_replace(find:"[", replace:"\[", string:path);
+      path = str_replace(find:"*", replace:".*", string:path);
+      path = '^' + path;
+
+      path_patterns[i] = path;
+    }
+  }
+
+  if (!isnull(mindepth) && !sh_commands_find::find_builder.named_argument_exists_on_host("-mindepth") && !thorough_tests)
+  {
+    err = "find_cmd() : The mindepth option was used, but isn't supported. Enable thorough test to override and run without.";
+    if(exit_on_fail)
+    {
+      ssh_close_connection();
+      dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+    }
+    return [FIND_FAIL, err];
+  }
+
+  if (!isnull(maxdepth) && !sh_commands_find::find_builder.named_argument_exists_on_host("-maxdepth") && !thorough_tests)
+  {
+    err = "find_cmd() : The maxdepth option was used, but isn't supported. Enable thorough test to override and run without.";
+    if(exit_on_fail)
+    {
+      ssh_close_connection();
+      dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+    }
+    return [FIND_FAIL, err];
+  }
+
+  if(!empty_or_null(mindepth) && sh_commands_find::find_builder.named_argument_exists_on_host("-mindepth"))
+  {
+    append_element(var:depth_param, value:'-mindepth');
+    append_element(var:depth_param, value:mindepth);
+  }
+    
+  if(!empty_or_null(maxdepth) && sh_commands_find::find_builder.named_argument_exists_on_host("-maxdepth"))
+  {
+    append_element(var:depth_param, value:'-maxdepth');
+    append_element(var:depth_param, value:maxdepth);
+  }
+
+  if (follow)
+    follow_param = ["-follow"];
+
+  if (xdev)
+    xdev_param = ["-xdev"];
+
+  if(!isnull(exec))
+  {
+    # -path must be supported to use -exec because of egrep fallback
+    if (!sh_commands_find::find_builder.named_argument_exists_on_host("-path"))
+    {
+      err = "find_cmd() : Can't use -exec because find doesn't support -path on the host.";
+      if(exit_on_fail)
+      {
+        ssh_close_connection();
+        dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+      }
+      return [FIND_FAIL, err];
+    }
+
+    for(i = 0, i_max = max_index(exec); i < i_max; ++i)
+    {
+      append_element(var:exec_param, value:'-exec');
+      append_element(var:exec_param, value:exec[i]);
+    }
+  }
+
+  if (is_aix_os)
+  {
+    for (i = 0, i_max = max_index(path_patterns); i < i_max; i++)
+    {
+      path = path_patterns[i];
+      egrep_str = egrep_str + " -o -name " + path + " -print";
+    }
+
+    dbg::detailed_log(
+      lvl:3,
+      src:FUNCTION_NAME,
+      msg:'egrep_str for AIX',
+      msg_details:{
+        "egrep_str":{"lvl":3, "value":egrep_str}
+      }
+    );
+  }
+  else if(sh_commands_find::find_builder.named_argument_exists_on_host("-path"))
+  {
+    # Example: -a \( -path '*/e*' -o -path '*/m*' \)
+    for (i = 0, i_max = max_index(path_patterns); i < i_max; ++i)
+    {
+      if (i > 0)
+        append_element(var:path_opt, value:'-o');
+
+      append_element(var:path_opt, value:'-path');
+      append_element(var:path_opt, value:path_patterns[i]);
+    }
+
+    # Making -a \( path_opt \)
+    insert_element(idx:0, value:'-a', var:path_opt);
+    insert_element(idx:1, value:'\\(', var:path_opt);
+    append_element(var:path_opt, value:'\\)');
+  }
+  else
+  {
+    egrep_str = " | egrep '" + join(path_patterns, sep:'|') + "'";
+  }
+
+  if (is_aix_os)
+  {
+    if (!empty_or_null(gid))
+    {
+      if (empty_or_null(group))
+      {
+        dbg::detailed_log(src:FUNCTION_NAME, lvl:2, msg:"-gid not supported on AIX, using -group instead.");
+        group = gid;
+      }
+      else
+      {
+        dbg::detailed_log(src:FUNCTION_NAME, lvl:2, msg:"Both -group and -gid were provided but -gid is not supported on AIX, keeping -group only.");
+      }
+    }
+
+    if (!empty_or_null(uid))
+    {
+      if (empty_or_null(user))
+      {
+        dbg::detailed_log(src:FUNCTION_NAME, lvl:2, msg:"-uid not supported on AIX, using -user instead.");
+        user = uid;
+      }
+      else
+      {
+        dbg::detailed_log(src:FUNCTION_NAME, lvl:2, msg:"Both -user and -uid were provided but -uid is not supported on AIX, keeping -user only.");
+      }
+    }
+
+    # AIX is weird, it needs to have exec and all extra predicates repeated for each path patterns we are looking for.
+    extra_args = {
+      '-group' : group,
+      '-user' : user,
+      '-ctime' : ctime,
+      '-mtime' : mtime
+    };
+    extra_args = sh_commands_find::assemble_args_values(extra_args);
+
+    # Removing print if exec is used because otherwise AIX prints both the exec output AND the file path
+    if (!empty_or_null(exec_param))
+    {
+      for (i = 0, i_max = max_index(exec_param); i < i_max; i++)
+        append_element(var:extra_args, value:exec_param[i]);
+    }
+    else
+    {
+      append_element(var:extra_args, value:'-print');
+    }
+
+    extra_args = sh_commands_find::find_builder.generate_command(args:extra_args, named_only:TRUE);
+    if (!extra_args[0])
+    {
+      err = 'find_cmd() : ' + extra_args[1];
+      if(exit_on_fail)
+      {
+        ssh_close_connection();
+        dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+      }
+      return [FIND_FAIL, err];
+    }
+    extra_args = extra_args[1];
+    egrep_str = str_replace(string:egrep_str, find:' -print', replace:' ' + extra_args);
+
+    find_cmd_list = make_list(start, '-xautofs', '-tenb_fstype_exclusions', '-tenb_path_exclusions');
+
+    find_cmd_str = sh_commands::find(
+      args              : find_cmd_list,
+      fstype_exclusions : excludable_fstypes_list,
+      exclude_paths     : exclude_paths,
+      run               : FALSE
+    );
+
+    if (!find_cmd_str[0])
+    {
+      err = 'find_cmd() : ' + find_cmd_str[1];
+      if(exit_on_fail)
+      {
+        ssh_close_connection();
+        dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+      }
+      return[FIND_FAIL, err];
+    }
+
+    var fs_prune, fs_split, fs_item;
+    fs_split = split(find_cmd_str[1], sep:"(", keep:TRUE);
+    foreach fs_item (fs_split)
+    {
+      # ensure that fstype value is also pruned
+      var fs_str = pregmatch(string: fs_item, pattern:"-fstype ([^\s]+) -prune");
+      if (!empty_or_null(fs_str) && !empty_or_null(fs_str[1]))
+        fs_prune = fs_prune + " -o -name " + fs_str[1] + " -prune";
+    }
+    dbg::detailed_log(
+      lvl:3,
+      src:FUNCTION_NAME,
+      msg:'fs_prune for AIX',
+      msg_details:{
+        "fs_prune":{"lvl":3, "value":fs_prune}
+      }
+    );
+
+    find_cmd_str[1] = find_cmd_str[1] + fs_prune;
+
+    ##
+    #  AIX doesn't allow for parenthesis in the find cmd
+    #
+    #  The first occurrence of ' ! \(' should just be pruned.
+    #  Remaining occurrences should be handled slightly differently.
+    ##
+    find_cmd_str[1] = find_cmd_str[1] - ' ! \\(';
+    find_cmd_str[1] = str_replace(string:find_cmd_str[1], find:"!", replace:'');
+    find_cmd_str[1] = str_replace(string:find_cmd_str[1], find:"\(", replace:"-o");
+    find_cmd_str[1] = str_replace(string:find_cmd_str[1], find:"\)", replace:'');
+  }
+  else
+  {
+    extra_args = {
+      '-group' : group,
+      '-user' : user,
+      '-gid' : gid,
+      '-uid' : uid,
+      '-ctime' : ctime,
+      '-mtime' : mtime,
+      '-context' : context
+    };
+    extra_args = sh_commands_find::assemble_args_values(extra_args);
+
+    # Everything other than AIX
+    find_cmd_list = make_list(
+      start,
+      depth_param,
+      xdev_param,
+      '-xautofs',
+      follow_param,
+      '\\(', '-tenb_fstype_exclusions', '-tenb_path_exclusions', path_opt, '\\)',
+      extra_args,
+      exec_param
+    );
+
+    find_cmd_str = sh_commands::find(
+      args               : find_cmd_list,
+      fstype_exclusions  : excludable_fstypes_list,
+      exclude_paths      : exclude_paths,
+      inclusions_paths   : inclusions_paths,
+      disable_inclusions : disable_inclusions,
+      run                : FALSE
+    );
+  }
+
+  if (!find_cmd_str[0])
+  {
+    err = 'find_cmd() : ' + find_cmd_str[1];
+    if(exit_on_fail)
+    {
+      ssh_close_connection();
+      dbg::detailed_log_and_exit(exit_level:0, exit_msg:err);
+    }
+    return [FIND_FAIL, err];
+  }
+
+  find_cmd_str = find_cmd_str[1];
+  find_cmd_str += egrep_str;
+
+  buf = sh_commands_find::find_builder.run(cmd:find_cmd_str, timeout:timeout);
+
+  if (buf[0] == sh_commands::CMD_FAIL)
+  {
+    dbg::detailed_log(
+      lvl:1,
+      src:FUNCTION_NAME,
+      msg:'The command builder ran into the following error.',
+      msg_details:{
+        "Given command":{"lvl":1, "value":find_cmd_str},
+        "Error":{"lvl":1, "value":buf[1]}});
+    return [FIND_FAIL, buf[1]];
+  }
+
+  dbg::detailed_log(
+    lvl:3,
+    src:FUNCTION_NAME,
+    msg:'The command builder ran the following command and returned the following output.',
+    msg_details:{
+      "Command":{"lvl":3, "value":find_cmd_str},
+      "Output":{"lvl":3, "value":buf[1]}});
+
+  var sanitized_results = [];
+  if (sanitize_result)
+  {
+    var res = split(buf[1], keep:FALSE);
+    var r;
+    foreach r (res)
+    {
+      if(!command_builder::validate_no_injection_denylist(r))
+      {
+        err = 'Returned path string contains disallowed characters.';
+        # Potential double logging, but that's just the risk you run with exit_on_fail
+        dbg::detailed_log(
+          lvl:1,
+          src:FUNCTION_NAME,
+          msg:err,
+          msg_details:{'Path':{'lvl':1, 'value':r}});
+        if(exit_on_fail)
+        {
+          ssh_close_connection();
+          dbg::detailed_log_and_exit(src:FUNCTION_NAME, exit_level:0, exit_msg:err);
+        }
+
+        # if not exit on fail, skip this path and don't return it
+        continue;
+      }
+      append_element(var:sanitized_results, value:r);
+    }
+
+    buf[1] = join(sanitized_results, sep:'\n');
+    dbg::detailed_log(
+      lvl:3,
+      src:FUNCTION_NAME,
+      msg:'Returning sanitized results',
+      msg_details:{'Results':{'lvl':3, 'value':buf[1]}});
+  }
+
+  if (buf[0] == sh_commands::CMD_TIMEOUT)
+  {
+    timedout = TRUE;
+  }
+
+  return [FIND_OK, buf[1]];
+}

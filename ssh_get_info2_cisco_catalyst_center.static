@@ -1,0 +1,57 @@
+#TRUSTED 664b9f42986f100203827e551e9fdd06708e17317642bd619b5aeb0857c7aab17c87fe4806cd996adb6c2073e36b4b7caf789df3c31856a8936213d9b406f0e5c43bdd8056d0c2821e06b568794161dc0a38dd248f5cca4be8b44534a63aed2bc9fc157828d7e16e064442436ca98c152ef5eba46b556adac8b610a029b60948147717e2dae5f6f14becf2e757080ded6076cd2b0448d685526a4bdc1b986a83d126bfb9278f75ffd7fd36d1a900f3b48ffb02e6db8dd9f97309c74acb0ea972ad1729ad1e7b7e5d1f66abe14f535907c410522d5161615027610b2cd0507f64b21d86c8519760fad5facf867f1347928e8e1d6bd8019db5242bfa72158d2df4a567e2429293efbc3f9e852d67a516118716e8ca2448834b24da5016ac990cc0c3c8bc0d6532ffcca74623c13e57c51225caddbb71389b7c715ee65294604c9d028e9939fbb7e903365d7854ee26d56a668247829523eeefb83aa0455c92ae2e452eb42a61dfd343fb9e5fa9a9b71da3b35819615a3d93658e19e6708b18b5affdbc8527eca565223afa928c8ee20a21075bdb5e3c5c007cd4a59245a5d2b05172b5430ff348c9fd3f212e1c38eb5c321b08aed64127ad926d3ebc557ac4718d9d96e3702643124e20fe754bd5a5ac711e30922aa845eef6c1249f53e69d5dc143074a0c283611316020d0823799a38273a3a456f1e05f5a50664065b843f096
+#TRUST-RSA-SHA256 07ecf0543a21c00efe6d654e9f220c6f64dc814fe8a6ff3f0780f18742985331b47ea85539b8f4311fedfff0b21bb386e95b7acbadf00d0509f046487174ea885d269192b1b3ca863ace2afde479c66773bc7078bab806edeab37f5fe78c3e913e620f2b4a334c4ccc90f48aebfc06286018387c85177f4fb851bff010805ba327b196c493c40ad6476538352852fdf7e2a6a2ed99a9ff2a2d1e1903282c3d299885f44f06592b7e7f905cfe2e9301c6a77455f4133c654a5d878124083bf42dd04bc2b358badf0927700843f025a072c7b311e1eac2cc4a7f8e8aa3dc7ce9b77449b1f0b08723832c2886da7e1fef1ece45fd2f2cfbc506982fc3c46595c89cbcbf6982d76123f88416a412ce32ac525cf568220e67943c441bf99d6aedd624245e7069a24826d5563f961a62d08c103d304b89ea1931a2d73f7ed02ba8d1879eee6fde10a1fbfdd2982c5cfe6409c00cb8c8cc8e05ed7fe9b29c7c4a5d8174a7228bea14246aadf19ebbff9065583b5c20c4ee0abba0a6453026de32559404dde7b63f8b860e61a938dc3edf2efde18b706c1fdd4d14bb87a6319ab62a4617eb6bfeaa0ff39ab2d119e060f374978fef6510155ab019a8fec92106ce9d0114b993dddac9b58326c929e2b4fe52413e2dc80b9aa6e8369ed4c5cf9630027e934b560aa1c39d46e6764a90a15b07f8fb93567f9bbe0c52fbd9b4ccd2cf8de90c
+
+# (C) Tenable Network Security, Inc.
+# Revision: 1.2
+
+##
+# callback for systems with "displayVersion:" in response to 'cat /mnt/install-artifacts/apps-deploy/install-release.yaml | grep displayVersion'
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "sg-status"
+#
+# @return @Returns TRUE if this is Cisco Catalyst Center
+##
+function handle_cisco_catalyst_center(session, use_shell_handler, &channel, cmd_res)
+{
+  var os_name = preg_replace(string:cmd_res, pattern:"^\s*displayVersion:\s*([A-Za-z0-9\.\-]+)\s*$", replace:"\1");
+
+  # preg_replace will return original string if match fails
+  # verify that colon characater was amoung those found and replaced
+  if(!empty_or_null(os_name) && ":" >!< os_name)
+  {
+    var cisco_product = 'Cisco Catalyst Center';
+    replace_kb_item(name:"Host/" + cisco_product + "/displayVersion", value:os_name);
+
+    # Expected format 'Cisco Catalyst Center 2.3.7.7-75051' (as an example)
+    os_name = cisco_product + ' ' + os_name;
+
+    report += '\nThe remote target is : ' + os_name + '\n';
+
+    replace_kb_item(name:"Host/OS/displayVersion", value:os_name);
+    replace_kb_item(name:"Host/OS/displayVersion/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/displayVersion/Type", value:"embedded");
+
+    ##
+    #  Additional metadata is available, but there is no single
+    #   'show config' command for this Cisco Device (it instead has a multi-faceted cloud config)
+    ##
+  }
+  else
+  {
+    var failure_kb_msg = '\nThe remote system appears to be Cisco Catalyst Center, but ' +
+                     '\nwe could not determine the version or device information.' +
+                     '\nOS Security Patch Assessment is not available\n';
+    failure_kb_type = lcx::ISSUES_ERROR;
+    report += failure_kb_msg;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  report += '\nOS Security Patch Assessment is available.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_catalyst_center.static', value: 47);
+  return TRUE;
+}

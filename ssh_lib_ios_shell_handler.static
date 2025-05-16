@@ -1,0 +1,1010 @@
+#TRUSTED 581de1e83f46c05cc82f69727a2de8a1cc80f5f39e9df768dbe2f4e1d1020c6a1ac67e92dac0630474a1f6177d7e2920318c7ba5416fbd129518e4b5edb4c3f7523b23d96975ff987c57bf22ba0e3ccf0a7b6c268f549122be668cb2ff7084a90c984c04dbc96ca564df649f31a6d2295f460c5940505edf90cfcb0718d0756379726bc2cadbb82725dee0b7ea457d784f9befb57dd9d48b7c2189888521947a41ccfc689911524d7c963796576d87f5044e99d7dd63bfd0f6b5909a8834f56e7f34c09c0bf41af1e323e7da20036906d3556d6390741cf896dd11b283c7b81cd1b628b76744f67c21d4d400972c71ccc8c7d863a6948e7a584324dd9854682958df807aefebfdf7b283c95db7f1034d6eb31ad0fd4d4943b75f8b2ea5816eff04a5a097c62ebb8975d3add59fa35ac3042f54fed534e496e1ed1dded8d49ff3edc1479e9cdbb96c5e6ba4f592ffbd2ed9c410611b1107b8229aef0461262616b8fe5c1ab5170f44ddb1394095af3fdc9038d5593b82c0442d8abe823682a3f68eb5a2e36e281cecf2e4e33ed27b78648c5392ad7ca79b2e91d20d756cbb2e7543fb001d962afea8cc7eb81f6f72a65183c13b59f8cb35dc70e478746db7275df11738e33efd868e3479f7099410f7410a6911ca952bfc6e8f1be36d4c672c72ab957fff90c726609944ec3c795ca658453118153c51f48e1d386bb859a2c4ff
+#TRUST-RSA-SHA256 ab3503f2494d4120ded896afccfb29893b3a75e8fb5dfce22099260b03fc229061ad732daf77c2f7e65e386eb105d87c7c987b182e01d7e97fa9eb9bd1bbe6f43e2828c1a78de6c30804fa45c0d819d317000e895e7e3df65a50a536853d4b57b5d26c88062932dd4090264785b72d07a9ddb1bb63ded571a1da1d183d25143e609abea68e561700bb034db4542cdb83f77502b8bd423de8f6926effe3abd7f1b5092c0ff7c95cb7606f3ad88dd9adf280e252080cd0fa128ef6f8bee7d891e099c2045cc88b389c135348cc5c96811d61683a72c5e89beed96ab512cee29bbe281d3589935e561843b677b4e14c17b5101ebd08fa85735d49354b470376ea9b66af52518ebec541460e508126493a0718c03eac50c0bc644332add7b06689f1dafd0c3e0b9912243d65f25070f33e6a829bf76155d45d6bc85ace29bcee2363e5395f552cbd5b5ca5b5c5e59d6077d3273df8913ce08b537c2409ca6f7c5ba0dc06a1d16c793374e9a4573e2fdb6bcc678e2ff005f5ea95a5e5fa341f2c931eea91b7c7135efe0035e3486b9b7fceddce9d8ee32e0639a46604b3a17ceebaed77ccde12752671d8f8be729e2d3b65e68260bac20fd65592a4c9af90c744872fb37517bfd230738eb5bcd73e8808969ffbc654a4dec2479e0d0308c63594ade332de8645c43370de43e0cb84c8ebc5a2b7796d7dfcf117072ab26b6d891b9662
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.27
+
+namespace sshlib
+{
+
+  # all timeouts are controlled by a timer with 1s resolution
+  # for that reason keep the shell timeout sufficiently beyond
+  # the timer resolution (10s = 10x resolution)
+  global_var _IOS_DEFAULT_CMD_TIMEOUT = 60;
+  global_var _IOS_DEFAULT_INACTIVITY_TIMEOUT = 45;
+  global_var _IOS_INITIAL_INACTIVITY_TIMEOUT = 2;
+
+  # a space is included in shell prompt
+  global_var _IOS_DEFAULT_PROMPT = "> ";
+  global_var _IOS_DEFAULT_ENABLED_PROMPT = "# ";
+
+  # cmd_states
+  # _IOS_CMD_STATE_SEND_REQ: ready to send a command to device
+  # _IOS_CMD_STATE_RECV_RSP: ready to recv a response from device
+  # _IOS_CMD_STATE_AT_PROMPT: found command prompt in response
+  global_var _IOS_CMD_STATE_SEND_REQ = 0;
+  global_var _IOS_CMD_STATE_RECV_RSP = 1;
+  global_var _IOS_CMD_STATE_AT_PROMPT = 2;
+  global_var _IOS_CMD_STATE_SEND_ESCL_REQ = 3;
+  global_var _IOS_CMD_STATE_RECV_ESCL_RSP = 4;
+  global_var _IOS_CMD_STATE_GET_PROMPT = 5;
+
+  _BANNER_PAGINATION_SPACES = FALSE;
+
+  global_var _IOS_DEFAULT_ENABLE_PROMPT = "Password:";
+
+  function scrub_ios_escapes(str)
+  {
+    if ('\x1b' >!< str)
+      return str;
+
+    # We need to remove NULL bytes because string-handling functions don't like them
+    # the command prompt should never contain NULL bytes, we should be safe
+    if ('\0' >< str)
+    {
+      str = str_replace(find:'\0', replace: '', string: str);
+      dbg::detailed_log(lvl:3, src: FUNCTION_NAME, msg:"Data after removing NULL bytes",
+          msg_details:{"Data":{"lvl":3, "value":str}});
+    }
+
+    str = preg_replace(pattern:'\x1b\\[[A-J]', replace:'', string:str);
+    str = preg_replace(pattern:'\x1b\x0d', replace:'', string:str);
+    str = preg_replace(pattern:'\x0f', replace:'', string:str);
+
+    return str;
+  }
+
+  function ios_shell_handler_enable_cb(session, channel)
+  {
+    var fn = 'ios_shell_handler_enable_cb';
+    var obj_ch_id = 'ios_shell_handler [channel '+channel.local_channel+']: ';
+    # does a channel exist?
+    if ( isnull(channel) ) return TRUE;
+    if(channel.state == CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+        "Channel is closed.");
+      return TRUE;
+    }
+    # does channel have a valid data buffer?
+    if ( isnull(channel.data_buf) )  return TRUE;
+    if ( isnull(channel.shell_handler ) )  return TRUE;
+
+    var sh = channel.shell_handler;
+    var cmd_state = sh.cmd_state;
+    var cmd_last = sh.cmd_last;
+    var lines = split(channel.data_buf, sep:'\n', keep:FALSE);
+    var last_line = lines[max_index(lines)-1];
+
+    var enabled_prompt;
+
+    if(sh.cmd_prompt)
+    {
+      enabled_prompt = str_replace(
+                           string  : sh.cmd_prompt,
+                           find    : '>',
+                           replace : '#');
+    }
+    else
+    {
+      dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+        "sh.cmd_prompt is not set. Using default enabled prompt.");
+      enabled_prompt = _IOS_DEFAULT_ENABLED_PROMPT;
+    }
+    var cmd_enable_prompt = sh.cmd_enable_prompt;
+    var cmd_enable_prompt_length = strlen(cmd_enable_prompt);
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "_IOS_STATE : " + sh.cmd_state);
+
+    if ( cmd_state == _IOS_CMD_STATE_SEND_ESCL_REQ)
+    {
+      if(tolower(cmd_enable_prompt) >< tolower(channel.data_buf))
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+              "Setting _IOS_STATE : " + _IOS_CMD_STATE_RECV_ESCL_RSP);
+        sh.set_cmd_state( new_cmd_state:_IOS_CMD_STATE_RECV_ESCL_RSP );
+      }
+      # When IOS is configured to be enabled by default enable returns
+      # you to the prompt.
+      #else if(strip(last_line) == strip(enabled_prompt))
+      else if(last_line == enabled_prompt)
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+              "Setting _IOS_STATE : " + sh.cmd_state);
+        sh.set_cmd_state( new_cmd_state: _IOS_CMD_STATE_AT_PROMPT);
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "Shell was already escalated");
+        sh.set_cmd_prompt(enabled_prompt);
+        sh.set_shell_default_escl(TRUE);
+        sh.set_escalated_shell(TRUE);
+        return TRUE;
+      }
+    }
+    cmd_state = sh.cmd_state;
+    if ( cmd_state == _IOS_CMD_STATE_RECV_ESCL_RSP )
+    {
+      if(tolower(cmd_enable_prompt) >< tolower(channel.data_buf))
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:"found password prompt");
+        # if timeout expired the password could be entered as a command and echoed back
+        if("timeout expired" >< channel.data_buf)
+        {
+          dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+                "Enable password timeout. Setting _IOS_STATE : " + _IOS_CMD_STATE_GET_PROMPT);
+          sh.set_cmd_state( new_cmd_state: _IOS_CMD_STATE_GET_PROMPT);
+          return TRUE;
+        }
+        channel.clear_data_buf();
+        var cmd_enable_password = sh.priv_escalation_extra['enable_pass'];
+        channel.session.set_redact( TRUE );
+        channel.window_send_data(data:cmd_enable_password + '\n' );
+        channel.session.set_redact( FALSE );
+        sh.set_cmd_state( new_cmd_state: _IOS_CMD_STATE_GET_PROMPT);
+        # replace last character of prompt with #
+
+        return FALSE;
+      }
+    }
+    else if(cmd_state == _IOS_CMD_STATE_GET_PROMPT)
+    {
+      if(last_line == enabled_prompt)
+      {
+        sh.set_cmd_prompt(enabled_prompt);
+        sh.set_cmd_state( new_cmd_state: _IOS_CMD_STATE_AT_PROMPT);
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+          "Successfully escalated");
+        sh.set_escalated_shell(TRUE);
+        return TRUE;
+      }
+      else if(tolower(last_line) == "password: ")
+      {
+        channel.window_send_data(data:'\n');
+        return FALSE;
+      }
+    }
+    return sh.check_inactivity_timeout(channel:channel);
+  }
+
+  function ios_shell_handler_incoming_data_timeout_cb(session, channel)
+  {
+    var fn = 'ios_shell_handler_incoming_data_timeout_cb';
+    var sh = channel.shell_handler;
+    var obj_ch_id = 'ios_shell_handler [channel '+channel.local_channel+']: ';
+    var lines = split(channel.data_buf, sep:'\n', keep:FALSE);
+    var last_line = lines[max_index(lines)-1];
+    if(isnull(channel))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:
+        "Channel does not exist");
+      return TRUE;
+    }
+    if(channel.state == CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+        "Channel is closed.");
+      return TRUE;
+    }
+
+    if(pgrep(pattern:"-+\s*[Mm][Oo][Rr][Ee]\s*-+", string:last_line))
+    {
+      channel.window_send_data(data:' ');
+      _BANNER_PAGINATION_SPACES = TRUE;
+      return FALSE;
+    }
+
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "_IOS_STATE : " + sh.cmd_state);
+    return sh.check_inactivity_timeout(channel:channel);
+  }
+
+  function ios_shell_handler_incoming_data_timeout_or_prompt_cb( session, channel )
+  {
+    var fn = 'ios_shell_handler_incoming_data_timeout_or_prompt_cb';
+    var obj_ch_id = 'ios_shell_handler [channel '+channel.local_channel+']: ';
+    var lines = split(channel.data_buf, sep:'\n', keep:FALSE);
+    var last_line = lines[max_index(lines)-1];
+    # does a channel exist?
+    if ( isnull(channel) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:
+        "Channel does not exist");
+      return TRUE;
+    }
+    if (channel.state == CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+        "Channel is closed.");
+      return TRUE;
+    }
+    # does channel have a valid data buffer?
+    if ( isnull(channel.data_buf) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+        "Channel.data_buf does not exist");
+      return TRUE;
+    }
+    if ( isnull(channel.shell_handler ) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+        "Shell handler does not exist");
+      return TRUE;
+    }
+    var sh = channel.shell_handler;
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "_IOS_STATE : " + sh.cmd_state);
+
+    if(pgrep(pattern:"-+\s*[Mm][Oo][Rr][Ee]\s*-+", string:last_line))
+    {
+      channel.window_send_data(data:' ');
+      return FALSE;
+    }
+
+    return sh.at_prompt_or_timeout(channel:channel);
+
+  }
+
+  object ios_shell_handler
+  {
+    var settings;
+    var cmd_state;
+    var cmd_last;
+    var cmd_prompt;
+    var cmd_timeout;
+    var inactivity_timeout;
+    var cmd_enable_password;
+    var cmd_enable_prompt;
+    var last_md5;
+    var last_buffer_update_ts;
+    var last_cmd_error = FALSE;
+    var priv_escalation_type;
+    var priv_escalation_extra;
+    var fresh_shell = TRUE;
+    var timed_out = FALSE;
+    var escalated_shell = FALSE;
+    var default_escl = FALSE;
+    var least_privilege = FALSE;
+    var previous_prompt;
+    var priv_escl_failed = FALSE;
+    var new_channel_needs_new_connection = TRUE;
+
+    function ios_shell_handler()
+    {
+      settings = _FCT_ANON_ARGS[0];
+      this.init(settings:settings);
+    }
+
+    public function init(settings)
+    {
+      this.cmd_last = "";
+      this.cmd_prompt = _IOS_DEFAULT_PROMPT;
+      this.cmd_timeout = _IOS_DEFAULT_CMD_TIMEOUT;
+      this.inactivity_timeout = _IOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_enable_prompt = _IOS_DEFAULT_ENABLE_PROMPT;
+      this.cmd_state = _IOS_CMD_STATE_SEND_REQ;
+      this.last_cmd_error = FALSE;
+      this.fresh_shell = TRUE;
+      this.priv_escalation_type = NULL;
+      this.last_buffer_update_ts = unixtime();
+      if (!isnull(settings))
+      {
+        this.settings = settings;
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.cmd_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.previous_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_timeout']) )
+          this.cmd_timeout = this.settings['cmd_timeout'];
+        if ( !isnull(this.settings['least_privilege']) )
+          this.least_privilege = this.settings['least_privilege'];
+        if ( !isnull(this.settings['cmd_enable_prompt']) )
+          this.cmd_enable_prompt = this.settings['cmd_enable_prompt'];
+        if ( !isnull(this.settings['priv_escalation_type']) )
+          this.priv_escalation_type = this.settings['priv_escalation_type'];
+        if ( !isnull(this.settings['priv_escalation_extra']) )
+          this.priv_escalation_extra = this.settings['priv_escalation_extra'];
+      }
+      else this.settings = make_array();
+    }
+
+    public function get_supported_escalation_method()
+    {
+      return this.priv_escalation_type;
+    }
+
+    public function get_least_privilege()
+    {
+      return this.priv_escalation_type;
+    }
+
+    public function get_cmd_prompt()
+    {
+      return this.cmd_prompt;
+    }
+
+    ##
+    # Returns terminal options
+    #
+    # @no53   If true don't populate flag 53 with any value - flag 53 (PTY_OPT_ECHO)
+    #         reputedly breaks Palo Alto's SSH implementation. (optional)
+    # @return Returns an array with a terminal carriage return Opcode
+    ##
+    public function get_pty_opts(no53)
+    {
+      if(isnull(no53))
+        no53 = FALSE;
+
+      return make_array(PTY_OPT_OCRNL, 0);
+    }
+
+    public function get_pty_size_chars()
+    {
+      # Make the default pty size large to avoid issues with truncation
+      return make_list(200, 200);
+    }
+
+    public function get_pty_size_pixels()
+    {
+      return DEFAULT_PTY_SIZE_PIXELS;
+    }
+
+    public function get_pty_term()
+    {
+      return DEFAULT_PTY_TERM;
+    }
+
+    # should we send / recv data to device without setting up a channel?
+    public function is_nosetup()
+    {
+      return FALSE;
+    }
+
+    # do we want to request a PTY on this device?
+    public function send_pty_req()
+    {
+      return TRUE;
+    }
+
+    ##
+    # do we want to handle the "shell" channel request?
+    #
+    # @category SSH
+    ##
+    public function get_shell_channel_request_cb()
+    {
+      return NULL;
+    }
+
+    public function set_last_cmd_error()
+    {
+      this.last_cmd_error = _FCT_ANON_ARGS[0];
+    }
+
+    public function set_cmd_prompt()
+    {
+      this.previous_prompt = this.cmd_prompt;
+      this.cmd_prompt = _FCT_ANON_ARGS[0];
+    }
+
+    public function set_least_privilege()
+    {
+      this.least_privilege = _FCT_ANON_ARGS[0];
+    }
+
+    public function set_shell_default_escl()
+    {
+      this.default_escl = _FCT_ANON_ARGS[0];
+    }
+
+    public function set_escalated_shell()
+    {
+      this.escalated_shell = _FCT_ANON_ARGS[0];
+    }
+
+    public function set_cmd_state(new_cmd_state)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      if(!isnull(channel))
+      {
+        var obj_ch_id = 'ios_shell_handler [channel '+channel.local_channel+']: ';
+        dbg::detailed_log(lvl:3,
+            src:'ios_shell_handler.set_cmd_state',
+            msg:
+              obj_ch_id +
+              ' updating from state '+
+              this.cmd_state +
+              ' to state ' +
+              new_cmd_state);
+      }
+      this.cmd_state = new_cmd_state;
+    }
+
+
+    ##
+    # run a command on target system using ios shell handler
+    #
+    # @param [channel:object] channel used for connection
+    # @param [command:string] the command to run against the target
+    # @param [force_priv_escl:bool] command should use escl if available
+    # @param [cmd_timeout_min:int] timeout for command to run
+    # @param [inactivity_timeout_min:int] timeout for inactivity
+    #
+    # @return NULL on fail, response to command on success
+    ##
+    public function run_command(channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = 'ios_shell_handler.run_command';
+      # Local reference to session, channel's reference gets deleted
+      # if the channel gets closed
+      var session = channel.session;
+      var obj_ch_id = 'ios_shell_handler [channel '+channel.local_channel+']: ';
+      var cmd_logger = new("sshlib::cmd_logger");
+      var lines;
+      var last_line;
+      var escl_result;
+      var kb_id = session.get_kb_connection_id();
+      var kb_base = SSH_LIB_KB_PREFIX + kb_id;
+      var use_priv_escl = FALSE;
+      var least_priv_escl = FALSE;
+
+      if(isnull(force_priv_escl))
+        force_priv_escl = FALSE;
+
+      if ( isnull(channel) )
+      {
+        return NULL;
+      }
+      dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+        "In run_command");
+
+      if( this.last_cmd_error )
+      {
+        session.set_error(obj_ch_id +
+          'ERROR - shell is in unknown state from last interaction, ' +
+          'no additional commands via this shell will be executed.');
+        return NULL;
+      }
+
+      if(get_kb_item("SSH/attempt_least_privilege"))
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "Attempt least privilege is enabled.");
+        this.least_privilege = TRUE;
+      }
+
+      # Reset default timeouts
+      this.inactivity_timeout = _IOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_timeout = _IOS_DEFAULT_CMD_TIMEOUT;
+
+      # If custom inactivity_timeout and cmd_timeout values are passed,
+      # ensure the values in use meet or exceed passed values
+      if (inactivity_timeout_min &&
+          this.inactivity_timeout < inactivity_timeout_min)
+        this.inactivity_timeout = inactivity_timeout_min;
+
+      if (cmd_timeout_min &&
+          this.cmd_timeout < cmd_timeout_min)
+        this.cmd_timeout = cmd_timeout_min;
+
+      if (this.fresh_shell)
+      {
+        if(this.cmd_prompt != _IOS_DEFAULT_PROMPT)
+        {
+          check_prompt = TRUE;
+        }
+        else
+        {
+          var post_login_buffer = get_kb_blob(kb_base + "/post_login_buffer");
+          var tmp_prompt = get_kb_blob(kb_base + "/cmd_prompt");
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+            "Getting prompt on fresh shell.");
+
+          var check_prompt = FALSE;
+          # see if we can look for prompt from previous login rather
+          # than waiting for timeout
+          if(strlen(tmp_prompt) >= 3)
+          {
+            # remove first found instance of prompt from previous post
+            # login buffer
+            var sub_prompt = substr(
+                               tmp_prompt,
+                               strlen(tmp_prompt) - 3,
+                               strlen(tmp_prompt) - 1
+                             );
+            post_login_buffer -= sub_prompt;
+
+            # if we don't find it again (e.g. in MOTD), it's probably ok
+            # to look for last characters of prompt to recognize prompt
+            if(sub_prompt >!< post_login_buffer)
+            {
+              this.cmd_prompt = tmp_prompt;
+              this.settings['cmd_prompt'] = this.cmd_prompt;
+              check_prompt = TRUE;
+            }
+          }
+        }
+
+        var initial_recv_timeout = _IOS_INITIAL_INACTIVITY_TIMEOUT;
+
+        if(check_prompt)
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+            "Using command prompt from previous login to find cmd prompt.");
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @ios_shell_handler_incoming_data_timeout_or_prompt_cb,
+            channel        : channel,
+            timeout        : initial_recv_timeout
+          );
+        }
+        else
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+            "Waiting for inactivity period to find command prompt.");
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @ios_shell_handler_incoming_data_timeout_cb,
+            channel        : channel,
+            timeout        : initial_recv_timeout
+          );
+        }
+
+        if(empty_or_null(channel.data_buf))
+        {
+          if(this.timed_out)
+            return session.set_cmd_error(obj_ch_id +
+              "Timed out waiting for data from server after opening shell.");
+
+          last_cmd_error = TRUE;
+          return session.set_cmd_error(obj_ch_id +
+            "No data received from server after opening shell.");
+        }
+
+        if (channel.state == CHANNEL_STATE_CLOSED)
+        {
+          dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+            "Channel is closed.");
+          return TRUE;
+        }
+
+        post_login_buffer = channel.data_buf;
+        if(isnull(get_kb_item(kb_base + "/post_login_buffer")))
+          set_kb_blob(name:kb_base + "/post_login_buffer", value:post_login_buffer);
+        channel.clear_data_buf();
+        this.fresh_shell = FALSE;
+        this.timed_out = FALSE;
+
+        lines = split(post_login_buffer, sep:'\n', keep:FALSE);
+        this.cmd_prompt = lines[max_index(lines)-1];
+        this.cmd_prompt = scrub_ios_escapes(str:this.cmd_prompt);
+        if('\n' >< this.cmd_prompt)
+          this.cmd_prompt = str_replace(find:'\n', replace:'', string:this.cmd_prompt);
+
+        # There will be a bunch of spaces echoed from pagination in the banner, remove all but one.
+        if(_BANNER_PAGINATION_SPACES)
+          this.cmd_prompt = str_replace(find:'  ', replace:'', string:this.cmd_prompt);
+
+        if(isnull(get_kb_item(kb_base + "/cmd_prompt")))
+          set_kb_blob(name:kb_base + "/cmd_prompt", value:cmd_prompt);
+
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+          'Detected command prompt  "' + this.cmd_prompt + '".');
+
+        if(strlen(this.cmd_prompt) == 0)
+        {
+          session.set_cmd_error(obj_ch_id +
+            "Unable to detect command prompt on shell.");
+          last_cmd_error = TRUE;
+          return NULL;
+        }
+
+        this.settings['cmd_prompt'] = this.cmd_prompt;
+      }
+
+      # Determine if privilege escalation should be used
+      priv_escl_failed = FALSE;
+      var tmp_bad_escl_kb =
+        "tmp/" + kb_id + "/ssh_bad_priv_escl/" + this.priv_escalation_type;
+      var escl_hexstr = hexstr(MD5(serialize(this.priv_escalation_extra)));
+
+      if ( this.priv_escalation_type == "cisco_enable" )
+      {
+        if ( get_kb_item(tmp_bad_escl_kb) == escl_hexstr )
+        {
+          session.set_error(obj_ch_id + "Not using privilege " +
+            "escalation due to failure in a previous session.");
+        }
+        else
+        {
+          use_priv_escl = TRUE;
+        }
+      }
+
+      # escalate shell
+      if ( !this.escalated_shell && use_priv_escl && (!this.least_privilege || force_priv_escl ))
+      {
+        if(this.least_privilege && force_priv_escl)
+        {
+          dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id+
+              'force_priv_escl is set, ignoring least_privilege.');
+        }
+        escl_result = escalate_shell(
+                        channel         : channel,
+                        obj_ch_id       : obj_ch_id,
+                        tmp_bad_escl_kb : tmp_bad_escl_kb,
+                        escl_hexstr     : escl_hexstr);
+        if(isnull(escl_result))
+        {
+          cmd_logger.add(
+            cmd                : command,
+            response           : '',
+            error              : 'Privilege escalation failed',
+            ran_with_priv_escl : FALSE,
+            forced_escl        : force_priv_escl,
+            priv_escl_failed   : TRUE,                     # exit on failed privesc
+            escl_method        : this.priv_escalation_type,
+            user               : channel.session.user,
+            escl_user          : channel.session.user
+          );
+          return NULL;
+        }
+      }
+      else if (this.least_privilege && !force_priv_escl)
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "Not escalating shell, attempting least privilege.");
+      }
+      else if (this.escalated_shell)
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "Not escalating, shell is already escalated.");
+      }
+      else if (!use_priv_escl)
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "Not escalating shell.");
+      }
+
+      this.cmd_last = command + '\n';
+      session.reset_cmd_interrupted();
+
+      dbg::detailed_log(lvl:1, src:fn, msg:"sending command: " + cmd_last);
+      channel.clear_data_buf();
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _IOS_CMD_STATE_SEND_REQ;
+      dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+        "cmd_state:_IOS_CMD_STATE_SEND_REQ(" + this.cmd_state + ")" );
+      channel.window_send_data(data:cmd_last);
+      session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @ios_shell_handler_incoming_data_timeout_or_prompt_cb,
+        channel        : channel,
+        cmd_timeout    : this.cmd_timeout
+      );
+
+      var ret = NULL;
+
+      if(channel && channel.data_buf )
+      {
+        ret = scrub_ios_escapes(str:channel.data_buf);
+
+        if ( this.cmd_state != _IOS_CMD_STATE_AT_PROMPT )
+        {
+          session.set_cmd_error(obj_ch_id +
+            "Unable to return to command prompt after last command.");
+          this.last_cmd_error = TRUE;
+          return NULL;
+        }
+
+        ret = str_replace(string:ret, find:command, replace:'');
+        ret = trim(remove_cmd_prompt(cmd_res:ret), chars:' \t\r\n');
+
+        if(this.least_privilege && force_priv_escl && this.escalated_shell)
+        {
+          if(!this.default_escl)
+          {
+            dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+              "Least privilege was enabled, but escalation was forced. Deescalating shell.");
+            escl_result = deescalate_shell(
+                            channel   : channel,
+                            obj_ch_id : obj_ch_id);
+            if(isnull(escl_result)) return NULL;
+          }
+          else
+          {
+            dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+              "Least privilege was enabled, and escalation was forced but the shell is " +
+              "enabled by default. Not deescalating.");
+          }
+        }
+      }
+      if(this.least_privilege &&
+         !force_priv_escl && (
+          '% Invalid input'  >< ret ||
+          '% This command is not authorized' >< ret ||
+          'ERROR: Command authorization failed' >< ret
+          ))
+      {
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+          "Command failed, trying escalated.");
+        escl_result = escalate_shell(
+                        channel         : channel,
+                        obj_ch_id       : obj_ch_id,
+                        tmp_bad_escl_kb : tmp_bad_escl_kb,
+                        escl_hexstr     : escl_hexstr
+                      );
+        least_priv_escl = TRUE;
+        if(isnull(escl_result))
+        {
+          cmd_logger.add(
+            cmd                : command,
+            response           : '',
+            error              : 'Privilege escalation failed',
+            ran_with_priv_escl : FALSE,
+            forced_escl        : force_priv_escl,
+            priv_escl_failed   : TRUE,        # exit on failed privesc
+            escl_method        : this.priv_escalation_type,
+            user               : session.user,
+            escl_user          : session.user
+          );
+          session.set_cmd_error(obj_ch_id +
+            "Insufficient privileges to run command.");
+          this.last_cmd_error = TRUE;
+          return NULL;
+        }
+        this.cmd_last = command + '\n';
+        dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+          "sending command: " + cmd_last);
+        channel.clear_data_buf();
+        this.last_buffer_update_ts = unixtime();
+        this.cmd_state = _IOS_CMD_STATE_SEND_REQ;
+        dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+          "cmd_state:_IOS_CMD_STATE_SEND_REQ(" + this.cmd_state + ")" );
+        channel.window_send_data(data:cmd_last);
+        session.sshrecv_until(
+          end_states     : make_list("SOC_CLOSED"),
+          check_callback : @ios_shell_handler_incoming_data_timeout_or_prompt_cb,
+          channel        : channel,
+          cmd_timeout    : this.cmd_timeout
+        );
+        if(channel && channel.data_buf )
+        {
+          ret = scrub_ios_escapes(str:channel.data_buf);
+
+          if ( this.cmd_state != _IOS_CMD_STATE_AT_PROMPT )
+          {
+            channel.session.set_cmd_error(obj_ch_id +
+              "Unable to return to command prompt after last command.");
+            this.last_cmd_error = TRUE;
+            return NULL;
+          }
+
+          ret = str_replace(string:ret, find:command, replace:'');
+          ret = trim(remove_cmd_prompt(cmd_res:ret), chars:' \t\r\n');
+
+        }
+        escl_result = deescalate_shell(
+                        channel   : channel,
+                        obj_ch_id : obj_ch_id);
+        if(isnull(escl_result)) return NULL;
+      }
+      cmd_logger.add(
+        cmd                : this.cmd_last,
+        response           : ret,
+        error              : session.cmd_error,
+        ran_with_priv_escl : this.escalated_shell || least_priv_escl,
+        forced_escl        : force_priv_escl || least_priv_escl,
+        priv_escl_failed   : this.priv_escl_failed, # If true, escalate_shell() returned to unescalate prompt, but we can try to continue with nonescalated prompt.
+        escl_method        : this.priv_escalation_type,
+        user               : session.user,
+        escl_user          : session.user
+      );
+      return ret;
+
+
+    }
+
+    private function deescalate_shell(channel, obj_ch_id)
+    {
+      var fn  = 'deescalate_shell';
+      dbg::detailed_log(lvl:2, src:fn, msg:"Deescalating shell");
+      channel.clear_data_buf();
+      this.set_cmd_prompt(this.previous_prompt);
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _IOS_CMD_STATE_SEND_REQ;
+      dbg::detailed_log(lvl:3, src:fn, msg:
+        "cmd_state:_IOS_CMD_STATE_SEND_REQ(" + this.cmd_state + ")" );
+      channel.window_send_data(data:'disable\n');
+      channel.session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @ios_shell_handler_incoming_data_timeout_or_prompt_cb,
+        channel        : channel,
+        cmd_timeout    : this.cmd_timeout
+      );
+
+      if ( this.cmd_state != _IOS_CMD_STATE_AT_PROMPT )
+      {
+        channel.session.set_cmd_error(obj_ch_id +
+          "Unable to return to command prompt after last command.");
+        this.last_cmd_error = TRUE;
+        return NULL;
+      }
+
+      set_escalated_shell(FALSE);
+      return TRUE;
+
+    }
+
+    private function escalate_shell(channel, obj_ch_id, tmp_bad_escl_kb, escl_hexstr)
+    {
+      var fn = 'escalate_shell';
+      this.cmd_last = 'enable\n';
+      dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+        "Sending command 'enable' to escalate shell.");
+      channel.clear_data_buf();
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _IOS_CMD_STATE_SEND_ESCL_REQ;
+      dbg::detailed_log(lvl:3, src:fn, msg:
+        "cmd_state:_IOS_CMD_STATE_SEND_ESCL_REQ(" + this.cmd_state + ")" );
+      channel.window_send_data(data:cmd_last);
+      channel.session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @ios_shell_handler_enable_cb,
+        channel        : channel,
+        cmd_timeout    : this.cmd_timeout
+      );
+
+      # Check response for failure or success
+      if ( channel.data_buf && !this.escalated_shell)
+      {
+
+        if ( "Invalid password" >< channel.data_buf ||
+             "% Bad passwords" >< channel.data_buf  ||
+             "% Access denied" >< channel.data_buf)
+        {
+          channel.session.set_cmd_error(
+            remove_cmd_prompt(cmd_res:channel.data_buf));
+          channel.session.set_cmd_error(obj_ch_id +
+            "Privilege escalation appears to have failed. Removing " +
+            "privilege escalation from credential set.");
+          replace_kb_item(name:tmp_bad_escl_kb, value:escl_hexstr);
+          this.priv_escl_failed = TRUE;
+          channel.window_send_data(data:'\n\n');
+          channel.session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @ios_shell_handler_incoming_data_timeout_or_prompt_cb,
+            channel        : channel,
+            cmd_timeout    : this.cmd_timeout
+          );
+        }
+        else if ( "ERROR: % Invalid input" >< channel.data_buf )
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+            "Shell is already in admin mode.");
+          set_escalated_shell(TRUE);
+        }
+      }
+
+      if ( this.cmd_state != _IOS_CMD_STATE_AT_PROMPT )
+      {
+        channel.session.set_cmd_error(obj_ch_id +
+          "Unable to return to command prompt after attempting to " +
+          "escalate privileges. at state " + this.cmd_state);
+        this.last_cmd_error = TRUE;
+        return NULL;
+      }
+      return TRUE;
+    }
+
+
+    public function set_priv_escalation(type, extra)
+    {
+      this.priv_escalation_type = type;
+      this.priv_escalation_extra = extra;
+      this.settings['priv_escalation_type'] = type;
+      this.settings['priv_escalation_extra'] = extra;
+    }
+
+    public function unset_priv_escalation()
+    {
+      this.priv_escalation_type = NULL;
+      this.priv_escalation_extra = NULL;
+      this.settings['priv_escalation_type'] = NULL;
+      this.settings['priv_escalation_extra'] = NULL;
+    }
+
+    public function remove_cmd_prompt(cmd_res)
+    {
+      var tmp = '';
+      var ret = cmd_res;
+
+      # remove null bytes so that it doesn't break ereg_replace
+      ret = str_replace(string:ret, find:'\x00', replace:'');
+      var regex_esc_prompt = preg_replace(string:this.cmd_prompt, pattern:ESCAPE_STRING_FOR_REGEX, replace:"\\1");
+      ret = preg_replace(pattern:"[ \t\n\r]*" + regex_esc_prompt + "[ \t\n\r]*", string:ret, replace:"");
+      ret = preg_replace(pattern:"([Mm][Oo][Rr][Ee][^\x08\n]*)\n([^\x08\n]*\x08)", string:ret, replace:'\\1\\2');
+
+      var line;
+      foreach line (split(ret))
+      {
+        line = preg_replace(
+                pattern:"^ *<?--+ *\(?[Mm][Oo][Rr][Ee] ?([0-9]+%)?\)? *--+>?\x0d?( +\x0d)?(.*( \x08+)+|(\x0d +\x0d*)?)",
+                replace:"",
+                string:line);
+
+        line = preg_replace(pattern:"(lines [0-9]+-[0-9]+(/[0-9]+( \(END\))?)? \x0d(\x07\x0d)?)", replace:"", string:line);
+
+        tmp  += line;
+      }
+
+      ret = tmp;
+
+      return ret;
+
+    }
+
+    function at_cmd_prompt(buf)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      var lines = split(buf, sep:'\n', keep:FALSE);
+      var last_line = trim(scrub_ios_escapes(str:lines[max_index(lines)-1]), chars:' \t\r\n');
+      var regex_esc_prompt = preg_replace(string:this.cmd_prompt, pattern:ESCAPE_STRING_FOR_REGEX, replace:"\\1");
+      regex_esc_prompt = trim(regex_esc_prompt, chars:' \t\r\n');
+      if(this.cmd_prompt && last_line =~ ("^" + regex_esc_prompt + "$"))
+      {
+        this.set_cmd_state(
+           new_cmd_state: _IOS_CMD_STATE_AT_PROMPT,
+           channel);
+        return TRUE;
+      }
+    }
+
+    public function at_prompt_or_timeout(channel)
+    {
+      if(at_cmd_prompt(buf:channel.data_buf, channel)) return TRUE;
+      return check_inactivity_timeout(channel:channel);
+    }
+
+    public function check_inactivity_timeout(channel)
+    {
+      var fn = 'ios_shell_handler.check_inactivity_timeout';
+      if ( channel && channel.data_buf && strlen(channel.data_buf) > 0 )
+      {
+        var new_md5 = MD5( channel.data_buf );
+        if ( this.last_md5 != new_md5 )
+        {
+          if(!isnull(channel) && !isnull(channel.session))
+          {
+            dbg::detailed_log(lvl:3, src:fn, msg:
+              "New data found, updating last_buffer_update_ts");
+          }
+          this.last_md5 = new_md5;
+          this.last_buffer_update_ts = unixtime();
+          return FALSE;
+        }
+      }
+      if (channel && (unixtime() - this.last_buffer_update_ts) >= this.inactivity_timeout)
+      {
+        if(channel.session)
+        {
+          dbg::detailed_log(lvl:1, src:fn, msg:"Inactivity timeout.");
+        }
+        this.timed_out = TRUE;
+        return TRUE;
+      }
+      else if(isnull(channel))
+      {
+        return TRUE;
+      }
+
+      return FALSE;
+    }
+
+  }
+
+
+}

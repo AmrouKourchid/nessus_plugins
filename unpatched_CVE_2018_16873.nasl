@@ -1,0 +1,123 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(222118);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/04");
+
+  script_cve_id("CVE-2018-16873");
+
+  script_name(english:"Linux Distros Unpatched Vulnerability : CVE-2018-16873");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The Linux/Unix host has one or more packages installed with a vulnerability that the vendor indicates will not be
+patched.");
+  script_set_attribute(attribute:"description", value:
+"The Linux/Unix host has one or more packages installed that are impacted by a vulnerability without a vendor supplied
+patch available.
+
+  - In Go before 1.10.6 and 1.11.x before 1.11.3, the go get command is vulnerable to remote code execution
+    when executed with the -u flag and the import path of a malicious Go package, or a package that imports it
+    directly or indirectly. Specifically, it is only vulnerable in GOPATH mode, but not in module mode (the
+    distinction is documented at https://golang.org/cmd/go/#hdr-Module_aware_go_get). Using custom domains,
+    it's possible to arrange things so that a Git repository is cloned to a folder named .git by using a
+    vanity import path that ends with /.git. If the Git repository root contains a HEAD file, a config
+    file, an objects directory, a refs directory, with some work to ensure the proper ordering of
+    operations, go get -u can be tricked into considering the parent directory as a repository root, and
+    running Git commands on it. That will use the config file in the original Git repository root for its
+    configuration, and if that config file contains malicious commands, they will execute on the system
+    running go get -u. (CVE-2018-16873)
+
+Note that Nessus relies on the presence of the package as reported by the vendor.");
+  script_set_attribute(attribute:"solution", value:
+"There is no known solution at this time.");
+  script_set_attribute(attribute:"agent", value:"unix");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:M/Au:N/C:P/I:P/A:P");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2018-16873");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+  script_set_attribute(attribute:"vendor_unpatched", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2018/12/13");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/03/04");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info2.nasl");
+  script_require_keys("Host/cpu", "Host/local_checks_enabled", "global_settings/vendor_unpatched");
+  script_require_ports("Host/RedHat/release", "Host/RedHat/rpm-list");
+
+  exit(0);
+}
+include('vdf.inc');
+
+# @tvdl-content
+var vuln_data = {
+ "metadata": {
+  "spec_version": "1.0p"
+ },
+ "requires": [
+  {
+   "scope": "scan_config",
+   "match": {
+    "vendor_unpatched": true
+   }
+  },
+  {
+   "scope": "target",
+   "match": {
+    "os": "linux"
+   }
+  }
+ ],
+ "report": {
+  "report_type": "unpatched"
+ },
+ "checks": [
+  {
+   "product": {
+    "name": "golang",
+    "type": "rpm_package"
+   },
+   "check_algorithm": "rpm",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "redhat"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "7"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+};
+
+var vdf_res = vdf::check_and_report(vuln_data:vuln_data, severity:SECURITY_WARNING);
+vdf::handle_check_and_report_errors(vdf_result: vdf_res);

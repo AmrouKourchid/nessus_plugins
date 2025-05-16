@@ -1,0 +1,913 @@
+#TRUSTED 77404c47a2812469e4eec3c1c532ea71c9a2a529cea6e95181f493381a4d98ed3b056366edfb70deddbafe205899ab5581735af0a44ad9fa6818d54265dc5fc2d211b95afcc6b34776b8abc164dfdb8611a50deb77297951e7b74ab5758868bf092f497914c5ce35353dcf4685e2a025ada65878a27f3b9738abd11122a0dc5d91eb7e751ca51a7e852629fae0babb9b1bc55394aee08bde6bc7abe2273a7b84cdfe25d6dcef5212b0143fce0fc31923cc938b7bff3b3f3ce9deae1b0458be75d575e7e81176b61d9015a2e0d8cbfe5db378c39123e346a6987da97c5f597d516cea88afee929de9c93a094fc241d2bb683566b8c448012a8f84f11d24f99c26f7d5c3e667503de0d6b1b132c07b49f2b433ec0743cb4ba4b8bddaa747b0d0cf05d9138ae834244cb57c9f5c2469ed44f08eb263007929cc60eae069ef1429c21d1272a481ec242932c2a985d22ce0f49f7e92c35b517ab4440d8a66382d8b6697a13ee30485a8414b916036d39f848e2be61cad828e76ebece9c6ca2236a01ccead417d907027ffb8fd7e56b436b06a01c2c90cd888931d2c731582f8476849f61ff75616206e6c38ef4d381ee6524eb38bb9b71f3396494890f13004faabac9b030e602d73f924c0041c13c61f05d0b462fdeccf76232613cf6370d27974676fc7a6997f20417eb0467bf2fdd4c2cc377d5ca921cebd31e3c894a34f268374
+#TRUST-RSA-SHA256 0c569c282dad59e85baaf7f9d09082fdd2fb102c67b4c15e5e75aa12e8e04a9f91e31cd8b87ad36134184f216f17d83bc4474db81b93c5d1c63495e267bb56a6b235f7efd2f84f14b8e8b1f2b5cc78e77f031fe048e7708471ec4860439388122f0e64bc7a02c6b4c7e9380fe0a991154fcd9c38f688d261425b0febf700164510250680dabf6978a12df7f81bbf70a230daf2d2f548b4f42ebd521c2a1c750b106e2b57333c9fa67807ba9f888e0793cef5eb51ced270ea29a306dafa1934140b82c6d2f594caf1a9c2fd559320618849f1eba593749d856de1f37e526a9b0252207bbe3843c770d29ec7f0e8872c0c7187834f383a25b5a659f19b69eb529b0ac67c4e139488bc43bf77578194565226724d665a14d637dc97e341b6d844c2075a11b539a8a4d188122729138dc5bd80adcc5147519fa8a49da392fb4fada1b601b74d83955d2913c37799978c0e4c510699f42215d5577b1cbd54c1e2b30b06b64f000cba0c9af43a7b1bc302f91de40eb76865c03873741aa42bb665fb048641646fda08e794a7523e91dfe24aae46ea5fca1b0583e8884c8819727216eab1fa075c4c5b857351b6f4c1d321c60f5d8ecd9eca8e846c461fad0c3580d6625605e06a50c6025ec82f39fcfeac74f6f20418723fed6cb6ee413e6c091be3f1ac0ef4845d8aff195aef71b0b5e004e783a1fc8475b8d373ba995f46bdd6ddd1
+#------------------------------------------------------------------------------
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.9
+#
+# @library local_detection_nix.inc
+#
+###
+
+namespace ldnix
+{
+  namespace files
+  {
+    # Default values
+    var defaults = {
+      find : {
+        included :
+          ['/apps', '/opt', '/bin', '/lib', '/sbin', '/var', '/var/lib', '/usr', '/usr/local', '/usr/share'],
+
+        excluded :
+          ['/boot', '/dev', '/etc', '/media', '/mnt', '/proc', '/run', '/.snapshots', '/srv', '/sys', '/tmp'],
+
+        included_macos :
+          ['/Applications', '/Library'],
+
+        excluded_macos :
+          ['/System', '/Library/Caches', '/Library/Application Support', '/private', '/cores'],
+
+        thorough : {
+          depth    : 99,
+          timeout  : 1200,
+          included : '/'
+        }
+      },
+
+      read_link : {
+        max_attempts : 10
+      }
+    };
+
+    var cache = {
+      readlink : {}
+    };
+
+
+    ##
+    # Find and process the specified files.
+    #
+    # @param [files:list]      files to find in the file system
+    # @param [file_types:list] file types to validate against (see generalize_file_type() for supported types) (optional)
+    #
+    # @return list of processed files
+    ##
+    function find_and_process(files, file_types)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ files:files }))
+       return NULL;
+
+      var included, excluded, path, depth, timeout, find_results, paths;
+
+      included = ldnix::files::defaults.find.included;
+      excluded = ldnix::files::defaults.find.excluded;
+
+      if (get_kb_item('Host/MacOSX/Version'))
+      {
+        foreach path (defaults.find.included_macos)
+          append_element(var:included, value:path);
+
+        foreach path (defaults.find.excluded_macos)
+          append_element(var:excluded, value:path);
+      }
+
+      if (thorough_tests)
+      {
+        included = ldnix::files::defaults.find.thorough.included;
+        timeout  = ldnix::files::defaults.find.thorough.timeout;
+        depth    = ldnix::files::defaults.find.thorough.depth;
+      }
+
+      find_results = ldnix::find_executables(
+        paths:included, bins:files, timeout:timeout, depth:depth, excluded:excluded
+      );
+
+      # Process paths
+      if (!empty_or_null(find_results))
+        paths = ldnix::files::process_paths(paths:find_results, file_types:file_types);
+
+      return paths;
+    }
+
+
+    ##
+    # Process file paths to determine if they should be assessed further.
+    #
+    # @param [paths:list]         paths to be processed
+    # @param [package_files:list] package files to check for each path which will be skipped if matched (optional)
+    # @param [file_types:list]    file types that the processed file must match (optional)
+    #
+    # @return a list of unique, sorted paths that match the expected criteria (possibly empty)
+    ##
+    function process_paths(paths, package_files, file_types)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ paths:paths }))
+        return NULL;
+
+      var processed_paths, processed_path, path;
+
+      processed_paths = [];
+
+      var excluded_paths = get_kb_item('Host/sh_commands_find/user_filepath_exclusions');
+      var excluded = split(excluded_paths, keep:FALSE);
+      for(var idx in excluded)
+        excluded[idx] = ldnix::files::file_glob_to_regex(glob:excluded[idx]);
+
+      var excmatch, epath;
+
+      foreach path (paths)
+      {
+        processed_path = ldnix::files::process_path(path:path, package_files:package_files, file_types:file_types);
+
+        if (!empty_or_null(processed_path))
+        {
+          excmatch = FALSE;
+          foreach epath (excluded)
+          {
+            if(preg(string:processed_path, pattern:epath))
+            {
+              excmatch = TRUE;
+              dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"skipping " + processed_path + " due to filepath exclusion.");
+              break;
+            }
+          }
+
+          if (excmatch == FALSE)
+            append_element(var:processed_paths, value:processed_path);
+        }
+      }
+
+      processed_paths = list_uniq(sort(processed_paths));
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Processed files: ' + obj_rep(processed_paths));
+
+      return processed_paths;
+    }
+
+
+    ##
+    # Process file path to determine if it should be assessed further.
+    #
+    # @param [path:str]           path to be processed
+    # @param [package_files:list] package files to check for path which will be skipped (optional)
+    # @param [file_types:list]    file types that the processed file must match (optional)
+    #
+    # @return resolved path if the file path is determined that it should assessed further
+    #         NULL otherwise
+    ##
+    function process_path(path, package_files, file_types)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path }))
+        return NULL;
+
+      if (unit_tests[FUNCTION_NAME][path]) return unit_tests[FUNCTION_NAME][path];
+
+      # Start processing path
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Processing path: ' + path);
+
+      var original_path = path;
+      var resolved_path, file_type_result;
+
+      path = ldnix::simplify_path(path:path);
+
+      # Recursively resolve symbolic links
+      #  - macOS, HP-UX, and FreeBSD require special handling
+      if (get_kb_item('Host/MacOSX/Version') || get_kb_item('Host/HP-UX/version') || get_kb_item('Host/FreeBSD/release'))
+      {
+        resolved_path = realpath(path:path);
+
+        # If 'realpath' doesn't exist try iterating over each symlink with 'readlink'
+        if (!get_kb_item('Host/command_builder/realpath'))
+        {
+          # Let's make sure the file type matches first before we look at the parent directories for symbolic links.
+          if (!empty_or_null(file_types))
+          {
+            file_type_result = get_and_compare_file_type(path:path, expected_file_types:file_types);
+            if (empty_or_null(file_type_result))
+              return NULL;
+          }
+
+          # Certain versions of readlink do not point to the linked file if the parent directory is a symbolic link.
+          # Work backward through the path following any parent directories that are symbolic links.
+          resolved_path = check_file_and_parent_dirs_for_symlinks(path:path);
+        }
+      }
+      else
+      {
+        resolved_path = ldnix::read_link(path:path);
+      }
+
+      path = chomp(resolved_path);
+
+      # Skip file if it did not resolve
+      if (empty_or_null(path))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Failed to resolve absolute path. Skipping...');
+        return NULL;
+      }
+
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Resolved path: ' + path);
+
+      # Skip file if it belongs to an OS package
+      if (
+        !empty_or_null(package_files) &&
+        !empty_or_null(ldnix::search_package_file_list(file:path, file_list:package_files)))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Path is associated with a package. Skipping...');
+        return NULL;
+      }
+
+      # Skip file that is not one of the expected file types
+      if (!empty_or_null(file_types) && empty_or_null(file_type_result))
+      {
+        file_type_result = get_and_compare_file_type(path:path, expected_file_types:file_types);
+        if (empty_or_null(file_type_result))
+          return NULL;
+      }
+
+      return path;
+    }
+
+
+    ##
+    # Get and compare the file type of the specified path to the expected file type(s).
+    #
+    # @param [path:str]                 path to get the file type
+    # @param [expected_file_types:list] expected file types to compare the detected file type to
+    #
+    # @return file type that matched
+    #         NULL if the file type did not match
+    ##
+    function get_and_compare_file_type(path, expected_file_types)
+    {
+      var file_output, detected_file_type, file_type_match;
+
+      # Get file type
+      file_output = ldnix::files::get_file_type(path:path);
+
+      if (empty_or_null(file_output))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Failed to get the file type. Skipping...');
+        return NULL;
+      }
+
+      # Generalize the file type (e.g. executable, library, etc.)
+      detected_file_type = ldnix::files::generalize_file_type(file_output:file_output, path:path);
+      if (empty_or_null(detected_file_type))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:' - Failed to generalize the file type. Skipping...');
+        return NULL;
+      }
+
+      # Compare the generalized file type to the detected file type
+      file_type_match = ldnix::files::compare_file_types(
+        detected_file_type:detected_file_type, expected_file_types:expected_file_types);
+
+      return file_type_match;
+    }
+
+
+    ##
+    # Compare specified file types to detected file type.
+    #
+    # @param [detected_file_type:str]   detected file type to compare
+    # @param [expected_file_types:list] expected file types to compare the detected file type to
+    #
+    # @return file type that matched
+    #         NULL if the file type did not match
+    ##
+    function compare_file_types(detected_file_type, expected_file_types)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME,
+          args:{ detected_file_type:detected_file_type, expected_file_types:expected_file_types }))
+        return NULL;
+
+      # Compare detected file type to expected file type(s)
+      var file_type, file_type_match;
+
+      foreach file_type (expected_file_types)
+      {
+        if (file_type == detected_file_type)
+        {
+          file_type_match = file_type;
+          break;
+        }
+      }
+
+      if (!file_type_match)
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - File type is not one of the expected file types.');
+
+      return file_type_match;
+    }
+
+
+    ##
+    # Execute the 'realpath' command to return the resolved path
+    #
+    # @param  [path:str]  file path to resolve
+    #
+    # @return resolved path if successful
+    #         NULL otherwise
+    ##
+    function realpath(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      # Check if 'realpath' exists
+      var command, command_builder, template, result;
+
+      command = 'realpath';
+      command_builder = new command_builder::command(command);
+      command_builder.init_cmd();
+      if (!command_builder.cmd_exists)
+        return NULL;
+
+      # Execute 'realpath' against the specified file
+      template = command + ' $1$';
+
+      result = ldnix::run_cmd_template_wrapper(template:template, args:[path]);
+      result = chomp(result);
+
+      # Simple check to verify that the output looks like an absolute path
+      if (result !~ '^/' || ':' >< result)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unexpected output: ' + result);
+        return NULL;
+      }
+
+      return result;
+    }
+
+
+    ##
+    # Recursively execute the 'readlink' command until the path is resolved.
+    #
+    # @param  [path:str]  file path to resolve
+    #
+    # @remark This will only work on symlinks of the last file or path in specified path.
+    # @remark This isn't a recursive function to further avoid infinite loops out of an abundance of caution.
+    #
+    # @return resolved path if successful
+    #         NULL otherwise
+    ##
+    function recursive_read_link(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      var original_path = path;
+
+      var cmd, tracker, i, result, path_split, path_without_file;
+
+      cmd = 'readlink $1$';
+      tracker = []; # Keep track of seen symlinks
+
+      # Limit the attempts to further avoid infinite loops
+      for (i=0; i < defaults.read_link.max_attempts; i++)
+      {
+        # Check if we've already processed this path
+        if (contains_key(var:cache.readlink, key:path))
+        {
+          dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - Path has already been processed, resolved path: ' + cache.readlink[path]);
+          return cache.readlink[path];
+        }
+
+        result = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+        result = chomp(result);
+
+        # Resolved path should result in a empty output
+        if (empty_or_null(result))
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Successfully resolved path: ' + path);
+          return path;
+        }
+
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Processing ' + result);
+
+        # Handle output that is a relative path (e.g ../../bin/file) or just the file (e.g. curl)
+        if (
+          result =~ '^\\.+/' ||
+          (result !~ '^/' && ':' >!< result)
+        )
+        {
+          # Retrieve the path from the file path
+          #  - Example: '/opt/vendor/env/bin/' from '/opt/vendor/env/bin/file'
+          path_split = path_split(path);
+          path_without_file = path_split[0];
+
+          # Append the relative path to the path
+          #  - Example: '/opt/vendor/env/bin/../../bin/file'
+          result = path_without_file + result;
+        }
+
+        # Simple check to verify that the output looks like an absolute path
+        if (result !~ '^/' || ':' >< result)
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unexpected output: ' + result);
+          return NULL;
+        }
+
+        path = ldnix::simplify_path(path:result);
+
+        cache.readlink[original_path] = path;
+
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Processed path: ' + path);
+
+        # The symlink resolved to a symlink previous seen, resulting in an infinite loop. Bail.
+        if (contains_element(var:tracker, value:path))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Recursive symlink loop detected: ' + path);
+          return NULL;
+        }
+
+        append_element(var:tracker, value:path);
+      }
+
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Max attempts reached: ' + defaults.read_link.max_attempts);
+      return NULL;
+    }
+
+
+    ##
+    # Check if any parent directories are symlinks by moving backward through the absolute path.
+    #
+    # @param [path:str] absolute path to look for symbolic links
+    #
+    # @return resolved path (possibly the original path if no symbolic links were detected)
+    #         NULL otherwise
+    ##
+    function check_file_and_parent_dirs_for_symlinks(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      # Process each parent path
+      var path_info_list = get_file_and_parent_paths(path:path);
+
+      var parent_path, child_path, resolved_path, new_path;
+
+      foreach var path_info (path_info_list)
+      {
+        parent_path = path_info.parent_path;
+        child_path = path_info.child_path;
+
+        parent_path = trim(parent_path, rchars:'/');
+
+        resolved_path = recursive_read_link(path:parent_path);
+
+        if (empty_or_null(resolved_path))
+          continue;
+
+        # If the resolved path is different than the parent path, return the new, resolved path.
+        if (resolved_path != parent_path)
+        {
+          if (child_path != '')
+          {
+            resolved_path = ldnix::append_path(path:resolved_path, value:child_path);
+            dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - New path: ' + resolved_path);
+          }
+
+          resolved_path = check_file_and_parent_dirs_for_symlinks(path:resolved_path);
+
+          return resolved_path;
+        }
+      }
+
+      # If no symlinks were detected, return the original path.
+      return path;
+    }
+
+    ##
+    # Get file and all parent paths for the specified file.
+    #
+    # @param  [path:str]  path to get file and all parent paths
+    #
+    # @return list of arrays containing the file path and all parent paths split into the 'parent_path' and 'child_path'
+    #         NULL if an error occurred
+    ##
+    function get_file_and_parent_paths(path)
+    {
+      # Argument checks
+      var checks, validation;
+
+      checks = [
+        { argname: 'path', arg: path, checker: validate::checker.data.str }
+      ];
+
+      validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      # Process path
+      var split_path = split(path, sep:'/');
+      var split_path_idx = max_index(split_path);
+
+      var path_info_list = [];
+      var i, num, parent_path, child_path, file_paths_arrays;
+
+      # Iterate over the path ascending into the path.
+      for ( i = split_path_idx; i > 1; i-- )
+      {
+        parent_path = [];
+        child_path = [];
+
+        # Get the parent directories in descending order.
+        #  - Example:
+        #     ['/usr/local/opt/xz/bin/xz', '/usr/local/opt/xz/bin/', /usr/local/opt/xz/', '/usr/local/opt/', '/usr/local/', '/usr/']
+        for ( num = 0; num < i; num++)
+          append_element(var:parent_path, value:split_path[num]);
+
+        # Get the child directories in ascending order.
+        #  - Example:
+        #     ['', 'xz', 'bin/xz', 'xz/bin/xz', 'opt/xz/bin/xz', 'local/opt/xz/bin/xz', 'usr/local/opt/xz/bin/xz']
+        for ( num = i; num < split_path_idx; num++)
+          append_element(var:child_path, value:split_path[num]);
+
+        # Join paths together and add to an array.
+        file_paths_arrays = {
+          parent_path : join(parent_path, sep:''),
+          child_path  : join(child_path, sep:'')
+        };
+
+        append_element(var:path_info_list, value:file_paths_arrays);
+      }
+      return path_info_list;
+    }
+
+
+    ##
+    # Generalize the file type via the output from the 'file' command.
+    #
+    # @param [file_output:str] output from the 'file' command
+    # @param [path:str]        file path being processed, simply used for logging
+    #
+    # @remark File types: 'executable', 'library', 'directory', 'symbolic link', 'script', 'text'
+    #
+    # @return string of the file type
+    ##
+    function generalize_file_type(file_output, path)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ file_output:file_output }))
+        return NULL;
+
+      # Generalize the file type
+      var file_type;
+
+      if (
+        ('ELF' >< file_output || 'Mach-O' >< file_output) &&
+        ('executable' >< file_output || 'interpreter' >< file_output)
+      )
+        file_type = 'executable';
+
+      else if (
+        'shared object' >< file_output || 'shared library' >< file_output ||
+        'archive random library' >< file_output
+      )
+        file_type = 'library';
+
+      else if (file_output =~ ' directory')
+        file_type = 'directory';
+
+      else if ('symbolic link' >< file_output)
+        file_type = 'symbolic link';
+
+      else if ('text executable' >< file_output)
+        file_type = 'script';
+
+      else if (file_output =~ '(ASCII|UTF-8|Unicode) text')
+        file_type = 'text';
+
+      # Results
+      var msg;
+      if (!empty_or_null(file_type))
+        msg = strcat('File type for "', path, '" has been determined to be "', file_type, '".');
+      else
+        msg = strcat('File type for "', path, '" was not determined.');
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:msg);
+
+      return file_type;
+    }
+
+
+    ##
+    # Run the 'file' command.
+    #
+    # @param [path:str] file path to check the file type
+    #
+    # @return output from the 'file' command
+    ##
+    function get_file_type(path, follow_symlinks)
+    {
+      var flags = '';
+      if(isnull(follow_symlinks)) follow_symlinks = TRUE; # Default to true (i.e. No flag set)
+      if(follow_symlinks == FALSE )flags += ' -h'; # file command's --no-dereference flag, see `man file`
+
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path }))
+        return NULL;
+
+      if (unit_tests[FUNCTION_NAME][path]) return unit_tests[FUNCTION_NAME][path];
+
+      # Run the 'file' command
+      var file_cmd, output;
+
+      file_cmd = 'file' + flags + ' $1$';
+      output = ldnix::run_cmd_template_wrapper(template:file_cmd, args:[path]);
+
+      return output;
+    }
+
+
+    ##
+    # Search specified file path for the specified arguments.
+    #
+    # @param [path:str]        file path to search
+    # @param [arguments:array] arguments to pass to ldnix::get_version_from_bin()
+    #
+    # @return matching string if a match is found
+    #         NULL otherwise
+    ##
+    function search_string(path, arguments, &collection_metadata)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ path:path, arguments:arguments }))
+       return NULL;
+
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Processing path: ' + path);
+      var argument, matches;
+
+      foreach argument (arguments)
+      {
+        matches = ldnix::get_version_from_bin(
+          path          : path,
+          regex         : argument.regex,
+          grep_regex    : argument.grep_regex,
+          icase         : argument.icase,
+          skip_strings  : argument.skip_strings,
+          only_matching : argument.only_matching,
+          collection_metadata: collection_metadata
+        );
+
+        if (empty_or_null(matches) || matches == UNKNOWN_VER)
+          continue;
+
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - Pattern matched with these arguments ' + obj_rep(argument));
+        return matches;
+      }
+
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:' - None of the pattern(s) matched');
+      return NULL;
+    }
+
+
+    ##
+    # Search the file contents for patterns with hexadecimal characters.
+    #
+    # @param [path:str]
+    # @param [pattern:str]
+    # @param [pattern_flag:str]
+    # @param [grep_arguments:str]
+    # @param [output_pattern:str]
+    # @param [named_capture_groups:array]
+    #
+    # @return nested list of arrays with the
+    ##
+    function search_bytes(path, pattern, pattern_flag, grep_arguments, output_pattern, named_capture_groups)
+    {
+      # Argument checks
+      var checks = [
+        # Required
+        { argname: 'path', arg: path, checker: validate::checker.data.str },
+        { argname: 'pattern', arg: pattern, checker: validate::checker.data.str },
+
+        # Optional
+        { argname: 'pattern_flag', arg: pattern_flag, checker: validate::checker.data.str, optional: true },
+        { argname: 'output_pattern', arg: output_pattern, checker: validate::checker.data.str, optional: true},
+        { argname: 'named_capture_groups', arg: named_capture_groups, checker: validate::checker.data.array, optional: true }
+      ];
+
+      var validation = validate::multiple_args(checks:checks, check_all:true);
+      if (!validation[0]) return NULL;
+
+      if (!ldnix::grep_supported())
+        return NULL;
+
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Processing path: ' + path);
+
+      # Defaults
+      if (empty_or_null(pattern_flag))
+      {
+        if (get_kb_item('Host/MacOSX/Version') || get_kb_item('Host/FreeBSD/release'))
+          pattern_flag = '-E';
+        else
+          pattern_flag = '-P';
+      }
+
+      # Allow for empty strings, so only check for NULL
+      if (isnull(grep_arguments))
+        grep_arguments = '-ao';
+
+      # Use the grep pattern for parsing output of not specified.
+      if (empty_or_null(output_pattern))
+        output_pattern = pattern;
+
+      # Construct the 'grep' command
+      var grep_template = strcat('LANG=C grep ', pattern_flag, ' ', grep_arguments, ' "', pattern, '" $1$');
+
+      # Execute the grep command
+      var buf = ldnix::run_cmd_template_wrapper(template:grep_template, args:[path]);
+      if (empty_or_null(buf))
+        return NULL;
+
+      # Parse the command output
+      var re = new re();
+
+      if (!empty_or_null(named_capture_groups))
+        re.set_named_capture_groups(named_capture_groups);
+
+      var matches = re.match_lines(pattern:output_pattern, string:buf);
+
+      return matches;
+    }
+
+
+    ##
+    # Parses a glob range pattern and produces a matching regex fragment
+    #
+    # @param [glob:string] A glob pattern.
+    # @param [pos:int]     Position in the glob to start parsing a range
+    #
+    # @return [list]  Returns [pos, regex] where regex will be NULL if the given position is not
+    #                 the beginning of a glob range.  The returned pos will be where parsing can
+    #                 resume after this function - i.e. the next position after the range.  A
+    #                 return position of -1 indicates an unrecoverable error.
+    ##
+    function _parse_glob_range(glob, pos)
+    {
+      var orig_pos = pos;
+
+      if(empty_or_null(glob) || isnull(pos))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Error a required parameter was missing.');
+        return [-1, NULL];
+      }
+
+      var len = strlen(glob);
+      if(pos < 0 || pos >= len)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'The "pos" argument was given an illegal value.');
+        return [-1, NULL];
+      }
+
+      #Not a range
+      if(glob[pos] != '[' || pos+1 == len)
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Was called but was not positioned at the start of a range.');
+        return [pos, ''];
+      }
+
+      pos += 1;
+
+      var start_off = 1;
+      var lb_literal = FALSE;
+      var rb_literal = FALSE;
+      var range = FALSE;
+
+      var pat = '';
+      while(pos < len)
+      {
+        if(glob[pos] == '!' && pos == orig_pos + 1)
+        {
+          pat += '^';
+          start_off++;
+        }
+        else if(glob[pos] == ']' && pos == orig_pos + start_off && !rb_literal)
+        {
+          pat += "\]";
+          rb_literal = TRUE;
+          start_off++;
+        }
+        else if(glob[pos] == '[' && pos == orig_pos + start_off && !lb_literal)
+        {
+          pat += "\[";
+          rb_literal = TRUE;
+          start_off++;
+        }
+        #Escape regex special chars while in range
+        else if(glob[pos] == ']')
+        {
+          range = TRUE;
+          pos++;
+          break;
+        }
+        else
+        {
+          pat += glob[pos];
+        }
+
+        pos++;
+      }
+
+      if(!range)
+        return[orig_pos, ''];
+
+      return [pos, '[' + pat + ']'];
+    }
+
+
+    ##
+    # Converts a file glob to a regular expression
+    #
+    # @param [glob:string] A Unix wildcard pattern (glob)
+    #
+    # @return [NULL|string] On success returns a regular expression.  On failure returns NULL.
+    #
+    # @remark
+    #   This function aims to convert globs in the form described by https://man7.org/linux/man-pages/man7/glob.7.html
+    #   In the future we may implement this conversion for globs that use groups {} or character classes such as
+    #   ::lower::.
+    #
+    # @remark
+    #   The regex returned by this function is anchored by either the beginning/end of the string or by a unix filepath
+    #   separator (/) and is intended for use in matching 'nix filepath segments.
+    ##
+    function file_glob_to_regex(glob)
+    {
+      if(empty_or_null(glob) || (typeof(glob) != 'string' && typeof(glob) != 'data'))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'The supplied glob was missing or is not a string.');
+        return NULL;
+      }
+
+      var len = strlen(glob);
+
+      var pos = 0;
+      var pat = '';
+      var range_ret;
+
+      while(pos < len)
+      {
+        if(glob[pos] == "[")
+        {
+          range_ret = _parse_glob_range(glob:glob, pos:pos);
+          if(range_ret[0] == -1 || isnull(range_ret[1]))
+            return NULL;
+          pos = range_ret[0];
+          pat += range_ret[1];
+          continue;
+        }
+
+        if(glob[pos] =~ "[.()\^$]")
+          pat += "\" + glob[pos];
+        else if(glob[pos] == '*')
+          pat += ".*?";
+        else if(glob[pos] == "?")
+          pat += ".";
+        else
+          pat += glob[pos];
+
+        pos++;
+      }
+
+      pat = "^" + pat + "(/|$)";
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'The glob:\n  ' + serialize(glob) +
+                                                      '\nhas been converted to:\n  ' + serialize(pat));
+      return pat;
+    }
+  }
+}

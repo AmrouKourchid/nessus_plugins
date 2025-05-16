@@ -1,0 +1,688 @@
+#TRUSTED 63cd431ed63b8173331f601e3528f8ef0253de53f92f0776c125542b10cbf6ba768998b5da1699615a4b7657be822a9641536349a6c6056f8f190744127270334bc8063944e96e7e78ca795065f39bd055176b8df5e77741b1f0645c39cbfc81ed3b6b13bf660faa334931abafd87f77bf782bb0fa48c85e0ac59129dbd769d3ae4090b72f9f8820f648fb2c6743e5c4a57d92407821571e54a94758e4178f8f3f6ab5d06edee6806d5e22e20b27bb198bfd90a0a8ee422f70b60c1125cc6f09163b5bf85c6ac937f62c676c89c44981e27cbfb538172d92724da8f3027c3dc1830275e037da07a7051650460bb51def76e8677490de43ee57e854ad226356f86aa0e6b8711ab50c34b777b53095f475b21e8431ee06abf9accd7d0a3fea8201d78aff36d36d49dab9047763f97a7912d9c8ac830cbd67ee48214996334b96dc1fe702bacaf24ff429c378c02a0012c08d8ab371dfcac7128b9dec9917a685a56229828c3d8766b29c61afd1daacd85ac3b5c53cfa00401937c9222466bda0e260be9be285b27ee9d50d8d91cc9d469b04e024686de5b5a01945b884d3dec810e1b7c88f56503f2aa4645eb17ec35392eca7a5cbf9229d7447215b3e86f7ad75c9363c5b605bd11cad62b7f3460ed6acbf2366641b2df418ed8ebf2d9e685359b83d6ef421cf30632411b1d0e0229e57f48c105a0502d6a4552d28f1ba543b38
+#TRUST-RSA-SHA256 2a39a239ec4a05b2e5d5c91ceebc2ab4251f18d494634a1120f6e6c84531a677f9a9ec4835e57c06fcea91a9e6b5de92ab35def91d57d2fa07b263d48a533c55603594d105e4c6021b53153152dc8f2345a0d2105b03c6449dc59bec05dd8f7b0adee533c7e53f107f69390b62e8bf9c2ee08ecd017328eb863cf7ba57f75d3572f90d8ea911cd39080866d763572733891c9d749b38a285627df05be8f3bce343c2f8cb1ef430e83e28b8f46363ea44b452c51803fa1472f16587dace7ac185991278b865c75ba00a33767700a9297e1b55c7b6519485645cacce4f61fd997a57fd77dac7b1769bbfcd92238c228e168034551230fc8f36868794aab238f850d7c3e60533f4114e8494bf270045c70d9a939b214a7c2bbf6223df99af783394a87f315e8ce4396c9bb5802a628d35ae28bede86898e8f372000673bbccb78081314211b9fa38048eb703be46f249dc65efc5d1e706957e9ef1b1834e746173c2d8fe5326df0ee43d3efbb6089ec9e1fb55b716601bf1a09b1c958a89bd53a46c475d27af813bb4a5684aac3532f05b5d7ea34cc9775a7e3dc3ccd64035aa67df72889f8e0953a2ca47d4a16d53b5f7c52314a9e7ccd3170e41fdda349ea523e314e5a07c6c98971bd6f76fc226c3170dac11938d67ce25f2b8a334338f884fb237c3649c83283f675e58ca4f75c61f749f3ac7c2ef76daa8ef03fba4808e325
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 0
+###
+
+namespace delinea
+{
+  object DelineaConfig : integrations::IntegrationConfig
+  {
+    var int_name;
+    var secret_name;
+    var esc_secret_name;
+    var custom_url;
+    var token;
+    var use_kerb; # boolean use Kerberos
+    var kerb_domain; # Kerberos Domain
+    var api_domain; # Domain gathered from API
+    var domain; # Domain name passed to logins.nasl
+
+    ##
+    # Initialize Delinea config.
+    #
+    # @param [prefix:string] The prefix of the UI string for the config element
+    # @param [postfix:string] The postfix of the UI string for the config element
+    #
+    # @return TRUE always
+    ##
+    public function init(prefix, postfix)
+    {
+      var api_key, auth_method;
+      int_name = 'Delinea Secret Server';
+      prefix += 'PAM ';
+      secret_name = script_get_preference(prefix + 'Secret Name' + postfix);
+      host = script_get_preference(prefix + 'Host' + postfix);
+      port = script_get_preference(prefix + 'Port' + postfix);
+      username = script_get_preference(prefix + 'User' + postfix);
+      password = script_get_preference(prefix + 'Password' + postfix);
+      ssl = integrations::boolean(script_get_preference(prefix + 'SSL' + postfix));
+      ssl_verify = integrations::boolean(script_get_preference(prefix + 'Verify SSL Certificate' + postfix));
+      ssh_key = integrations::boolean(script_get_preference(prefix + 'SSH Private Key' + postfix));
+      # Account information for escalation
+      esc_secret_name = script_get_preference(prefix + 'Escalation Credential ID' + postfix); # The secret name in Delinea for the escalation account
+      api_key = script_get_preference(prefix + 'API Key' + postfix);
+      auth_method = script_get_preference(prefix + 'Authentication Method' + postfix);
+      use_kerb = integrations::boolean(script_get_preference(prefix + "Use Kerberos KDC" + postfix));
+      kerb_domain = script_get_preference(prefix + "KDC Domain" + postfix);
+
+      # Adding logic for custom url if customer uses one.
+      var parsed_host = integrations::parse_url(url:host);
+      host = parsed_host.target;
+      custom_url = parsed_host.directory;
+
+      integrations::logger(msg:
+        'Delinea Settings ~' +
+        '\nSecret Name: ' + secret_name +
+        '\nHost: ' + host +
+        '\nCustom URL: ' + custom_url +
+        '\nPort : ' + port +
+        '\nUsername : ' + username +
+        '\nSSL: ' + ssl +
+        '\nVerify SSL: ' + ssl_verify +
+        '\nGet SSH Key: ' + ssh_key +
+        '\nEscalation Secret Name: ' + esc_secret_name +
+        '\nAuthentication Method: ' + auth_method
+        , config:this, lvl:3
+      );
+      if (("API Key" >< auth_method) && !empty_or_null(api_key))
+      {
+        this.token = api_key;
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Scrubs PII off the given string
+    #
+    # @param [msg:string] The string to scrub
+    #
+    # @return The scrubbed string
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(
+        msg:msg,
+        '("access_token":)"(?:[^"])*"',
+        '("refresh_token":)"(?:[^"])*"',
+        '-----BEGIN RSA PRIVATE KEY-----(?:[^"]*)',
+        '"itemValue":..(?:[^"]*).'
+      );
+      return msg;
+    }
+
+    ##
+    # Signs in if not already signed in.
+    #
+    # @return an array containing {'success':TRUE|FALSE}
+    ##
+    function _sign_in_if_needed()
+    {
+      var sign_in;
+      if (empty_or_null(this.token))
+      {
+        sign_in = this._sign_in();
+
+        if(!sign_in.success)
+        {
+          integrations::logger(msg:"Failed to sign into Delinea Secret Server.", lvl:1, report:FALSE, config:this);
+          return {success:FALSE};
+        }
+        this.token = sign_in.token;
+      }
+      return {success:TRUE};
+    }
+
+    ##
+    # Sign into Delinea Secret Server and get AuthToken
+    #
+    # @return an array containing {token: auth token, success: TRUE|FALSE}
+    ##
+    function _sign_in()
+    {
+      var data, command, headers, response, result;
+
+      # Create Headers
+      # Override "Pragma" value to NULL, because it's not trivial to remove "Pragma: no-cache" from
+      # the default headers. This is an ugly fix but required for Delinea cloud support.
+      headers = {"Content-Type": "application/x-www-form-urlencoded", "Pragma": NULL};
+
+      # Create Payload
+      data = 'username=' + urlencode(str:this.username) + '&password=' + urlencode(str:this.password) + '&grant_type=password';
+
+      command = this.custom_url + 'oauth2/token';
+
+      # Debug message to indicate authentication request
+      integrations::logger(msg: "Requesting Sign In: " + command, lvl:3, report: FALSE, config:this);
+
+      # API Request
+      result = integrations::post(config:this, command:command, data:data, headers:headers);
+
+      if(!result.success || empty_or_null(result.body))
+      {
+        integrations::logger(msg: "Invalid username/password, Delinea Secret Server IP Address or port.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+
+      if(empty_or_null(result.body.access_token))
+      {
+        integrations::logger(msg: "Unable to retrieve an access token for Delinea API authentication.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+
+      return
+      {
+        success:TRUE,
+        token:result.body.access_token
+      };
+    }
+
+    ##
+    # Lookup secret using the secret name
+    #
+    # @return an array containing {secret_id: id to fetch the secret, success: TRUE | FALSE}
+    ##
+    function _get_secret_id()
+    {
+      var command, headers, result, secret_id, sign_in;
+      sign_in = this._sign_in_if_needed();
+      if (!sign_in.success)
+      {
+        return {success: FALSE};
+      }
+
+      # Create Headers
+      # Override "Pragma" value to NULL, because it's not trivial to remove "Pragma: no-cache" from
+      # the default headers. This is an ugly fix but required for Delinea cloud support.
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + this.token,
+        "Pragma": NULL
+      };
+
+      # Create resource URI
+      command = this.custom_url + 'api/v1/secrets/lookup?filter.searchText=' + urlencode(str: this.secret_name) + '&filter.searchField=name&filter.includeRestricted=true';
+
+      # Debug message to indicate request for secret id
+      integrations::logger(msg: "Requesting the Secret ID: " + command, lvl:3, report: FALSE, config:this);
+
+      result = integrations::get(config:this, command: command, headers: headers);
+
+      if(!result.success || empty_or_null(result.body))
+      {
+        integrations::logger(msg: "Unable to retrieve the secret ID or secret name does not exist.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+
+      if(empty_or_null(result.body.records[0].id) || result.body.filter.searchText != this.secret_name)
+      {
+        integrations::logger(msg: "Unable to find or retrieve the ID for the indicated secret name.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+      if (max_index(result.body.records) > 1)
+      {
+        integrations::logger(msg: "Warning: found multiple secrets matching search: " + this.secret_name, lvl:1, config:this);
+      }
+
+      secret_id = result.body.records[0].id;
+
+      return
+      {
+        success:TRUE,
+        secret_id:secret_id
+      };
+    }
+
+    ##
+    # Lookup secret using the secret name for escalation account
+    #
+    # @return an array containing {secret_id: id to fetch the secret for escalation account, success: TRUE | FALSE}
+    ##
+    function _get_esc_secret_id()
+    {
+      var command, headers, result, secret_id, sign_in;
+      sign_in = this._sign_in_if_needed();
+      if (!sign_in.success)
+      {
+        return {success: FALSE};
+      }
+
+      # Create Headers
+      # Override "Pragma" value to NULL, because it's not trivial to remove "Pragma: no-cache" from
+      # the default headers. This is an ugly fix but required for Delinea cloud support.
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + this.token,
+        "Pragma": NULL
+      };
+
+      # Create resource URI
+      command = this.custom_url + 'api/v1/secrets/lookup?filter.searchText=' + urlencode(str: this.esc_secret_name) + '&filter.searchField=name&filter.includeRestricted=true';
+
+      # Debug message to get the secret id for the escalation account
+      integrations::logger(msg: "Requesting the Secret ID for the Escalation Account: " + command, lvl:3, report: FALSE, config:this);
+
+      result = integrations::get(config:this, command: command, headers: headers);
+
+      if(!result.success || empty_or_null(result.body))
+      {
+        integrations::logger(msg: "Unable to retrieve the secret ID or secret name does not exist.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+
+      if(empty_or_null(result.body.records[0].id) || result.body.filter.searchText != this.esc_secret_name)
+      {
+        integrations::logger(msg: "Unable to find or retrieve a secret ID for the escalation account.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+      if (max_index(result.body.records) > 1)
+      {
+        integrations::logger(msg: "Warning: found multiple secrets matching search: " + this.esc_secret_name, lvl:1, config:this);
+      }
+
+      secret_id = result.body.records[0].id;
+
+      return
+      {
+        success:TRUE,
+        secret_id:secret_id
+      };
+    }
+
+    ##
+    # Fetch the secrets from Delinea Secret Server
+    #
+    # @param [secret_id:int] The id of the secret being retrieved
+    #
+    # @return an array containing {[creds:array] The credentials of account, success: TRUE | FALSE}
+    ##
+    function _get_username_and_password(secret_id)
+    {
+      var command, creds, headers, passphrase, result, sign_in;
+      sign_in = this._sign_in_if_needed();
+      if (!sign_in.success)
+      {
+        return {success: FALSE};
+      }
+
+      # Create Headers
+      # Override "Pragma" value to NULL, because it's not trivial to remove "Pragma: no-cache" from
+      # the default headers. This is an ugly fix but required for Delinea cloud support.
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + this.token,
+        "Pragma": NULL
+      };
+
+      # Create resource URI
+      command = this.custom_url + 'api/v1/secrets/' + secret_id +
+                '?autoComment=Nessus%20Scan';
+
+      # Debug message to indicate credential request
+      integrations::logger(msg: "Requesting Credentials: " + command, lvl:3, report: FALSE, config:this);
+
+      result = integrations::get(config:this, command: command, headers: headers);
+
+      if(!result.success || empty_or_null(result.body))
+      {
+        integrations::logger(msg: "Unable to find or get the requested credentials.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+
+      foreach (var item in result.body.items)
+      {
+        if (tolower(item.fieldName) == 'username')
+        {
+          creds['username'] = item.itemValue;
+        }
+
+        if (tolower(item.fieldName) == 'password')
+        {
+          creds['password'] = item.itemValue;
+        }
+
+        if (tolower(item.fieldName) == 'private key passphrase')
+        {
+          creds['passphrase'] = item.itemValue;
+        }
+
+        if (tolower(item.fieldName) == 'domain')
+        {
+          this.api_domain = item.itemValue;
+        }
+      }
+
+      if (empty_or_null(creds.username))
+      {
+        integrations::logger(msg: "Unable to find or retrieve a username for the requested secret name.", lvl:1, config:this);
+        return {
+          success:FALSE
+        };
+      }
+      else
+      {
+        return {
+          success:TRUE,
+          creds:creds
+        };
+      }
+    }
+
+    ##
+    #
+    # Assign config domain value. This value is passed to logins.nasl, rather than
+    # going directly through login.nasl plugin to avoid issues we have with Kerberos Domain.
+    #
+    # @return boolean boolean if domain was assigned to config
+    ##
+    function _config_domain()
+    {
+      if(this.use_kerb)
+      {
+        this.domain = this.kerb_domain;
+        integrations::logger(msg:'Domain name provided from Kerberos Domain entry: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else if (!empty_or_null(this.api_domain)) 
+      {
+        this.domain = this.api_domain;
+        integrations::logger(msg:'Domain name provided from API data collection: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    ##
+    # Fetch the private key for SSH authentication from Delinea Secret Server
+    #
+    # @param [secret_id:int] The id of the secret being retrieved
+    #
+    # @return an array containing {[key:string] the value if the private key, success: TRUE | FALSE}
+    ##
+    function _get_key(secret_id)
+    {
+      var command, headers, key, result, sign_in;
+      sign_in = this._sign_in_if_needed();
+      if (!sign_in.success)
+      {
+        return {success: FALSE};
+      }
+
+      # Create Headers
+      # Override "Pragma" value to NULL, because it's not trivial to remove "Pragma: no-cache" from
+      # the default headers. This is an ugly fix but required for Delinea cloud support.
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + this.token,
+        "Pragma": NULL
+      };
+
+      # Create resource URI
+      command = this.custom_url + 'api/v1/secrets/' + secret_id + '/fields/private-key' +
+                '?autoComment=Nessus%20Scan';
+
+      # Debug message indicating SSH key request
+      integrations::logger(msg: "Requesting SSH Key: " + command, lvl:3, report: FALSE, config:this);
+
+      result = integrations::get(config:this, command: command, headers: headers, hide_response_body:TRUE);
+
+      if(!result.success || empty_or_null(result.body))
+      {
+        integrations::logger(msg: "Unable to retrieve the private key requested.", lvl:1, report: FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+
+      key = result.body;
+
+      return
+      {
+        success:TRUE,
+        key:key
+      };
+    }
+
+    ##
+    # Get the credentials/key from Delinea Secret Server
+    #
+    # @return an array containing {[secrets:array] contains the credentials for the requested account, success: TRUE | FALSE}
+    ##
+    public function get_creds()
+    {
+      var cache_result, cred_result, data_to_cache, esc_cache_result, esc_result, esc_search_cache_result, key_result, pass_result, sign_in, search, esc_search, secret_id, esc_secret_id, secrets, search_cache_result;
+
+      # Get the account secret id.
+      search_cache_result = integrations::get_cache(secret:"delinea_search_"+urlencode(str:this.secret_name));
+      if (search_cache_result.success)
+      {
+        integrations::logger(msg:"Cache hit for search result: "+this.secret_name, lvl:2, config:this);
+        secret_id = search_cache_result.kv.secret_id;
+      }
+      else
+      {
+        search = _get_secret_id();
+        if(!search.success)
+        {
+          integrations::logger(msg:"Failed to retrieve the account secret id.", lvl:1, report:FALSE, config:this);
+
+          return
+          {
+            success:FALSE
+          };
+        }
+        secret_id = search.secret_id;
+        integrations::set_cache(secret:"delinea_search_"+urlencode(str:this.secret_name),kv:{secret_id:secret_id});
+      }
+
+      cache_result = integrations::get_cache(secret:"delinea_"+secret_id);
+      if (cache_result.success)
+      {
+        integrations::logger(msg:"Cache hit for secret ID: "+secret_id, lvl:2, config:this);
+        cred_result = {
+          success: TRUE,
+          cached: TRUE,
+          creds: cache_result.kv
+        };
+      }
+      else
+      {
+        cred_result = _get_username_and_password(secret_id:secret_id);
+      }
+
+      if(!cred_result.success)
+      {
+        integrations::logger(msg:"Failed to retrieve the account credentials.", lvl:1, report:FALSE, config:this);
+
+        return
+        {
+          success:FALSE
+        };
+      }
+      integrations::logger(msg:"Successfully retrieved the account credentials.", lvl:2, report:FALSE, config:this);
+
+      # Check if the user wants to use privilege escalation
+      if(!empty_or_null(this.esc_secret_name))
+      {
+        # If the escalation secret is the same as the login secret, there's no need to get it twice.
+        if (this.esc_secret_name == this.secret_name)
+        {
+          integrations::logger(msg:"Escalation and login secret are the same.", lvl:3, config:this);
+          secrets['sudo_password'] = cred_result.creds.password;
+        }
+        else
+        {
+          esc_search_cache_result = integrations::get_cache(secret:"delinea_search_"+urlencode(str:this.esc_secret_name));
+          if (esc_search_cache_result.success)
+          {
+            integrations::logger(msg:"Cache hit for search result: "+this.esc_secret_name, lvl:2, config:this);
+            esc_secret_id = esc_search_cache_result.kv.secret_id;
+          }
+          else
+          {
+            # Get the escalation account secret id
+            esc_search = _get_esc_secret_id();
+
+            if(!esc_search.success)
+            {
+              integrations::logger(msg:"Failed to retrieve the escalation account secret id.", lvl:1, report:FALSE, config:this);
+
+              return
+              {
+                success:FALSE
+              };
+            }
+
+            esc_secret_id = esc_search.secret_id;
+            integrations::set_cache(secret:"delinea_search_"+urlencode(str:this.esc_secret_name), kv:{secret_id:esc_secret_id});
+          }
+
+          # API request
+          esc_cache_result = integrations::get_cache(secret:"delinea_"+esc_secret_id);
+          if (esc_cache_result.success)
+          {
+            integrations::logger(msg:"Cache hit for escalation secret ID: "+esc_secret_id, lvl:2, config:this);
+            esc_result = {
+              success: TRUE,
+              cached: TRUE,
+              creds: esc_cache_result.kv
+            };
+          }
+          else
+          {
+            esc_result = _get_username_and_password(secret_id:esc_secret_id);
+          }
+
+          if(!esc_result.success)
+          {
+            integrations::logger(msg:"Failed to retrieve the escalation account credentials.", lvl:1, report:FALSE, config:this);
+
+            return
+            {
+              success:FALSE
+            };
+          }
+          integrations::logger(msg:"Successfully retrieved the escalation account credentials.", lvl:2, report:FALSE, config:this);
+          secrets['sudo_password'] = esc_result.creds.password;
+          if (!esc_result.cached)
+          {
+            integrations::set_cache(secret:"delinea_"+esc_secret_id, kv: esc_result.creds);
+          }
+        }
+      }
+
+      secrets['username'] = cred_result.creds.username;
+
+      # Only set the password if SSH key authentication is NOT in use.
+      # "use SSH key" should also mean "don't attempt password". In the case
+      # when a secret contains both a key and a password, but the password doesn't work,
+      # password authentication gets attempted first and key authentication is never even
+      # attempted. See: CS-71598.
+      if (!this.ssh_key)
+      {
+        secrets['password'] = cred_result.creds.password;
+      }
+
+      secrets['passphrase'] = cred_result.creds.passphrase;
+      if(_config_domain())
+      {
+        secrets['domain'] = this.domain;
+      }
+
+      if(this.ssh_key)
+      {
+        if (!cred_result.creds.key)
+        {
+          key_result = _get_key(secret_id:secret_id);
+        }
+        else
+        {
+          integrations::logger(msg:"SSH Key found in cache.", lvl:2, config:this);
+          key_result = {
+            success: TRUE,
+            key: cred_result.creds.key
+          };
+        }
+
+        if(!key_result.success)
+        {
+          integrations::logger(msg:"Failed to retrieve the SSH private key.", lvl:1, report:FALSE, config:this);
+
+          return
+          {
+            success:FALSE
+          };
+        }
+
+        integrations::logger(msg:"Successfully retrieved the SSH private key.", lvl:2, report:FALSE, config:this);
+
+        secrets['key'] = key_result.key;
+      }
+
+      # cache cred_result.creds but also add key with it.
+      if (!cred_result.cached)
+      {
+        data_to_cache = cred_result.creds;
+        if (secrets.key)
+        {
+          data_to_cache['key'] = secrets.key;
+        }
+        integrations::set_cache(secret:"delinea_"+secret_id, kv:data_to_cache);
+      }
+
+      return
+      {
+        success:TRUE,
+        secrets:secrets
+      };
+    }
+
+  }
+
+  ##
+  # Get the credentials from the API
+  #
+  # @param [prefix:string] The prefix of the UI string for the config element
+  # @param [postfix:string] The postfix of the UI string for the config element
+  #
+  # @return The array returned by get_creds()
+  ##
+  function rest_get_creds(prefix, postfix)
+  {
+    var config, result;
+    config = new delinea::DelineaConfig();
+    config.init(prefix:prefix, postfix:postfix);
+
+    # Disable HTTP keepalives for better cloud support.
+    http_disable_keep_alive();
+
+    integrations::logger(msg:"Waiting to acquire lock to get credentials", lvl:3, config:config);
+    mutex_lock(SCRIPT_NAME);
+    integrations::logger(msg:"Lock acquired", lvl:3, config:config);
+    result = config.get_creds();
+    mutex_unlock(SCRIPT_NAME);
+    return result;
+  }
+}

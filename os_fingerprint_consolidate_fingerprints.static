@@ -1,0 +1,325 @@
+###
+#
+# Revision: 1.3
+#
+###
+
+##
+# Consolidates the OS fingerprint when more than one fingerprint (separated by \n)
+# is detected. Consolidation attempts to keep all information that is the same accross
+# all discovered fingerprints. 
+#
+# @param [os_string:string] String containing \n separated fingerprints.
+# 
+# @return Consolidated OS fingerprint string, or NULL if an error occurred.
+##
+function consolidate_similar_os_version_strings(os_string)
+{
+  if(empty_or_null(os_string)) return '';
+  if(typeof(os_string) != 'data') 
+  {
+    dbg::detailed_log(
+      lvl: 1,
+      src: FUNCTION_NAME,
+      msg: "Bad data type for os_string",
+      msg_details: {
+        "os_string": {"lvl": 1, "value": obj_rep(os_string)}});
+    return NULL;
+  }
+
+  var consolidate = {
+    'linux_kernel': [], 
+    'linux_kernel_on': []
+  };
+  var os, other = [];
+  
+  # Place similar strings into buckets
+  foreach os(split(os_string, sep:'\n', keep:FALSE))
+    if(os =~ "^Linux Kernel ?([^ ]*) ?(\(.*?\))?$")
+      append_element(var:consolidate['linux_kernel'], value:os);
+    else if(os =~ "^Linux Kernel ?[^ ]* ?(\(.*?\))? on.*$")
+      append_element(var:consolidate['linux_kernel_on'], value:os);
+    else
+      append_element(var:other, value:os);
+  
+  return _make_consolidated_string(consolidate:consolidate, other:other);
+}
+
+##
+# PRIVATE (IMPLEMENTATION) FUNCTIONS BELOW
+##
+
+##
+# Call functions to consolidate strings based on string classification and return a new
+# string with consolidated results.
+#
+# @param [consolidate:array] The array containing the fingerprinting strings in categories.
+# @param [other:list] A list containing OS fingerprints that do not match strings we wish
+# to consolidate and are therefore pushed through to the final string.
+#
+# @return [string] An NL-separated string containing the consolidated OS fingerprinting strings.
+##
+function _make_consolidated_string(consolidate, other)
+{
+  var consolidated = [];
+  
+  if(!empty_or_null(consolidate['linux_kernel'])) 
+    append_element(
+      var:consolidated, 
+      value:_consolidate_linux_kernel_version_strings(string_list:consolidate['linux_kernel'])
+    );
+  
+  if(!empty_or_null(consolidate['linux_kernel_on'])) 
+    append_element(
+      var:consolidated, 
+      value:_consolidate_linux_kernel_on_version_strings(string_list:consolidate['linux_kernel_on'])
+    );
+  
+  consolidated = make_list(consolidated, other);
+  
+  return join(collib::remove_duplicates(consolidated), sep:'\n');
+}
+
+##
+# Parse and colsolidate 'Linux Kernel <version>' strings.
+#
+# @param [string_list:list] List of 'Linux Kernel <version>' strings.
+#
+# @return [string] The final 'Linux Kernel <version>' string that best represents the OS.
+#
+# @remark See ``_consolidate_version_strings()`` for the structure of the final version string returned.
+##
+function _consolidate_linux_kernel_version_strings(string_list)
+{
+  if(empty_or_null(string_list)) return '';
+  if(len(string_list) == 1) return string_list[0];
+  
+  var string, versions = [], archs = [], arch, match;
+  
+  foreach string(string_list)
+  {
+    match = pregmatch(string:string, pattern:"^Linux Kernel ?([^ ]*) ?(\(.*?\))?$");
+    if(empty_or_null(match)) continue;
+    
+    append_element(var:versions, value:match[1]);
+    
+    arch = '';
+    if(!empty_or_null(match[2])) arch = match[2];
+    append_element(var:archs, value:arch);
+  }
+  
+  if(collib::all_eq(archs)) arch = archs[0];
+  
+  return _final_linux_kernel_string(
+    version:_consolidate_version_strings(version_strings:versions), 
+    arch:arch
+  );
+}
+
+##
+# Builds the final string for 'Linux Kernel <version>' strings.
+#
+# @param [version:string] The kernel version.
+# @param [arch:string] The OS architecture string.
+#
+# @return [string] The fingerprinting string with format 'Linux Kernel <version> <arch>'
+##
+function _final_linux_kernel_string(version, arch)
+{
+  var ret;
+  if(version) ret = 'Linux Kernel ' + version;
+  else ret = 'Linux';
+  
+  if(arch) return strcat(ret, ' ', arch);
+  
+  return ret;
+}
+
+##
+# Consolidate 'Linux Kernel <version> on <distro>' strings.
+#
+# @param [string_list:list] List of 'Linux Kernel <version> on <distro>' strings.
+# 
+# @return [string] The final 'Linux Kernel <version> on <distro>'.
+#
+# @remark See ``_consolidate_version_strings()`` and ``_consolidate_distro_strings()``
+# for the structure of the final version string returned.
+##
+function _consolidate_linux_kernel_on_version_strings(string_list)
+{
+  var string, parts_match, distro, kernel;
+  var parts = {
+    'linux_kernel': [],
+    'distro': []
+  };
+  
+  foreach string(string_list)
+  {
+    parts_match = pregmatch(string:string, pattern:"^(Linux Kernel ?.*? ?(?:\(.*?\))?) on (.*?)$");
+    if(!empty_or_null(parts_match))
+    {
+      append_element(var:parts['linux_kernel'], value:parts_match[1]);
+      append_element(var:parts['distro'], value:parts_match[2]);
+    }
+  }
+  
+  if(collib::all_eq(parts['distro'])) 
+    distro = parts['distro'][0];
+  else
+    distro = _consolidate_distro_strings(distro_data:_get_distro_parts_hash_table(distro_list:parts['distro']));
+  
+  kernel = _consolidate_linux_kernel_version_strings(string_list:parts['linux_kernel']);
+  
+  if(distro && kernel == 'Linux') return distro; 
+  else if(distro) return strcat(kernel, ' on ', distro);
+  else return kernel;
+}
+
+##
+# Consolidate OS distro strings into a single string that contains only
+# the information relevant to all strings.
+#
+# @param [distro_data:array] A distro data array as returned by ``_get_distro_parts_hash_table()``.
+#
+# @return [string] The consolidated distro string.
+##
+function _consolidate_distro_strings(distro_data)
+{ 
+  var consolidated;
+  
+  if(collib::all_eq(distro_data['names'])) consolidated = distro_data['names'][0];
+  else return _consolidate_distro_name_strings(name_strings:distro_data['names']);
+  
+  if(collib::all_eq(distro_data['versions'])) consolidated += distro_data['versions'][0];
+  else consolidated += ' ' + _consolidate_version_strings(version_strings:distro_data['versions']);
+  
+  # Strip 'release' if it appears at the end of the consolidated string
+  if(consolidated =~ "^.* release $") consolidated -= ' release ';
+  
+  if(collib::all_eq(distro_data['code_names'])) return consolidated += ' ' + distro_data['code_names'][0];
+  
+  return consolidated;
+}
+
+##
+# Iterate over all name strings character by character and return all matching
+# words followed by a space from left to right.
+#
+# @param [name_strings:list] A list of distro name strings.
+#
+# @return [string] The consolidated distro name.
+##
+function _consolidate_distro_name_strings(name_strings)
+{
+  
+  if(empty_or_null(name_strings)) return '';
+  
+  var name_string, base_case = name_strings[0], accumulator = '', consolidated = '';
+  
+  # Shortest string is the base_case
+  foreach name_string(name_strings)
+    if(strlen(name_string) < strlen(base_case)) base_case = name_string;
+  
+  # If the nth character in all strings match, store the value in an 
+  # accumulator. Each time a space is encountered empty the accumulator 
+  # into the consolidated output string. 
+  var i = 0;
+  while(i<strlen(base_case))
+  {
+    foreach name_string(name_strings)
+      if(base_case[i] != name_string[i]) return trim(consolidated);
+    
+    accumulator += base_case[i];
+    if(base_case[i] == ' ') 
+    {
+      consolidated += accumulator;
+      accumulator = '';
+    }
+    i++;
+  }
+  
+  # All strings begin with the base case. If the next char is ' ' for all
+  # strings longer than the base case then return the base case. Otherwise,
+  # return consolidated data and ignore whats currently in the accumulator.
+  var next_char_is_space_for_all_strings = TRUE;
+  foreach name_string(name_strings)
+    if(name_string != base_case && name_string[i] != ' ') next_char_is_space_for_all_strings = FALSE;
+  
+  if(next_char_is_space_for_all_strings) return base_case;
+  return trim(consolidated);
+}
+
+##
+# Convert a list of distro strings into a data structure containing parts as
+# separate lists.
+#
+# @param [distro_list:list] A list of distro strings.
+#
+# @remark The strings must match the ``<Distro name> [version] [code_name]`` pattern where version and code name are optional. 
+#
+# @return [array] The array containing the parts of the distro strings.
+##
+function _get_distro_parts_hash_table(distro_list)
+{
+  var distro, distro_parts;
+  var distro_data = {
+    'names': [],
+    'versions': [],
+    'code_names': []
+  };
+  
+  foreach distro(distro_list)
+  {
+    # https://regex101.com/r/r2L0Jl/5
+    distro_parts = pregmatch(pattern:"^(.*?)(?: ?(\d+(?:\.\d+)*) ?(\(.*?\))?)?$", string:distro);
+    if(empty_or_null(distro_parts)) continue;
+    
+    append_element(var:distro_data['names'], value:distro_parts[1]);
+    if(distro_parts[2]) append_element(var:distro_data['versions'], value:distro_parts[2]);
+    if(distro_parts[3]) append_element(var:distro_data['code_names'], value:distro_parts[3]);
+  }
+
+  return distro_data;
+}
+
+##
+# Consolidate versions by major, minor, and build versions.
+#
+# @remark
+# The consolidated return string will only contain information that is the same across all
+# versions strings. 
+#   ['2.3', '3.3'] returns '' since the major versions do not match
+#   ['3.15', '3.16'] returns '3.x' since the major versions match but minor versions differ
+#   ['3.10.1', '3.10.2'] returns '3.10.x' since minor versions match but build versions differ
+#
+# See unit tests for more examples
+#
+# @param [version_strings:list] A list of '.'-separated versions.
+#
+# @return [string] The consolidated '.'-separated version.
+##
+function _consolidate_version_strings(version_strings)
+{
+  var version, parts, major = [], minor = [], build = [];
+  
+  foreach version(version_strings)
+  {
+    parts = split(version, sep:'.', keep:FALSE);
+    append_element(var:major, value:parts[0]);
+    if(!empty_or_null(parts[1])) append_element(var:minor, value:parts[1]);
+    if(!empty_or_null(parts[2])) append_element(var:build, value:parts[2]);
+  }
+  
+  if(!collib::all_eq(major))
+    return '';
+  if(empty_or_null(minor))
+    return major[0];
+  if(len(minor) != len(major) || !collib::all_eq(minor))
+    return major[0] + '.x';
+  if(empty_or_null(build))
+    return strcat(major[0], '.', minor[0]);
+  if(len(build) != len(major) || !collib::all_eq(build))
+    return strcat(major[0], '.', minor[0], '.x');
+  
+  return strcat(major[0], '.', minor[0], '.', build[0]);
+}

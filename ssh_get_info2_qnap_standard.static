@@ -1,0 +1,202 @@
+#TRUSTED 012b79bd0a3ae32e0b03a01ac7b2ad4cd3d50606d007fde4e1275bae6a50fb2708c858b6a18cdcf6f39cb73bac4e4acfbdc4dc9c5451ef5a355ab445daa65845312ce95d37cc9582d2fc1603e252d725da24add8ecdcac6f891e8a269ab6f5efa842d00a9a0a68798ee734c1bdcaf1b9754552fdcaf3de3ff314e072fcce3371f390b99496750979c84df2fffbd08c21cd527f8c0ec38743dc36641306351d1d8c2f3ed29c4ac587a3f64c392c6f795c1620c8b270686824bae77f09a12ce19bb89b06bb4e82c83f04ee051bc2762f1d157f8a09eec20cdac2a753b73aacd588ddf25c86ae75c2f2049d98dbb417c625d744bfa33613088c61a5aa87595e7285ba30fcd5be0d4dd5c932fe6f0b3f04d377dec403293faca66063574a37395ef299df880aa3d764829471b8cddafa733b551c2cd78d480746ee44d0ed8b2b9e3ba0c2cb15efff67c3831872f31f7628744b7a730415174f1cfc3a9c0ae2327091b8c910e6a12e84f17c72d73dcfea2bd10570a34824dc3d2718e6c76ad3e5f19692401e69523e55c2b1ad71e2f9285640a98aac31c184b31e3f1661016149986b5d41bbd1cf8ab220a3668e32415264b5f940e42ad35e51ade8d8bc0bcf66952ba8318ba4e23e94e8513682258e91a30b0de12c64371e9edbb2a18114e34fe58d054cf7f4f72a60c11357d7871ee24dfb27b70a07041b89c8b675ca3301cbc556
+#TRUST-RSA-SHA256 60090866ca2d3a133e34ca6a0d91a0ab526dbedf1b1192cca3f5217987509bb4988c2fa44fa42ce8d703706eb901cc025a5a3c11ccd0f962d3e4b93133eb6ce53bf2810f505bcdcebf331057691decbf8c551ba0e6d30ea9a3d2ecd014ec30e774e673579157b448a1c0e64381eacf838f0347ce5dcbe5bffc9f38bb3ce93a9cf49527dc589319b69bf0e8af6022fcb9035d10ec1ec143848b7ed76d7347b3fd2f4317add3c0727621ddef5ef4ce14f97e5462096c843f24996cdc2e16de49acf3ff8ef09e3896a1f8810dbf2d81c8efe6c8e696dc0ee2348e65c09930c83294711cf4f7672b16c11a980eff4ef44b33bc369a38d4e672d1d66b502be283a6ac7995110dab5e25ca896546f435e1a5d31fef2b7ecccee64ecad43cb3a6a60bc9e87a0d4de1506fdf3c03c9db600a771969a9a5d22ec7e34e13fc210e15cbbb5aa9af5aa005af26d5a97563526e13438e9e29d60d2a3d273725b3f7fd610aa52a17b758f716931587c65ceca93341a7da3bb9252b52dd6f9f16b5a2dadf45bcaedfcca4689c1397e639b3daed56e205ab1f18b48fdb9934215d58905ce9023928195f0c82f338eb56699bd842e77e51bb80c4c5b61e98f9d7b06dab970d500e391b3d4900618ddc963632204f407627b7f4248265b8f5dd3c9efa6e66c4d3c79fcc104acfe14ad6b7bbf1c6eb38b4875e83a60fbca90abf95d2f9fa2c0ddc6017
+##
+# (C) Tenable Network Security, Inc.
+##
+# Check host information for triggers that the device OS is a supported QNAP OS.
+##
+function is_qnap_standard()
+{
+  if (get_kb_item('Host/OS/QNAP/standard'))
+    return TRUE;
+
+  var buffer_pattern = "\|  Console Management - Main menu\s+|\|  1: Show network settings\s+|\|  2: System event logs\s+|\|  3: Reset to factory default \(password required\)\s+|\|  4: Activate\/ deactivate a license\s+|\|  5: App management\s+|\|  6: Reboot in Rescue mode \(w\/o configured disk\)\s+|\|  7: Reboot in Maintenance Mode\s+|\|  Q: Quit \(return to normal shell environment\)";
+  if (host_info_key_val['post_login_buffer'] =~ buffer_pattern)
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# Check if the device OS is a QNAP device based on information collected
+##
+function qnap_standard_pre_check_fail()
+{
+  if(host_info_key_val['host_not_qnap_standard']) return TRUE;
+
+  # Check uname output for errors or mismatch
+  if(uname_error_or_mismatch(regex:qnap_standard_check['test_cmd_regex']))
+    return TRUE;
+
+  if (is_ivanti_sentry() ||
+      is_screenos() ||
+      is_dell_idrac() ||
+      is_exos() ||
+      is_arrayos())
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# Runs QNAP OS assessment commands
+#
+# @param   session              Session object associated with connection
+# @param   use_shell_handler    Shell handler information for commands to be run
+# @param   channel              Address of channel object associated with connection
+# @param   cmd_res              The command result
+#
+# @return  TRUE
+##
+function handle_qnap_standard(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name:'Host/uname', value:cmd_res);
+  var command = "/bin/sed -n '/\[System\]/,/^$/p' /etc/default_config/uLinux.conf";
+  var res = run_command(cmd:command, session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(empty_or_null(res))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find extract the system configuration from /etc/default_config/uLinux.conf.');
+    report += 'The remote host appears to be a QNAP device, however it was not possible to determine the OS running on this device.\n'
+            + '\nLocal checks have not been enabled.';
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return TRUE;
+  }
+
+  set_kb_item(name:'Host/QNAP/uLinux System', value:res);
+  var os = pregmatch(string:res, pattern:"\nOS = ([^\r\n]+)");
+  if (!os)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find the OS in the output of "' + obj_rep(command) + '".');
+    report += 'The remote host appears to be a QNAP device, however it was not possible to determine the OS running on this device.\n'
+            + '\nLocal checks have not been enabled.';
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return TRUE;
+  }
+
+  # Check OS value is QTS
+  os = os[1];
+  if (os != 'QTS')
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Unexpected OS value found in /etc/default_config/uLinux.conf: "', obj_rep(os), '".'));
+    report += 'The remote host appears to be a QNAP device, however it was not possible to determine the OS running on this device.\n'
+            + '\nLocal checks have not been enabled.';
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return TRUE;
+  }
+  # Get the cpu architecture 
+  command = '/bin/uname -m';
+  var cpu = run_command(cmd:command, session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if (cpu) replace_kb_item(name:'Host/cpu', value:chomp(cpu));
+
+  # Check if OS is QuTS hero by looking for /etc/QTS_ZFS
+  command = '/bin/ls /etc/QTS_ZFS';
+  var qts_zfs = run_command(cmd:command, session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if (qts_zfs && '/etc/QTS_ZFS' >< qts_zfs && 'No such file or directory' >!< qts_zfs) os = 'QuTS hero';
+
+  set_kb_item(name:strcat('Host/OS/QNAP/', os), value:TRUE);
+  report += strcat('\nQNAP OS: ', os, '\n');
+  var version = pregmatch(string:res, pattern:"\nVersion = ([^\r\n]+)");
+  var release = os;
+  if (version)
+  {
+    set_kb_item(name:strcat('Host/QNAP/', os, '/Version'), value:version[1]);
+    release += strcat(' ', version[1]);
+    report += strcat('Version: ', version[1], '\n');
+  }
+  var model = pregmatch(string:res, pattern:"\n\Model = ([^\r\n]+)");
+  if (model)
+  {
+    set_kb_item(name:strcat('Host/QNAP/', os, '/Model'), value:model[1]);
+    report += strcat('Model: ', model[1], '\n');
+  }
+  var number = pregmatch(string:res, pattern:"\nNumber = ([^\r\n]+)");
+  if (number)
+  {
+    set_kb_item(name:strcat('Host/QNAP/', os, '/Number'), value:number[1]);
+    release += strcat('.', number[1]);
+    report += strcat('Number: ', number[1], '\n');
+  }
+  var build = pregmatch(string:res, pattern:"\nBuild Number = ([^\r\n]+)");
+  if (build)
+  {
+    set_kb_item(name:strcat('Host/QNAP/', os, '/Build'), value:build[1]);
+    release += strcat('.', build[1]);
+    report += strcat('Build: ', build[1], '\n');
+  }
+
+  set_kb_item(name:strcat('Host/OS/QNAP/', os, '/release'), value:release);
+  report += '\nOS security patch assessment checks have been enabled for QNAP ' + os + '.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_qnap_standard.static:', value: 128);
+  return found_qnap_standard(session:session, use_shell_handler:use_shell_handler, channel:channel);
+}
+
+##
+# Function for running commands after a successful QNAP OS detection 
+#
+# @param   session              Session object associated with connection
+# @param   use_shell_handler    Shell handler information for commands to be run
+# @param   channel              Address of channel object associated with connection
+#
+# @return  TRUE
+##
+function found_qnap_standard(session, use_shell_handler, &channel)
+{
+  # Checks for installed components
+  var command = '/bin/cat /mnt/HDA_ROOT/.config/qpkg.conf';
+  var res = run_command(cmd:command, session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(empty_or_null(res)) dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to extract contents from /mnt/HDA_ROOT/.config/qpkg.conf.');
+  else
+  {
+    set_kb_item(name:'Host/QNAP/qpkg.conf', value:res);
+
+    res = str_replace(string:res, find:'\r', replace:"");
+    res = str_replace(string:res, find:'\n\n', replace:"§");
+    var array = split(res, sep:"§", keep:FALSE);
+    var comp_name, comp_ver, comp_build, comp_full_version;
+    if (!empty_or_null(array))
+    {
+      report += '\n\nInstalled Components:\n';
+      foreach var comp_str(array)
+      {
+        # The component name can be found in 3 places within the comp_str: in the Display_Name, Name and inbetween brackets at the start of the component entry
+        # i.e. "[helpdesk]\nName = helpdesk\nDisplay_Name = Helpdesk\n ... " the prefered value to use would be the Display_Name
+        comp_name = pregmatch(string:comp_str, pattern:"\nDisplay_Name = (.+?)\n");
+        if (!comp_name)
+        {
+          comp_name = pregmatch(string:comp_str, pattern:"\nName = (.+?)\n");
+          if (!comp_name)
+          {
+            comp_name = pregmatch(string:comp_str, pattern:"\[(.+?)]");
+            if (!comp_name)
+            {
+              continue;
+            }
+          }
+        }
+        comp_ver = pregmatch(string:comp_str, pattern:"\nVersion = (.+?)\n");
+        comp_build = pregmatch(string:comp_str, pattern:"\nBuild = (.+?)\n");
+        # Append the build to the version
+        if (!comp_ver) comp_full_version = 'unknown';
+        else if (!comp_build) comp_full_version = comp_ver[1];
+        else comp_full_version = comp_ver[1] + '.' + comp_build[1];
+        set_kb_item(name:'Host/QNAP/module/' + comp_name[1], value:TRUE);
+        set_kb_item(name:'Host/QNAP/module/' + comp_name[1] + '/version', value:comp_full_version);
+        report += '  - ' + comp_name[1] + ': ' + comp_full_version + '\n';
+      }
+    }
+  }
+  return TRUE;
+}
+
+##
+# Callback for systems without "Linux .*-qnap" in uname -a
+##
+function handle_not_qnap_standard(session, use_shell_handler, &channel, cmd_res)
+{
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  if (use_shell_handler) store_shell_info();
+  if (!empty_or_null(cmd_res)) host_info_key_val['host_not_qnap_standard'] = TRUE;
+}
+

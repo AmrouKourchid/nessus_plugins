@@ -1,0 +1,1517 @@
+##
+#
+#  Namespace mongodb
+#    Provides an encapsulated naming scope for mongodb functions and objects
+#
+##
+namespace mongodb {
+
+  ##
+  # Message types defined by the MongoDB specification
+  ##
+  global_var OP_REPLY = 1;  # Reply to a client request. responseTo is set
+  global_var OP_MSG = 2013;  # generic =msg command followed by a string
+  global_var OP_UPDATE =  2001;  # update document
+  global_var OP_INSERT =  2002;  # insert new document
+  global_var RESERVED = 2003;  # formerly used for OP_GET_BY_OID
+  global_var OP_QUERY = 2004;   #query a collection
+  global_var OP_GET_MORE =  2005;  # Get more data from a query. See Cursors
+  global_var OP_DELETE =  2006;  # Delete documents
+  global_var OP_KILL_CURSORS =  2007;  #Tell database client is done with a cursor
+
+  ##
+  # Default Port, just in case
+  ##
+  global_var MONGO_DEFAULT_PORT = 27017;
+
+  ##
+  # Global to store the connection socket for reuse.
+  ##
+  global_var _mongo_socket;
+
+  ##
+  # Ascending number for request Id
+  ##
+  global_var _req_id = 0;
+
+  ##
+  # Flag for denoting the requirement that SSL be used in MongoDB connections
+  ##
+  global_var _mongodb_requires_ssl = 0;
+
+  ##
+  # Internal cert stores. Overwritten each auth attempt, used in send_mongo().
+  ##
+  global_var _mongodb_ca, _mongodb_cert, _mongodb_key, _mongodb_key_pass;
+
+  ##
+  # Attempts a MongoDB authentication using the deprecated CR method.
+  #
+  # @param <port> Port to use
+  # @param <database> Database name to authenticate to
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @param <mechanism> Mechanism to authenticate with
+  # @remark Mechanism isn't used here. We have to authenticate with "PLAIN".
+  #         For the sake of compatibility with the other functions, we include this
+  # @remark Mongo-CR authentication has been removed since MongoDB 4.0. But just in case we encounter an old one...
+  # @returns parsed message result from send_mongo_query()
+  # @category mongodb
+  ##
+  function authenticate_mongo_cr(port, database, username, password, mechanism)
+  {
+    var nonce = get_nonce(port:port, database:database);
+    if (isnull(nonce))
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: Nonce returned is null');
+    }
+    var digest = auth_digest(nonce:nonce, username:username, password:password);
+    var document = {
+      'authenticate': 1,
+      'user': username,
+      'nonce': nonce,
+      'key': digest};
+    var document_order = [
+      'authenticate',
+      'user',
+      'nonce',
+      'key'];
+
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: sending mongo query',
+      msg_details:{
+         "collection":{"lvl":3, "value":database},
+         "document":{"lvl":3, "value":document},
+         "order":{"lvl":3, "value":document_order}
+      });
+    var result = send_mongo_query(port:port, collection:database, document:document, order:document_order);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: returned query result',
+      msg_details:{
+         "result":{"lvl":3, "value":obj_rep(result)}
+      });
+    return result;
+  }
+
+  ##
+  # Attempts a MongoDB authentication using the SASL PLAIN method
+  #
+  # @param <port> Port to use
+  # @param <database> Database name to authenticate to
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @param <mechanism> Mechanism to authenticate with
+  # @remark This is only for LDAP. And the password sends in plaintext. Be wary!
+  # @remark Database isn't used here. We have to authenticate to "$external.$cmd".
+  #         For the sake of compatibility with the other functions, we include this
+  # @remark Mechanism isn't used here. We have to authenticate with "PLAIN".
+  #         For the sake of compatibility with the other functions, we include this
+  # @returns parsed message result from send_mongo_query()
+  # @category mongodb
+  ##
+  function authenticate_mongo_plain(port, username, password, database, mechanism)
+  {
+    var document = {
+      'autoAuthorize': 1,
+      'mechanism': "PLAIN",
+      'payload': base64(str:'\x00' + username + '\x00' + password),
+      'saslStart': 1
+    };
+    var document_order = [
+      'saslStart',
+      'mechanism',
+      'payload',
+      'autoAuthorize'];
+
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: sending mongo query',
+      msg_details:{
+         "collection":{"lvl":3, "value":"$external.$cmd"},
+         "document":{"lvl":3, "value":"[REDACTED]"},
+         "order":{"lvl":3, "value":document_order}
+      });
+    var result = send_mongo_query(port:port, collection:'$external.$cmd', document:document, order:document_order, redact:TRUE);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: returned query result',
+      msg_details:{
+         "result":{"lvl":3, "value":obj_rep(result)}
+      });
+    return result;
+  }
+
+  ##
+  # Attempts a MongoDB authentication using the MONGODB-X509 method
+  #
+  # @param <port> Port to use
+  # @param <database> Database name to authenticate to
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @param <mechanism> Mechanism to authenticate with
+  # @remark This is for a non-SASL mechanism.
+  # @remark Most arguments aren't used here. We have to authenticate to "$external.$cmd".
+  #         The certs and creds get used during SSL socket setup.
+  #         For the sake of compatibility with the other functions, we include these.
+  # @returns parsed message result from send_mongo_query()
+  # @category mongodb
+  ##
+  function authenticate_mongo_x509(port, username, password, database, mechanism)
+  {
+    # We have to ensure the socket is closed and reopened for authentication.
+    # A fresh socket with the current creds will be reopened during the send.
+    if (!isnull(_mongo_socket) && is_sock_open(_mongo_socket))
+    {
+      close(_mongo_socket);
+      _mongo_socket = NULL;
+    }
+
+    var document = {
+      'authenticate': 1,
+      'mechanism': "MONGODB-X509"
+    };
+    var document_order = [
+      'authenticate',
+      'mechanism'];
+
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: sending mongo query',
+      msg_details:{
+         "collection":{"lvl":3, "value":"$external.$cmd"},
+         "document":{"lvl":3, "value":document},
+         "order":{"lvl":3, "value":document_order}
+      });
+    var result = send_mongo_query(port:port, collection:'$external.$cmd', document:document, order:document_order);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: returned query result',
+      msg_details:{
+         "result":{"lvl":3, "value":obj_rep(result)}
+      });
+    return result;
+  }
+
+
+  ##
+  # Attempts a MongoDB authentication using available methods such as SCRAM, CR, X509, and PLAIN
+  #
+  # @param <port> Port to use
+  # @param <database> Database name to authenticate to, default admin
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @param <ca> Root certificate authority certificate to authenticate x509 with
+  # @param <cert> Client certificate to authenticate x509 with
+  # @param <key> Client private key to authenticate x509 with
+  # @param <key_pass> Client private key password to authenticate x509 with
+  # @param <exit_on_fail> Flag to indicate whether or not function may call exit, defaults to true
+  # @remark Mongo-CR authentication has been removed since MongoDB 4.0. But just in case we encounter an old one...
+  # @returns parsed message result array from server if successful authentication, else
+  #          if exit_on_fail is false, parsed error message, else
+  #          exits with parsed error message, return becomes moot
+  # @category mongodb
+  ##
+  function authenticate_mongo(port, database, username, password, ca, cert, key, key_pass, exit_on_fail)
+  {
+    var result, error, error_list, authentication_mechanism, success_flag;
+    var authentication_func, authentication_type, authentication_setups, authentication_options;
+    error_list = [];
+    # Default exit on fail to true. Previously this function always exited on fail.
+    if (isnull(exit_on_fail) || exit_on_fail)
+    {
+      exit_on_fail = TRUE;
+    }
+    else
+    {
+      exit_on_fail = FALSE;
+    }
+    if (isnull(port))
+    {
+      port = MONGO_DEFAULT_PORT;
+    }
+    if (empty_or_null(database))
+    {
+      database = 'admin';
+    }
+
+    # Store x509 cert info internally rather than passing it needlessly through several functions.
+    # Even with forking this shouldn't overwrite other attempts.
+    _mongodb_ca = ca;
+    _mongodb_cert = cert;
+    _mongodb_key = key;
+    _mongodb_key_pass = key_pass;
+
+    authentication_setups = {
+      "SCRAM-SHA-1":{
+        "function":@authenticate_mongo_scram,
+        "mechanism":"SCRAM-SHA-1"
+      },
+      "SCRAM-SHA-256":{
+        "function":@authenticate_mongo_scram,
+        "mechanism":"SCRAM-SHA-256"
+      },
+      "MONGODB-CR":{
+        "function":@authenticate_mongo_cr,
+        "mechanism":"MONGODB-CR"
+      },
+      "PLAIN":{
+        "function":@authenticate_mongo_plain,
+        "mechanism":"PLAIN"
+      },
+      "MONGODB-X509":{
+        "function":@authenticate_mongo_x509,
+        "mechanism":"MONGODB-X509"
+      }
+    };
+    if (get_kb_item("MongoDB/require_ssl/" + port))
+    {
+      _mongodb_requires_ssl = 1;
+    }
+    else
+    {
+      _mongodb_requires_ssl = 0;
+    }
+    dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+      '_mongodb_requires_ssl:' + _mongodb_requires_ssl);
+    authentication_options = ingest_authentication_options(port:port, username:username, database:database);
+
+    if (empty_or_null(authentication_options))
+    {
+      error = 'ERROR: No authentication options are available for username ' + username +
+              ' on this MongoDB instance.';
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:error);
+      if (exit_on_fail)
+      {
+        exit(1, error);
+      }
+      return error;
+    }
+    foreach authentication_type (authentication_options)
+    {
+      error = '';
+      if (!empty_or_null(authentication_setups[authentication_type]) &&
+          !isnull(authentication_setups[authentication_type]["function"]) &&
+          !empty_or_null(authentication_setups[authentication_type]["mechanism"]) )
+      {
+        authentication_func = authentication_setups[authentication_type]["function"];
+        authentication_mechanism = authentication_setups[authentication_type]["mechanism"];
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+          'attempting authentication via mechanism ' + authentication_mechanism);
+        result = authentication_func(port:port, database:database, username:username, password:password, mechanism:authentication_mechanism);
+      }
+      else
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+          'authentication functions not available for mechanism ' + authentication_mechanism);
+        continue;
+      }
+      # Is there a result and is first array element not null?
+      if ( !isnull(result) && !isnull(result[0]) )
+      {
+        error = mongo_error(result);
+      }
+      if ( isnull(result) || ( error != '' ) )
+      {
+        if (isnull(result))
+        {
+          error = "NULL response from auth function, check debug logs";
+        }
+        dbg::detailed_log(
+          lvl:2,
+          src:FUNCTION_NAME,
+          msg:'Authentication error',
+          msg_details:{
+             "mechanism":{"lvl":3, "value":authentication_mechanism},
+             "error":{"lvl":3, "value":obj_rep(error)}
+          });
+        append_element(var:error_list, value:error);
+      }
+      else
+      {
+        # Authentication successful
+        success_flag = TRUE;
+        break;
+      }
+    }
+
+    if (success_flag)
+    {
+      dbg::detailed_log(
+        lvl:2,
+        src:FUNCTION_NAME,
+        msg:'Potentially successful authentication result',
+        msg_details:{
+           "result":{"lvl":3, "value":obj_rep(result)}
+        });
+      return obj_rep(result);
+    }
+    else
+    {
+      dbg::detailed_log(
+        lvl:2,
+        src:FUNCTION_NAME,
+        msg:'ERROR: Unable to authenticate with any of the existing authentication methods',
+        msg_details:{
+           "error_list":{"lvl":3, "value":obj_rep(error_list)}
+        });
+      if (exit_on_fail)
+      {
+        exit(1, 'Authentication Errors: ' + obj_rep(error_list) + '\n\nThe problem may be incorrect credentials.');
+      }
+      return "ERROR: " + obj_rep(error_list);
+    }
+  }
+
+  ##
+  # Attempts a MongoDB authentication using SCRAM
+  #
+  # @param <port> Port to use
+  # @param <database> Database name to authenticate to
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @param <mechanism> Type of SCRAM to use
+  # @remark Currently SCRAM-SHA-1 and SCRAM-SHA-256 are supported
+  # @remark References from https://tools.ietf.org/html/rfc5802
+  # @returns NULL if an error preventing authentication was encountered (with appropriate detailed_logging), else
+  #          parse array representation of step 2 or 3 authentication completion response
+  # @category mongodb
+  ##
+  function authenticate_mongo_scram(port, database, username, password, mechanism)
+  {
+    # July 2010 page 9, https://tools.ietf.org/html/rfc5802
+    #  First, the client sends the "client-first-message" containing:
+    #
+    #     a GS2 header consisting of a flag indicating whether channel
+    #      binding is supported-but-not-used, not supported, or used, and an
+    #      optional SASL authorization identity;
+    #
+    #     SCRAM username and a random, unique nonce attributes.
+    #
+
+    # July 2010 page 13, https://tools.ietf.org/html/rfc5802
+    # If the client does not support channel binding, then it MUST use
+    #       an "n" gs2-cbind-flag.  Conversely, if the client requires the use
+    #       of channel binding then it MUST use a "p" gs2-cbind-flag.  Clients
+    #       that do not support mechanism negotiation never use a "y" gs2-
+    #       cbind-flag, they use either "p" or "n" according to whether they
+    #       require and support the use of channel binding or whether they do
+    #       not, respectively.
+    var gs2_cbind_flag = "n";
+
+    # July 2010 page 9, https://tools.ietf.org/html/rfc5802
+    #    a: This is an optional attribute, and is part of the GS2 [RFC5801]
+    #      bridge between the GSS-API and SASL.  This attribute specifies an
+    #      authorization identity.  A client may include it in its first
+    #      message to the server if it wants to authenticate as one user, but
+    #      subsequently act as a different user.  This is typically used by
+    #      an administrator to perform some management task on behalf of
+    #      another user, or by a proxy in some situations.
+    var authzid = "";
+
+    # July 2010 page 11, https://tools.ietf.org/html/rfc5802
+    # The characters ',' or '=' in usernames are sent as '=2C' and
+    #          '=3D' respectively.  If the server receives a username that
+    #          contains '=' not followed by either '2C' or '3D', then the
+    #          server MUST fail the authentication.
+    var saslname = str_replace( string:str_replace(string:username, find:"=", replace:"=3D"), find:",", replace:"=2C");
+    if ( saslname != username )
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        'auth: RFC5802 username \"' + username + '\":\"' + saslname + '\"');
+    }
+
+    # July 2010 page 16, https://tools.ietf.org/html/rfc5802
+    #
+    #   gs2-header      = gs2-cbind-flag "," [ authzid ] ","
+    #                      ;; GS2 header for SCRAM
+    #                      ;; (the actual GS2 header includes an optional
+    #                      ;; flag to indicate that the GSS mechanism is not
+    #                      ;; "standard", but since SCRAM is "standard", we
+    #                      ;; don't include that flag).
+    #
+    #   username        = "n=" saslname
+    #                     ;; Usernames are prepared using SASLprep.
+    #
+    #   nonce           = "r=" c-nonce [s-nonce]
+    #                     ;; Second part provided by server.
+    #
+    #   client-first-message-bare =
+    #                     [reserved-mext ","]
+    #                     username "," nonce ["," extensions]
+    #
+    #   client-first-message =
+    #                     gs2-header client-first-message-bare
+    var gs2_header = gs2_cbind_flag + "," + authzid + ",";
+    # generate 36 characters in pseudo (only 62 input characters) base64 encoded bytes
+    var c_nonce = rand_str(length:36, charset:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    if(get_kb_item("TEST_mongodb_library") && get_kb_item("TEST_mongodb_nonce"))
+    {
+      c_nonce = get_kb_item("TEST_mongodb_nonce");
+    }
+    var client_first_message_bare = "n=" + saslname + "," + "r=" + c_nonce;
+    var client_first_message = gs2_header + client_first_message_bare;
+    dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+      "auth: client_first_message: " + client_first_message);
+
+    # Check for valid mechanism or supply defaults.
+    # Currently supported: SCRAM-SHA-1, SCRAM-SHA-256
+    if (isnull(mechanism) || !strlen(mechanism))
+    {
+      mechanism = "SCRAM-SHA-1";
+    }
+    if (mechanism != "SCRAM-SHA-1" && mechanism != "SCRAM-SHA-256")
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        "auth WARNING: unsupported SCRAM mechanism ': " + mechanism + "' supplied. Defaulting to SCRAM-SHA-1.");
+      mechanism = "SCRAM-SHA-1";
+    }
+    var hash_func = @SHA1;
+    var hmac_func = @HMAC_SHA1;
+    var hash_len = 20;
+    var hash_str = 'SHA1';
+    if (mechanism == "SCRAM-SHA-256")
+    {
+      hash_func = @SHA256;
+      hmac_func = @HMAC_SHA256;
+      hash_len = 32;
+      hash_str = 'SHA256';
+    }
+
+    var step_1_document = {
+      'saslStart': 1,
+      #
+      # wrong mechanism detection, if mechanism below is not valid then
+      # 3.0 MongoDB servers will respond with available options like this:
+      #
+      #  {
+      #    "code" : 2,
+      #    "codeName" : "BadValue",
+      #    "errmsg" : "Unsupported mechanism SCRAM-SHA1",
+      #    "ok" : "0",
+      #    "supportedMechanisms" : {
+      #      "0" : "MONGODB-CR",
+      #      "1" : "MONGODB-X509",
+      #      "2" : "SCRAM-SHA-1"
+      #    }
+      #  }
+      'mechanism': mechanism,
+      'payload': base64( str:client_first_message ),
+      'autoAuthorize': 1
+      };
+    var step_1_document_order = [
+      'saslStart',
+      'mechanism',
+      'payload',
+      'autoAuthorize'];
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: sending mongo query',
+      msg_details:{
+         "collection":{"lvl":3, "value":database},
+         "document":{"lvl":3, "value":step_1_document},
+         "order":{"lvl":3, "value":step_1_document_order}
+      });
+    #
+    # Send to server and collect response
+    #
+    var step_1_result = send_mongo_query(port:port, collection:database, document:step_1_document, order:step_1_document_order);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: returned query result',
+      msg_details:{
+         "step_1_result":{"lvl":3, "value":obj_rep(step_1_result)}
+      });
+
+    # Expecting:
+    # result: [
+    #   {
+    #     "conversationId" : 1,
+    #     "done" : 0,
+    #     "ok" : "1",
+    #     "payload" : "..."
+    #   }
+    # ]
+
+    var step_1_response_conversationId = step_1_result[0]["conversationId"];
+    var step_1_response_done = step_1_result[0]["done"];
+    var step_1_response_ok = step_1_result[0]["ok"];
+    var step_1_response_payload = step_1_result[0]["payload"];
+
+    # Did server send a valid response?
+    if ( isnull(step_1_response_conversationId) )
+    {
+      # Not a warning here because 2.4 and 2.6 servers using MONGODB-CR exit here
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'MongoDB server did not respond with conversationID to ' + mechanism + ' authentication step 1');
+      return NULL;
+    }
+    if ( step_1_response_ok != 1 )
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        ':WARNING: MongoDB server did not respond OK to ' + mechanism + ' authentication step 1');
+      return NULL;
+    }
+    if ( step_1_response_done != 0 )
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server indcated ' + mechanism + ' authentication is DONE at step 1');
+      return NULL;
+    }
+    if ( isnull(step_1_response_payload) )
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server did not provide payload for ' + mechanism + ' authentication step 1');
+      return NULL;
+    }
+
+    # July 2010 page 9, https://tools.ietf.org/html/rfc5802
+    #   In response, the server sends a "server-first-message" containing the
+    #   user's iteration count i and the user's salt, and appends its own
+    #   nonce to the client-specified one.
+    #
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #   nonce           = "r=" c-nonce [s-nonce]
+    #                     ;; Second part provided by server.
+    #
+    #   c-nonce         = printable
+    #
+    #   s-nonce         = printable
+    #
+    #   salt            = "s=" base64
+    #
+    #   iteration-count = "i=" posit-number
+    #                     ;; A positive number.
+    #
+    #   server-first-message =
+    #                      [reserved-mext ","] nonce "," salt ","
+    #                      iteration-count ["," extensions]
+    var server_first_message = base64_decode(str:step_1_response_payload);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: server_first_message',
+      msg_details:{
+         "server_first_message":{"lvl":3, "value":server_first_message}
+      });
+
+    #
+    # extract server first message matches
+    #
+    var first_matches = pregmatch(pattern:"r=(\S*),s=(\S*),i=(\S*)", string:server_first_message);
+    if (isnull(first_matches))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server decoded payload error: Does not match regular expression for r/s/i responses');
+      return NULL;
+    }
+    if ( max_index( first_matches ) < 4 )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server decoded payload error max_index:' + max_index(first_matches) + 'for ' + mechanism + ' authentication step 1');
+      return NULL;
+    }
+
+    # extract nonce
+    var nonce = "r=" + first_matches[1];
+    # does nonce now have client nonce plus server nonce?
+    if ( 2 != stridx(nonce, c_nonce) )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server nonce:\"' + nonce + '\" should start with \"' + c_nonce + '\"');
+      return NULL;
+    }
+
+    # extract salt
+    var salt = base64_decode( str:first_matches[2] );
+    # salt exist?
+    if ( empty_or_null(salt) )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server salt:\"' + first_matches[2] + '\" ought to exist and base64_decode to a string');
+      return NULL;
+    }
+
+    # extract iteration_count
+    var iteration_count = first_matches[3];
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #         For the SCRAM-SHA-1/SCRAM-SHA-1-PLUS SASL mechanism, servers
+    #         SHOULD announce a hash iteration-count of at least 4096.
+    if ( isnull(iteration_count) || ( iteration_count < 4096 ) )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server iteration count must be at least 4096 \"' + iteration_count + '\" not valid\n');
+      return NULL;
+    }
+
+    # July 2010 page 9, https://tools.ietf.org/html/rfc5802
+    #   The client then responds by sending a "client-final-message" with the
+    #   same nonce and a ClientProof computed using the selected hash
+    #   function as explained earlier.
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #
+    #   cbind-input   = gs2-header [ cbind-data ]
+    #                     ;; cbind-data MUST be present for
+    #                     ;; gs2-cbind-flag of "p" and MUST be absent
+    #                     ;; for "y" or "n".
+    #
+    #   channel-binding = "c=" base64
+    #                     ;; base64 encoding of cbind-input.
+    #
+    #   nonce           = "r=" c-nonce [s-nonce]
+    #                     ;; Second part provided by server.
+    #
+    #   client-final-message-without-proof =
+    #                     channel-binding "," nonce [","
+    #                     extensions]
+    #
+    var channel_binding_input = "c=" + base64( str:gs2_header );
+    var client_final_message_without_proof = channel_binding_input + "," + nonce;
+
+    #
+    # https://github.com/mongodb/specifications/blob/master/source/auth/auth.rst
+    #
+    # RFC5802 identifies the "SaltedPassword" as := Hi(Normalize(password), salt, i).
+    # The password variable MUST be the mongodb hashed variant. The mongo hashed
+    # variant is computed as hash = HEX( MD5( UTF8( username + ':mongo:' + plain_text_password ))),
+    # where plain_text_password is actually plain text.
+    #
+    # 20230126: This same Driver Authentication github page is vague about what the password hash is
+    # supposed to look like. The python drivers for MongoDB are clear: return saslprep(password).
+    # SASLprep is probably overkill but will be implemented if necessary.
+    var mongodb_password_hash;
+    if (mechanism == "SCRAM-SHA-256")
+    {
+      # If implementing saslprep, mongodb_password_hash = saslprep(password);
+      mongodb_password_hash = password;
+    }
+    else
+    {
+      mongodb_password_hash = hexstr( MD5( username + ":mongo:" + password ) );
+    }
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #
+    #      Hi() is, essentially, PBKDF2 [RFC2898] with HMAC() as the
+    #      pseudorandom function (PRF) and with dkLen == output length of
+    #      HMAC() == output length of H().
+    #
+    #     SaltedPassword  := Hi(Normalize(password), salt, i)
+    var SaltedPassword =
+      crypto_hash(data:mongodb_password_hash, type:"PBKDF2",
+                  options:{salt:salt, digest:hash_str, iteration:iteration_count, keylen:hash_len});
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     ClientKey       := HMAC(SaltedPassword, "Client Key")
+    var ClientKey = hmac_func(key:SaltedPassword, data:"Client Key");
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     StoredKey       := H(ClientKey)
+    var StoredKey = hash_func(ClientKey);
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     AuthMessage     := client-first-message-bare + "," +
+    #                        server-first-message + "," +
+    #                        client-final-message-without-proof
+    var AuthMessage = client_first_message_bare + "," +
+      server_first_message + "," + client_final_message_without_proof;
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     ClientSignature := HMAC(StoredKey, AuthMessage)
+    var ClientSignature = hmac_func(data:AuthMessage, key:StoredKey);
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     ClientProof     := ClientKey XOR ClientSignature
+    var ClientProof = "p=" + base64( str:xor8(a:ClientKey, b:ClientSignature) );
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #
+    #   proof           = "p=" base64
+    #
+    #   client-final-message =
+    #                     client-final-message-without-proof "," proof
+    var client_final_message = client_final_message_without_proof + "," + ClientProof;
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: client_final_message',
+      msg_details:{
+         "client_final_message":{"lvl":3, "value":client_final_message}
+      });
+
+    var step_2_document = {
+      'saslContinue': 1,
+      'conversationId': step_1_response_conversationId,
+      'payload': base64(str:client_final_message)
+      };
+    var step_2_document_order = [
+      'saslContinue',
+      'conversationId',
+      'payload'];
+
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: sending mongo query',
+      msg_details:{
+         "collection":{"lvl":3, "value":database},
+         "step_2_document":{"lvl":3, "value":step_2_document},
+         "order":{"lvl":3, "value":step_2_document_order}
+      });
+
+    #
+    # Send to server and collect response
+    #
+    var step_2_result = send_mongo_query(port:port, collection:database, document:step_2_document, order:step_2_document_order);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: returned query result',
+      msg_details:{
+         "step_2_result":{"lvl":3, "value":step_2_result}
+      });
+
+    # Expecting:
+    # result: [
+    #  {
+    #    "conversationId" : 1,
+    #    "done" : 0,
+    #    "ok" : "1",
+    #    "payload" : "..."
+    #  }
+    #]
+    var step_2_response_conversationId = step_2_result[0]["conversationId"];
+    var step_2_response_done = step_2_result[0]["done"];
+    var step_2_response_ok = step_2_result[0]["ok"];
+    var step_2_response_payload = step_2_result[0]["payload"];
+
+    # Did server send a valid response?
+    if ( isnull(step_2_response_conversationId) )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server did not provide conversation ID for ' + mechanism + ' authentication step 2');
+      return NULL;
+    }
+    if ( step_1_response_conversationId != step_2_response_conversationId )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server responded with wrong conversation ID for ' +
+        mechanism + ' authentication expecting \"' + step_1_response_conversationId +
+        '\" received \"' + step_2_response_conversationId + '\"');
+      return NULL;
+    }
+    if ( step_2_response_ok != 1 )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server did not respond OK to ' + mechanism + ' authentication step 2');
+      return NULL;
+    }
+    if ( isnull(step_2_response_payload) )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server did not provide payload for ' + mechanism + ' authentication step 2');
+      return NULL;
+    }
+
+    # July 2010 page 9, https://tools.ietf.org/html/rfc5802
+    #   The server verifies the nonce and the proof, verifies that the
+    #   authorization identity (if supplied by the client in the first
+    #   message) is authorized to act as the authentication identity, and,
+    #   finally, it responds with a "server-final-message", concluding the
+    #   authentication exchange.
+    #
+    #   verifier        = "v=" base64
+    #                     ;; base-64 encoded ServerSignature.
+    #
+    #   server-final-message = (server-error / verifier)
+    #                     ["," extensions]
+    #
+    var server_final_message = base64_decode(str:step_2_response_payload);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'auth: server_final_message',
+      msg_details:{
+         "server_final_message":{"lvl":3, "value":server_final_message}
+      });
+
+    #
+    # extract server final message matches
+    #
+    var final_matches = pregmatch(pattern:"v=(\S*)", string:server_final_message);
+    if (isnull(final_matches))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server decoded payload error: Does not match regular expression for v response');
+      return NULL;
+    }
+    if ( max_index( final_matches ) < 2 )
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server decoded payload error max_index:' + max_index(final_matches) + 'for ' + mechanism + ' authentication step 2');
+      return NULL;
+    }
+
+    # extract verifier
+    # v: This attribute specifies a base64-encoded ServerSignature.  It
+    #      is sent by the server in its final message, and is used by the
+    #      client to verify that the server has access to the user's
+    #      authentication information.  This value is computed as explained
+    #      in the overview.
+    var verifier = base64_decode(str:final_matches[1]);
+    # verifier exist? base64_decode returns "" if it is NULL.
+    if ( empty_or_null(verifier) )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server verifier missing' );
+      return NULL;
+    }
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     ServerKey       := HMAC(SaltedPassword, "Server Key")
+    var ServerKey = hmac_func(key:SaltedPassword, data:"Server Key");
+
+    # July 2010 page 17, https://tools.ietf.org/html/rfc5802
+    #     ServerSignature := HMAC(ServerKey, AuthMessage)
+    var ServerSignature = hmac_func(key:ServerKey,data:AuthMessage);
+    if ( ServerSignature != verifier )
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'WARNING: MongoDB server verifier failure expected \"' + ServerSignature + '\" got \"' + verifier + '\"' );
+      return NULL;
+    }
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+      'auth: ' + mechanism + ' authentication PASS\n');
+    if ( step_2_response_done == 0 )
+    {
+      var step_3_document = {
+        'saslContinue': 1,
+        'conversationId': step_2_response_conversationId,
+        'payload': ''
+        };
+      var step_3_document_order = [
+        'saslContinue',
+        'conversationId',
+        'payload'];
+
+      dbg::detailed_log(
+        lvl:2,
+        src:FUNCTION_NAME,
+        msg:'auth: sending mongo query',
+        msg_details:{
+           "collection":{"lvl":3, "value":database},
+           "step_3_document":{"lvl":3, "value":step_3_document},
+           "order":{"lvl":3, "value":step_3_document_order}
+        });
+      #
+      # Send to server and collect response
+      #
+      var step_3_result = send_mongo_query(port:port, collection:database, document:step_3_document, order:step_3_document_order);
+      dbg::detailed_log(
+        lvl:2,
+        src:FUNCTION_NAME,
+        msg:'auth: returned query result',
+        msg_details:{
+           "step_3_result":{"lvl":3, "value":step_3_result}
+        });
+
+      # Expecting:
+      # result: [
+      #   {
+      #     "conversationId" : 1,
+      #     "done" : 1,
+      #     "ok" : "1",
+      #     "payload" : null
+      #   }
+      # ]
+      return step_3_result;
+    }
+    return step_2_result;
+  }
+
+  ##
+  # Issues MongoDB query for nonce, returns result
+  #
+  # @param <port> Port to use
+  # @param <database> Database name to authenticate to
+  # @returns send_mongo_query() response for 0th nonce element
+  # @category mongodb
+  ##
+  function get_nonce(port, database)
+  {
+    var nonce_messages = send_mongo_query(port:port,
+                                               collection:database,
+                                               document:{'getnonce':1});
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'Getting nonce',
+      msg_details:{
+         "return":{"lvl":3, "value":obj_rep(nonce_messages)}
+      });
+    var nonce = nonce_messages[0]['nonce'];
+    return nonce;
+  }
+
+  ##
+  # Assembles the authentication information in a format MongoDB is expecting
+  #
+  # @param <nonce> nonce string to use
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @returns The hexed MD5 of the combined nonce, username, and digested password
+  # @category mongodb
+  ##
+  function auth_digest(nonce, username, password)
+  {
+    var message = nonce +
+                        username +
+                        password_digest(username:username,
+                                        password:password);
+    return hexstr(MD5(message));
+  }
+
+  ##
+  # Assembles the password information in a format MongoDB is expecting
+  #
+  # @param <username> Username to authenticate with
+  # @param <password> Password to authenticate with
+  # @returns The hexed MD5 of the combined username, "mongo", and password
+  # @category mongodb
+  ##
+  function password_digest(username, password)
+  {
+    var pwd = hexstr(MD5(username + ':mongo:' + password));
+    return pwd;
+  }
+
+  ##
+  # Creates and sends a query to the remote MongoDB server
+  #
+  # @param <port> Port to use
+  # @param <collection> Remote collection to access
+  # @param <doc> BSON document to send
+  # @param <order> Order in which to send keys in BSON document
+  # @param <filter> keys we care to receive in returned BSON document
+  # @param <filter_order> order in which we expect keys we care to receive in returned BSON document
+  # @param <redact> Flag indicating returned data shouldn't be fully logged
+  # @returns The hexed MD5 of the combined username, "mongo", and password
+  # @category mongodb
+  ##
+  function send_mongo_query(port, collection, document, order, filter, filter_order, redact)
+  {
+    #var op_query_instance = make_op_query(col:collection, doc:document, order:order, filter:filter, filter_order:filter_order);
+    #return send_mongo(port:port, data:op_query_instance, redact:redact);
+    var op_msg_instance = make_op_msg(col:collection, doc:document, order:order, filter:filter, filter_order:filter_order);
+    return send_mongo(port:port, data:op_msg_instance, redact:redact);
+  }
+
+  ##
+  # Attempts to send data to a MongoDB port and receive a response
+  #
+  # @param <port> Port to send data to
+  # @param <data> Data to send to port
+  # @param <exit_on_fail> Flag to indicate whether or not function may call exit, defaults to true
+  # @param <redact> Flag to indicate not to log the outgoing packet
+  # @returns parsed message result array from server if one is sent, else
+  #          if exit_on_fail is false and a connection can't be opened, returns NULL else
+  #          exits with an error message, return becomes moot
+  # @category mongodb
+  ##
+  function send_mongo(port, data, exit_on_fail, redact)
+  {
+    var mongodb_response_list, response;
+    var ca, client_pk_pass, cert, key;
+    # Default exit on fail to true. Previously this function always exited on fail.
+    if (get_kb_item("MongoDB/do_not_exit_on_fail"))
+    {
+      exit_on_fail = FALSE;
+    }
+    else if (isnull(exit_on_fail) || exit_on_fail)
+    {
+      exit_on_fail = TRUE;
+    }
+    else
+    {
+      exit_on_fail = FALSE;
+    }
+
+    # If we're in testing mode and there's a packet response list, ingest the list,
+    # remove the 0th element from the KB, and return it.
+    if(get_kb_item("TEST_mongodb_library"))
+    {
+       mongodb_response_list = deserialize(get_kb_item("TEST_mongodb_response_list"));
+       if (mongodb_response_list && mongodb_response_list[0])
+       {
+         response = mongodb_response_list[0];
+         if (response == 'NULL')
+         {
+           response = NULL;
+         }
+         replace_kb_item(name:"TEST_mongodb_response_list", value:serialize(collib::drop(n:1, mongodb_response_list)));
+         return response;
+       }
+    }
+
+    if (!_mongo_socket)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        '_mongo_socket does not exist, opening');
+      _mongo_socket = open_sock_tcp(port, transport:ENCAPS_IP);
+      if (_mongodb_requires_ssl)
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+          '_mongo_socket requires SSL, negotiating');
+        # Try an SSL connection
+        _mongo_socket = socket_negotiate_ssl_ex(socket:_mongo_socket, transport:ENCAPS_SSLv23 | ENCAPS_DISABLE_SSLv2 | ENCAPS_DISABLE_SSLv3,
+                                      async:FALSE, ca:_mongodb_ca, cert:_mongodb_cert,
+                                      key:_mongodb_key, password:_mongodb_key_pass);
+      }
+      if (!_mongo_socket)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+          'ERROR: Unable to successfully open TCP socket, exiting.');
+        if (exit_on_fail)
+        {
+          exit(1, "Can't open socket on port "+port+".");
+        }
+        else
+        {
+          return FUNCTION_NAME + ': ERROR: Unable to successfully open TCP socket';
+        }
+      }
+    }
+    else
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        '_mongo_socket already exists');
+    }
+    
+    if (!redact)
+    {
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'sending data to MongoDB',
+        msg_details:{
+           "Data":{"lvl":3, "value":data}
+        });
+    }
+    else
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'sending data to MongoDB :\n[REDACTED]');
+    }
+    send(socket:_mongo_socket, data:data);
+    var mongo_result = get_mongo_result(socket:_mongo_socket);
+    dbg::detailed_log(
+      lvl:3,
+      src:FUNCTION_NAME,
+      msg:'Received response from MongoDB',
+      msg_details:{
+         "Data":{"lvl":3, "value":mongo_result}
+      });
+    return parse_message(mongo_result);
+  }
+
+  ##
+  # Ingests the length of the MongoDB message from the first 4 bytes from a socket receive,
+  # and receives the remaining amount
+  #
+  # @param <socket> Socket object to receive from
+  # @returns parsed length plus received bytes from socket
+  # @category mongodb
+  ##
+  function get_mongo_result(socket)
+  {
+    var length_raw = recv(socket:socket, length:4);
+    var length = int(getdword(blob:length_raw, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN));
+    var actual_length = length - strlen(length_raw);
+    return length_raw + recv(socket:socket, length:actual_length);
+  }
+
+  ##
+  # Crafts a MongoDB query
+  #
+  # @param <col> Collection to send query to
+  # @param <doc> MongoDB document to send
+  # @param <order> Order to structure document entries in
+  # @param <filter> Values for query to return
+  # @param <filter_order> Order to send filter values in
+  # @returns Crafted query to send to MongoDB, complete with header, length, documents, and other metadata
+  # @category mongodb
+  ##
+  function make_op_query(col, doc, order, filter, filter_order)
+  {
+    var flags = mkdword(0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    var fullCollectionName = bson_cstring(col);
+    var numberToSkip = mkdword(0, order:BYTE_ORDER_LITTLE_ENDIAN);
+
+    var numberToReturn = mkdword(0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    if ('$cmd' >< col)
+    {
+      numberToReturn = mkdword(1, order:BYTE_ORDER_LITTLE_ENDIAN);
+    }
+
+    var query = bson_document_from_nasl_structure(doc, order:order);
+    var query_filter;
+    if (!isnull(filter))
+    {
+      query_filter = bson_document_from_nasl_structure(filter, order:filter_order);
+    }
+    else
+    {
+      query_filter = '';
+    }
+
+    var length = strlen(flags) +
+                       strlen(numberToSkip) +
+                       strlen(numberToReturn) +
+                       strlen(fullCollectionName) +
+                       strlen(query) +
+                       strlen(query_filter);
+    var header = mongo_msg_header(len:length, opcode_override:OP_QUERY);
+
+    return header + flags + fullCollectionName + numberToSkip + numberToReturn + query + query_filter;
+  }
+
+  ##
+  # Crafts a MongoDB OP_MSG
+  #
+  # @param <col> Collection to send msg to
+  # @param <doc> MongoDB document to send
+  # @param <order> Order to structure document entries in
+  # @returns Crafted OP_MSG to send to MongoDB, complete with header, length, documents, and other metadata
+  # @category mongodb
+  ##
+  function make_op_msg(col, doc, order, filter, filter_order)
+  {
+    var flags = mkdword(0, order:BYTE_ORDER_LITTLE_ENDIAN); # Activating no flags, 4 bytes
+    var kind = mkbyte(0); # One byte kind value 0, for single bson object
+    # Add $db argument to doc if not already provided
+    if (typeof(doc) == 'array' && isnull(doc['$db']))
+    {
+      # If order unspecified it should just be one key
+      if (isnull(order))
+        order = keys(doc);
+      var db = col;
+      db -= '.$cmd';
+      doc['$db'] = db;
+      append_element(var:order, value:'$db');
+    }
+    var query = bson_document_from_nasl_structure(doc, order:order);
+    # Checksum is optional. We aren't including it.
+
+    var length = strlen(flags) +
+                 strlen(kind) +
+                 strlen(query);
+    var header = mongo_msg_header(len:length);
+
+    return header + flags + kind + query;
+  }
+
+
+  ##
+  # Crafts and encodes a MongoDB message header
+  #
+  # @param <len> Total length of message
+  # @param <opcode_override> Optional alternate OP code to use, defaults to OP_MSG
+  # @returns Crafted head to send to MongoDB, complete with length, requestID, and other metadata
+  # @category mongodb
+  ##
+  function mongo_msg_header(len, opcode_override)
+  {
+    var requestID = mkdword(_req_id, order:BYTE_ORDER_LITTLE_ENDIAN);
+    _req_id += 1;
+    var responseTo = mkdword(0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    var opCode = mkdword(OP_MSG, order:BYTE_ORDER_LITTLE_ENDIAN);
+    if (!empty_or_null(opcode_override))
+      opCode = mkdword(opcode_override, order:BYTE_ORDER_LITTLE_ENDIAN);
+    var length_of_messageLength = 4;
+    var messageLength = mkdword(len +
+                                      strlen(requestID) +
+                                      strlen(responseTo) +
+                                      strlen(opCode) +
+                                      length_of_messageLength,
+                                      order:BYTE_ORDER_LITTLE_ENDIAN);
+    return messageLength + requestID + responseTo + opCode;
+  }
+
+  ##
+  # Parse a message and return its document
+  #
+  # @anonparam <message> Message to parse
+  # @returns Parsed message if the opCode is OP_REPLY, else
+  #          detailed_log an error and return NULL
+  # @category mongodb
+  ##
+  function parse_message()
+  {
+    var metadata, documents_raw, documents, doc, result;
+    var message = _FCT_ANON_ARGS[0];
+    var header = parse_header(message);
+    var HEADER_SIZE = 16;
+
+    if (header['opCode'] == OP_REPLY)
+    {
+      metadata = parse_op_reply_metadata(substr(message, HEADER_SIZE));
+      documents_raw = parse_op_reply(substr(message, HEADER_SIZE));
+      documents = parse_documents(documents_raw);
+      result = [];
+      foreach (doc in documents)
+      {
+        result[max_index(result)] = nasl_structure_from_bson(doc);
+      }
+      return result;
+    }
+    else if (header['opCode'] == OP_MSG)
+    {
+      metadata = parse_op_msg_metadata(substr(message, HEADER_SIZE));
+      documents_raw = parse_op_msg(substr(message, HEADER_SIZE));
+      documents = parse_documents(documents_raw);
+      result = [];
+      foreach (doc in documents)
+      {
+        result[max_index(result)] = nasl_structure_from_bson(doc);
+      }
+      return result;
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'ERROR: This message type has not been implemented : ' + obj_rep(header['opCode']) + ' - ' + obj_rep(hexstr(header['opCode'])) + '\n');
+      return NULL;
+    }
+  }
+
+  ##
+  # Parse a MongoDB message header and return its basic values
+  #
+  # @anonparam <message> Message to parse
+  # @returns Array containing parsed header bytes
+  # @category mongodb
+  ##
+  function parse_header()
+  {
+    var message = _FCT_ANON_ARGS[0];
+    var result = {};
+    result['messageLength'] = getdword(blob:message, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    result['requestID'] = getdword(blob:message, pos:4, order:BYTE_ORDER_LITTLE_ENDIAN);
+    result['responseTo'] = getdword(blob:message, pos:8, order:BYTE_ORDER_LITTLE_ENDIAN);
+    result['opCode'] = getdword(blob:message, pos:12, order:BYTE_ORDER_LITTLE_ENDIAN);
+    return result;
+  }
+
+  ##
+  # Parse a MongoDB OP_REPLY and return its metadata values
+  #
+  # @anonparam <message> Message to parse
+  # @returns Array containing parsed metadata bytes
+  # @category mongodb
+  ##
+  function parse_op_reply_metadata()
+  {
+    var message = _FCT_ANON_ARGS[0];
+    var metadata = {};
+    metadata['responseFlags'] = getdword(blob:message, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    metadata['cursorID'] = strcat(
+        compliance_forward_compat::hex_from_data(getdword(blob:message, pos:4, order:BYTE_ORDER_LITTLE_ENDIAN)),
+        compliance_forward_compat::hex_from_data(getdword(blob:message, pos:8, order:BYTE_ORDER_LITTLE_ENDIAN)));
+    metadata['startingFrom'] = getdword(blob:message, pos:12, order:BYTE_ORDER_LITTLE_ENDIAN);
+    metadata['numberReturned'] = getdword(blob:message, pos:16, order:BYTE_ORDER_LITTLE_ENDIAN);
+    return metadata;
+  }
+
+  ##
+  # Parse a MongoDB OP_MSG and return its metadata values
+  #
+  # @anonparam <message> Message to parse
+  # @returns Array containing parsed metadata bytes
+  # @category mongodb
+  ##
+  function parse_op_msg_metadata()
+  {
+    var message = _FCT_ANON_ARGS[0];
+    var metadata = {};
+    metadata['responseFlags'] = getdword(blob:message, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    metadata['kind'] = getbyte(blob:message, pos:4);
+    if (metadata['kind'] != 0x00)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:
+        'Expected kind value of 0 is really ' + metadata['kind'] + ' and is not supported at this time! Document parsing for this document will break.');
+    }
+    return metadata;
+  }
+
+  ##
+  # Parse a MongoDB OP_REPLY message and return its unparsed, raw document
+  #
+  # @anonparam <message> Message to parse
+  # @returns string containing unparsed contents
+  # @category mongodb
+  ##
+  function parse_op_reply()
+  {
+    var reply_message = _FCT_ANON_ARGS[0];
+    var META_DATA_LENGTH = 20;
+    return substr(reply_message, META_DATA_LENGTH);
+  }
+
+  ##
+  # Parse a MongoDB OP_MSG message and return its unparsed, raw document
+  #
+  # @anonparam <message> Message to parse
+  # @returns string containing unparsed contents
+  # @category mongodb
+  ##
+  function parse_op_msg()
+  {
+    var reply_message = _FCT_ANON_ARGS[0];
+    var META_DATA_LENGTH = 5;
+    return substr(reply_message, META_DATA_LENGTH);
+  }
+
+  ##
+  # Parse a MongoDB raw document and return its individual documents
+  #
+  # @anonparam <message> Message to parse
+  # @returns string containing unparsed content
+  # @category mongodb
+  ##
+  function parse_documents(op_msg)
+  {
+    var documents_raw = _FCT_ANON_ARGS[0];
+    var documents = [];
+    var length_actual, length_given;
+    var length_pos = 0;
+    var kind;
+
+    while (strlen(documents_raw) > 0)
+    {
+      # Should this be dword? The spec says it's an int32.
+      length_given = getword(blob:documents_raw, pos:length_pos, order:BYTE_ORDER_LITTLE_ENDIAN);
+      if (length_given == 0)
+      {
+        return documents;
+      }
+      length_actual = strlen(documents_raw);
+      append_element(var:documents, value:substr(documents_raw, length_pos, length_given-1));
+      documents_raw = substr(documents_raw, length_given);
+    }
+    return documents;
+  }
+
+  ##
+  # Attempts a MongoDB hello query to admin database, parsing the available auth methods
+  # for a given username
+  #
+  # @param <port> Port to use
+  # @param <database> Database name for the username
+  # @param <username> Username to check authentication options for
+  # @remark hello queries only exist in versions of 4.0 onward. For backwards compatibility
+  #         with EOL versions, we provide a default.
+  # @remark If hello query returns no methods, empty list will be returned.
+  # @returns Available options if any, else
+  #          empty list if query succeeds but no auth available, else
+  #          default of ["MONGODB-CR", "SCRAM-SHA-1"] if hello query unavailable but socket not shut down, else
+  #          default of ["MONGODB-X509"] if socket shuts down or no methods are indicated
+  # @category mongodb
+  ##
+  function ingest_authentication_options(port, username, database)
+  {
+    var value, methods, hello_document, hello_document_order, response, fail_response, null_response;
+    fail_response = ["MONGODB-CR", "SCRAM-SHA-1"];
+    null_response = ["MONGODB-X509"];
+    methods = [];
+    # Strip off .$cmd if present
+    database -= '.$cmd';
+    hello_document = {
+      'hello': 1,
+      'saslSupportedMechs': database + '.' + username,
+    };
+    hello_document_order = [
+      'hello',
+      'saslSupportedMechs'
+    ];
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'Sending hello document',
+      msg_details:{
+         "result":{"lvl":3, "value":obj_rep(hello_document)}
+      });
+    # Every valid database will respond to this, so just use admin.
+    response = send_mongo_query(port:port, collection:'admin.$cmd', document:hello_document, order:hello_document_order);
+    dbg::detailed_log(
+      lvl:2,
+      src:FUNCTION_NAME,
+      msg:'hello response',
+      msg_details:{
+         "response":{"lvl":3, "value":obj_rep(response)}
+      });
+    #
+    if ( empty_or_null(response) &&
+         ( get_kb_item("TEST_mongodb_library") || !is_sock_open(_mongo_socket) )
+    )
+    {
+      if (!_mongodb_requires_ssl && !get_kb_item("TEST_mongodb_library"))
+      {
+        # Socket shut down. It may be an SSL required MongoDB!
+        replace_kb_item(name:"MongoDB/require_ssl/" + port, value:TRUE);
+        _mongodb_requires_ssl = 1;
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+          'hello caused socket shutdown. We may be facing an SSL requirement. Setting ssl flags and retrying hello message.');
+        # Socket's already closed, but change this so that a new one is forced to open
+        _mongo_socket = NULL;
+        # Retry the connection now that requires ssl is set
+        return ingest_authentication_options(port:port, username:username, database:database);
+      }
+      else
+      {
+        # We tried it with SSL, and that failed too.
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+          'hello caused socket shutdown on SSL mode. Returning default auth options: ' + obj_rep(null_response));
+        _mongo_socket = NULL;
+        return null_response;
+      }
+    }
+    else if (empty_or_null(response) ||
+        empty_or_null(response[0]) ||
+        empty_or_null(response[0]['ok']) ||
+        !response[0]['ok']
+    )
+    {
+       # Command failed, return fail_response defaults for backwards compatibility
+       dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+         'hello failed to respond ok. Returning default auth options: ' + obj_rep(fail_response));
+       return fail_response;
+    }
+    if (!empty_or_null(response[0]['saslSupportedMechs']))
+    {
+      foreach value (response[0]['saslSupportedMechs'])
+      {
+        append_element(var:methods, value:value);
+      }
+    }
+    if (empty_or_null(methods))
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+        'hello returned no listed saslSupportedMechs. May be an X509 only situation, or potentially there are no configured methods for the username ' + username + '. Returning default auth options: ' + obj_rep(null_response));
+      return null_response;
+    }
+    return sort(methods);
+  }
+
+}

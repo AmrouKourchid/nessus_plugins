@@ -1,0 +1,60 @@
+#TRUSTED 80c2d0f0e409afa320064255450c77ce4633e3268ae87cb736f2783a4848757604bdb51a853cbf66a12e990a9718eb9be09c002b7caa7d932588f9d33cd62dae7b716b48c79392bc7cdf643e37a2cbce0fd7e147cfc3d2d4adef7b90c6f2f85debe5886da63cadea908bd750e224a96133a91fb9fae515eb20f61fefc1fcc17f3aa0976a32452a7c308e8deb99844ee2147e54296499e92f6d69f3e2aa869d54da2791446bca860f6541df947c7eadef00a0f5a9951f2b4d4e7317d8289890356dceba3acac6b62f364e7d238a76bc5f3e0b9fa7931fdcde0396d0df29ed6b9f3e5ccb4a4ccc10b74ce45dc670a6f40e2f44df7a8d2b7cb4931be68082fe48026177755f979c60f185bda27ec92c9231805f31bab4f5fe849e82ffae05b77de5b26434cc4a17646ea1e0454ae8b278879028ae9fc25989abf4b260cff1b83b1625a6d9d2d4672dcc32e56be7446aac0959f6fc385a6d8487623bd6c9f2237b439ce19a7f5c5719a1beb0f398d8373efbe2cd8904aecfa5d6e04c5626fdbace5374f416faec14f077ff5b87c4b82124947b054a6eb9af36c4205d3fbedff9a35e46e5ea604622f8412a5db76e5efa6ff7e9330c1fb8ffdfd20080a67353dd2ee976e48574e2eaaa102ff3327fb1c94c039bf541c534e6387c11556753378081bd4e97d5aabd93f77f48f4ba7d949023a80d2b13e91298c8502397df552ffeb421
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision:1.00
+
+# Wind River Linux helper functions
+
+
+##
+# Helper function for Wind River linux used in ssh_get_info2.
+# Identify OS and set local checks not available.
+#
+# @param <session> A session object for current SSH connection.
+# @param <channel> A channel object for the current SSH connection.
+# @param <use_shell_handler> Boolean. Flag to enable shell handler in run_command().
+# @param <cmd_res> Command result from ssh_get_info2: "cat /etc/os-release".
+#
+# @return TRUE
+# @category SSH
+##
+function handle_windriverlinux_os(session, use_shell_handler, channel, cmd_res)
+{
+  local_var array, buf;
+
+  array = pregmatch(pattern:"Wind River Linux (([0-9]+\.)+([0-9])+)", string:cmd_res, icase:TRUE);
+  set_kb_item(name: "Host/etc/os-release", value:cmd_res);
+
+  if (!isnull(array)){
+    report += '\nThe remote Wind River Linux system is :\n' + "Wind River Linux " + array[1] + '\n\n';
+    release = array[1];
+
+  }
+
+  if(!empty_or_null(release))
+  {
+    set_kb_item(name:"Host/WindRiver/release", value: release);
+  }
+
+  buf = run_command(
+    cmd:'cat /etc/issue',
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel
+  );
+
+  if (buf)
+   set_kb_item(name: "Host/etc/issue", value: buf);
+
+  failure_kb_msg = "Local security checks are not available for Wind River Linux.";
+  failure_kb_type = lcx::ISSUES_INFO;
+  # set support level LOCAL_CHECKS_UNAVAILABLE
+  sshlib::set_support_level(level:sshlib::HOST_LOCAL_CHECKS_UNAVAILABLE);
+  return TRUE;
+}
+

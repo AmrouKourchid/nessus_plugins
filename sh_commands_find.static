@@ -1,0 +1,1406 @@
+#TRUSTED 4e4db82b85df25eea012cd428684b41b8be1eb121a17e8b1a42f33f86f55b1f40600537b38426d8020ba71bd49830706faf989c791297a439f24de0c5ed4ccda8b6ae0bc30f9ba01afd80363b5d13089c5d91de10f45389ea349d933d242da729e424d8c0b7ff8f4a7acd74501fd2c02bdd9515344299df79dc2bad4c701f6ce870501d1c1cb51da47524617eb85f69b0e3cf339fd875f421c5622cfbd3b77805d7c40dddc132de005f2cf6f5ada869908c32c7a4e139f434b4ff76579505cc3828b133c83aee7c5a861c0b36be11de5dc5d76f9ad28bf793ed7b503586503e8aa9b18ee21b3f41857ad150fa4220c93336bca6c0a9586907f993c9ea50443b0862b4a7e874ecfff93b2c1c293c68d1615962049a19d1403cb8273ffafc17609a033d16c3d483bcb644461127e475ee6b332a24315a030f23a91ed2117a99628ee1072a210885bad147eadd8b78f77aa8c37961b5f4f41e452c3c43932caf76395c281eef6cf4890a98822994c5c8f221166e90b94ca63635153c8815dbcd2f44105aec566d51ebcfecdfcf68806b4a9d0f4c5b659d5c8ec772b6b7926ac8d93d09fa9dc27c08778be557431008459c40461b12f8d4f84c572f13c48e3336927edb1867c6f07151b94b0643c05821bb5090b53bb5810505d501c58869b1bc45c032376000747243b315d67901eb9d2bd1f955dbc3f2f17d8ed766695e821d4fb
+#TRUST-RSA-SHA256 9c3fc432807be6ba0c533250c670837ae7615692c380f95f307f4cdbbda2a71925759c35908d41756d9fe48c9419e3b16b84a79bb221e6ec4d518902cb77788caa5a02b3898a1ee00d76cd4018404ab06d723343603d5b06144251bc735c28a4a8766ddd5a577c0acf0e4931c35c3c0bc597bb1e9e4aee09d3972a44fec34b196eccebf35725b039878822c0ae78be423b59fce25d9adfe1180cf2fdc4176cfb1cbd4a45e2bfa66e5efcb420089bf99b768253933cd0c59a20846b84fdad201dca14ee7816ca75e96bf11b1f29099cb46a045492b9e6675e2c9e2f188c6e063c19e3b427be76f8d732a215626476048292eb45a81f326926365c1acd1530b148dfe62d77ae8395023a0f52fb629d1e22e961498b5873ad61a98b81b64af80274fd86cc58a2f7698e88eec3c1b96167bcade8f804bfbe429076eb589309cdcb0f61fcdb927e07a80d6bc33d2b4a9c31b5f99c06b7e34f01c4df45c47494ce401465c1a16204590c3a6238ee8a6108cea77509358f1f74c7c5ab919e1a7ed3ee6f2297a2e337c45883fbe6e2e2a3da106bbf58ac3b0f2ec1a92d62b42bafd486497470d21b25d6b519ac3214cb9ecf12a9d23117c6d008f69aec65082f403c12144379a6e81b8ee9e0fc28c2fd11e818cfcfa38920f5bdd6355db83f1d33a0df69316d965fdbe1bc5d8f50f1de3fb636bcff4d6342fd0d24c7f56f3a031bb1a0e3
+#------------------------------------------------------------------------------
+###
+# Library creating the ``find_builder`` object used to run the ``find`` command on unix devices.
+# The ``find_builder`` object is an instance of the ``command_builder::command`` object defined in `command_builder.static`_.
+# Helper functions are also defined to interact with that object.
+#
+# @remark
+# In most cases plugins should not use functions defined in this file, but instead use
+# the functions defined in `find_cmd.static`_.
+#
+# @license
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# @library sh_commands_find.inc
+#
+# Revision: 1.17
+###
+
+namespace sh_commands_find
+{
+  # Variable that will hold the command builder once it has been initialized
+  var find_builder;
+
+  var automount_running = NULL;
+
+  var has_user_filepath_exclusions = NULL;
+  var has_user_filepath_inclusions = NULL;
+  var has_user_filesystem_exclusions = NULL;
+  var has_user_timeout = NULL;
+
+  var user_filepath_exclusions = make_list();
+  var user_filepath_inclusions = make_list();
+  var user_filesystem_exclusions = make_list();
+  var user_timeout = 0;
+
+  var default_filesystem_exclusions;
+
+  # Keeping the old log name for posterity (it's better for customer support to see everything in a single log file)
+  # var log_name = "sh_commands_find-inc.log";
+  var log_name = ((SCRIPT_NAME - ".nasl") - ".nbin") + ".log";
+
+  # Some OS have limited filesystems available for fstype
+  if (get_kb_item("Host/AIX/version"))
+  {
+    default_filesystem_exclusions = make_list('nfs');
+  }
+  else if (get_kb_item("Host/HP-UX/version"))
+  {
+    default_filesystem_exclusions = make_list('nfs', 'cifs');
+  }
+  else
+  {
+    default_filesystem_exclusions = make_list('nfs', 'nfs4', 'cifs', 'smbfs', 'afs', 'sysfs', 'proc' ,'panfs');
+  }
+
+  ##
+  # Initialize find requirements.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [list] The list containing the success status of the function and an empty string or error message.
+  #
+  # @remark
+  # The returned list is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - Index 1: An empty string if successful, or the error message if an error occurred.
+  ##
+  function init_find(cache_only)
+  {
+    var init_kb = "Host/sh_commands_find/cmd_init";
+    if (isnull(cache_only))
+      cache_only = FALSE;
+
+    if (cache_only && !get_kb_item(init_kb))
+      return [sh_commands::CMD_FAIL, "sh_commands_find not initialized. Add command_builder_init.nasl as a script dependency."];
+
+    # If the command builder hasn't already been initialized, it needs to now.
+    if (typeof(find_builder) != 'object')
+    {
+      find_builder = new command_builder::command('find');
+      init_settings();
+    }
+
+    find_builder.init_cmd(cache_only:cache_only);
+
+    var init_result = command_builder::init_cmd_runner(cache_only:cache_only);
+    if (init_result[0] == sh_commands::CMD_FAIL)
+      return init_result;
+
+    if(isnull(automount_running))
+      is_automount_running(cache_only:cache_only);
+
+    if(isnull(has_user_filepath_exclusions))
+      get_user_filepath_exclusions(cache_only:cache_only);
+
+    if(isnull(has_user_filesystem_exclusions))
+      get_user_filesystem_exclusions(cache_only:cache_only);
+
+    if(isnull(has_user_filepath_inclusions))
+      get_user_filepath_inclusions(cache_only:cache_only);
+
+    if(isnull(has_user_timeout))
+      get_user_timeout();
+
+    if(!cache_only)
+      replace_kb_item(name:init_kb, value:TRUE);
+
+    return [sh_commands::CMD_OK, ""];
+  }
+
+  ##
+  # Initializes the command builder with all the arguments of the
+  # find command, and object settings.
+  ##
+  function init_settings()
+  {
+    find_builder.set_default_timeout(240);
+
+    find_builder.set_log_name(name:log_name);
+
+    find_builder.set_default_stderr_to_dev_null(TRUE);
+
+    find_builder.set_positionals_at_beginning(TRUE);
+
+    find_builder.add_positional_argument(
+      validate_func : @command_builder::validate_no_injection,
+      has_many      : TRUE,
+      quote_value   : TRUE
+    );
+
+    find_builder.add_named_argument(
+      name          : '-name',
+      validate_func : @command_builder::validate_no_injection,
+      quote_value   : TRUE
+    );
+
+    find_builder.add_named_argument(
+      name          : '-exec',
+      validate_func : @validate_exec
+    );
+
+    find_builder.add_named_argument(
+      name          : '-type',
+      validate_func : @validate_type
+    );
+
+    find_builder.add_named_argument(
+      name          : '-fstype',
+      validate_func : @validate_fstype
+    );
+
+    find_builder.add_named_argument(
+      name          : '-size',
+      validate_func : @validate_size
+    );
+
+    find_builder.add_named_argument(
+      name          : '-perm',
+      validate_func : @validate_perm
+    );
+
+    find_builder.add_named_argument(
+      name          : '-maxdepth',
+      validate_func : @command_builder::validate_int,
+      host_check    : {
+        "cmd"           : "find " + rand_str(length:20) + " -maxdepth 2 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-mindepth',
+      validate_func : @command_builder::validate_int,
+      host_check    : {
+        "cmd"           : "find " + rand_str(length:20) + " -mindepth 2 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-path',
+      validate_func : @command_builder::validate_no_injection,
+      quote_value   : TRUE,
+      host_check    : {
+        "cmd"           : "find " + rand_str(length:20) + " -path 2 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name       : '-xautofs',
+      value      : FALSE,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -xautofs 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-group',
+      validate_func : @validate_name_group,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -group '" + rand_str(length:20) + "' 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-user',
+      validate_func : @validate_name_group,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -user '" + rand_str(length:20) + "' 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-gid',
+      validate_func : @validate_pm_int,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -gid +0 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-uid',
+      validate_func : @validate_pm_int,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -uid +0 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-ctime',
+      validate_func : @validate_pm_int,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -ctime +0 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-mtime',
+      validate_func : @validate_pm_int,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -mtime +0 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    find_builder.add_named_argument(
+      name          : '-context',
+      validate_func : @validate_context,
+      quote_value   : TRUE,
+      host_check : {
+        "cmd"           : "find " + rand_str(length:20) + " -context '" + rand_str(length:10) + "' 2>&1",
+        "validate_func" : @find_option_exists
+      }
+    );
+
+    if (get_kb_item('Host/Solaris11/Version') || get_kb_item('Host/Solaris/Version'))
+    {
+      find_builder.add_named_argument(name:'-xattr', value:FALSE);
+      find_builder.add_named_argument(name:'-acl', value:FALSE);
+    }
+
+    find_builder.add_named_argument(name: '-nogroup', value: FALSE);
+    find_builder.add_named_argument(name: '-nouser', value: FALSE);
+    find_builder.add_named_argument(name: '-xdev', value: FALSE);
+    find_builder.add_named_argument(name: '-follow', value: FALSE);
+    find_builder.add_named_argument(name: '-prune', value: FALSE);
+    find_builder.add_named_argument(name: '-print', value: FALSE);
+    find_builder.add_named_argument(name: '-a', value: FALSE);
+    find_builder.add_named_argument(name: '-o', value: FALSE);
+    find_builder.add_named_argument(name: '!', value: FALSE);
+    find_builder.add_named_argument(name: '\\(', value: FALSE);
+    find_builder.add_named_argument(name: '\\)', value: FALSE);
+  }
+
+  ##
+  # Builds filepath inclusions arguments.
+  #
+  # @param  [inclusions_paths:list] List of paths to add to inclusions.
+  # @param  [as_string:boolean] If TRUE return output of `command_builder::command.generate_command()`_
+  #                             instead of unvalidated list (optional, defaults to FALSE).
+  #
+  # @return [list|string] The list containing the success status of the function and unvalidated list of arguments.
+  #                       If ``as_string`` is TRUE returns the result of `command_builder::command.generate_command()`_.
+  #
+  # @remark
+  # The list return if ``as_string`` is FALSE is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - Index 1: The unvalidated list of filepath inclusions, with user-supplied filepath if they were given.
+  ##
+  function filepath_inclusions_argument_helper(inclusions_paths, as_string)
+  {
+    if (isnull(inclusions_paths))
+      inclusions_paths = [];
+
+    var init_result = init_find(cache_only:TRUE);
+
+    if (init_result[0] == sh_commands::CMD_FAIL)
+    {
+      return init_result;
+    }
+
+    if (has_user_filepath_inclusions)
+    {
+      # Merge user supplied and argument exclusions removing duplicates
+      inclusions_paths = collib::remove_duplicates(make_list(inclusions_paths, user_filepath_inclusions));
+    }
+
+    if (as_string)
+    {
+      return find_builder.generate_command(args:inclusions_paths, named_only:TRUE);
+    }
+
+    return [sh_commands::CMD_OK, inclusions_paths];
+  }
+
+  ##
+  # Builds filepath exclude arguments
+  #
+  # @param  [exclude_paths:list] List of paths to exclude if -path option is available.
+  # @param  [as_string:boolean] If TRUE return output of `command_builder::command.generate_command()`_
+  #                             instead of unvalidated list (optional, defaults to FALSE).
+  #
+  # @return [list|string] The list containing the success status of the function and unvalidated list of arguments.
+  #                       If ``as_string`` is TRUE returns the result of `command_builder::command.generate_command()`_.
+  #
+  # @remark
+  # The list return if ``as_string`` is FALSE is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - Index 1: The unvalidated list of filepath exclusions, with user-supplied filepath if they were given.
+  ##
+  function filepath_exclude_argument_helper(exclude_paths, as_string)
+  {
+    var exclude_list, i;
+    var user_path_exclusions = user_filepath_exclusions;
+
+    if(isnull(exclude_paths))
+      exclude_paths = [];
+
+    var init_result = init_find(cache_only:TRUE);
+
+    if(init_result[0] == sh_commands::CMD_FAIL)
+      return init_result;
+
+    if(has_user_filepath_exclusions && has_user_filepath_inclusions)
+      user_path_exclusions = collib::subtract(user_path_exclusions, user_filepath_inclusions);
+
+    exclude_list = [];
+
+    # Handle AIX differently, since the 'find' implementation is fairly unique
+    if(get_kb_item("Host/AIX/version"))
+    {
+      var exclude_paths_last = [];
+      var user_filepath_exclusions_last = [];
+
+      if(has_user_filepath_exclusions)
+      {
+        foreach var fesc (user_path_exclusions)
+        {
+          fesc = parse_exclude_string(exc_path: fesc);
+          append_element(var:user_filepath_exclusions_last, value:fesc);
+        }
+      }
+
+      foreach fesc (exclude_paths)
+      {
+        fesc = parse_exclude_string(exc_path: fesc);
+        append_element(var:exclude_paths_last, value:fesc);
+      }
+
+      # Merge user supplied and argument exclusions removing duplicates
+      if(!empty_or_null(user_filepath_exclusions_last))
+        exclude_paths = collib::remove_duplicates(make_list(exclude_paths_last, user_filepath_exclusions_last));
+      else
+        exclude_paths = exclude_paths_last;
+
+      # Example : -name '/tmp' -prune -o -path '/etc' -prune
+      for(i = 0; i < max_index(exclude_paths); ++i)
+      {
+        if(i > 0)
+          exclude_list = make_list(exclude_list, '-o');
+
+        exclude_list = make_list(exclude_list, '-name', exclude_paths[i], '-prune');
+      }
+    }
+    else if(find_builder.named_argument_exists_on_host('-path'))
+    {
+      # Can only exclude paths if path option exists
+
+      # Merge user supplied and argument exclusions removing duplicates
+      if(has_user_filepath_exclusions)
+        exclude_paths = collib::remove_duplicates(make_list(exclude_paths, user_path_exclusions));
+
+      # Example : ! \( -path '/tmp' -prune -o -path '/etc' -prune \)
+      for(i = 0; i < max_index(exclude_paths); ++i)
+      {
+        if(i > 0)
+          exclude_list = make_list(exclude_list, '-o');
+
+        exclude_list = make_list(exclude_list, '-path', exclude_paths[i], '-prune');
+      }
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME,
+                        msg:"Host doesn't support -path named argument can't do path exclusions.");
+      if(has_user_filepath_exclusions)
+        return [sh_commands::CMD_FAIL,
+                'User supplied filepath exclusions found. Host does not support -path cannot continue.'];
+    }
+
+    if(max_index(exclude_list) > 0)
+      exclude_list = make_list('!', '\\(', exclude_list, '\\)');
+
+    if(as_string)
+      return find_builder.generate_command(args:exclude_list, named_only:TRUE);
+
+    return [sh_commands::CMD_OK, exclude_list];
+  }
+
+  ##
+  # Builds filesystem type exclude arguments.
+  #
+  # @param  [fstype_exclusions:list]  List of fstypes allowed to be excluded by find command.
+  # @param  [as_string:boolean] If TRUE return output of `command_builder::command.generate_command()`_
+  #                             instead of unvalidated list (optional, defaults to FALSE).
+  #
+  # @return [list|string] The list containing the success status of the function and unvalidated list of arguments.
+  #                       If ``as_string`` is TRUE returns the result of `command_builder::command.generate_command()`_.
+  #
+  # @remark
+  # The list return if ``as_string`` is FALSE is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - Index 1: The unvalidated list of filesystem types exclusions, with user-supplied filesystem types if they were given.
+  ##
+  function filesystem_exclude_argument_helper(fstype_exclusions, as_string)
+  {
+    var arg_list, i;
+
+    if (empty_or_null(fstype_exclusions))
+      fstype_exclusions = default_filesystem_exclusions;
+    if (isnull(as_string))
+      as_string = FALSE;
+
+    var init_result = init_find(cache_only:TRUE);
+
+    if (init_result[0] == sh_commands::CMD_FAIL)
+    {
+      return init_result;
+    }
+
+    # If there are user filesystem exclusions merge them in removing duplicates
+    if (has_user_filesystem_exclusions)
+    {
+      fstype_exclusions = collib::remove_duplicates(make_list(fstype_exclusions, user_filesystem_exclusions));
+    }
+
+    # Example: ! \( -fstype nfs -prune -o -fstype cifs -prune \)
+    arg_list = [];
+
+    for(i = 0; i < max_index(fstype_exclusions); ++i)
+    {
+      if (i > 0)
+      {
+        arg_list = make_list(arg_list, '-o');
+      }
+
+      arg_list = make_list(arg_list, '-fstype', fstype_exclusions[i], '-prune');
+    }
+
+    if (max_index(arg_list) > 0)
+    {
+      arg_list = make_list('!', '\\(', arg_list, '\\)');
+    }
+
+    if (as_string)
+    {
+      return find_builder.generate_command(args:arg_list, named_only:TRUE);
+    }
+
+    return [sh_commands::CMD_OK, arg_list];
+  }
+
+  ##
+  # Check if there are user supplied filepath inclusions.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [NULL] This function always returns ``NULL`` no matter if user-supplied filepath inclusions we found or not.
+  ##
+  function get_user_filepath_inclusions(cache_only)
+  {
+    var data, user_pref, paths, path, inclusions, kb_name, kb_value;
+
+    if (isnull(cache_only))
+      cache_only = FALSE;
+
+    kb_name = 'Host/sh_commands_find/user_filepath_inclusions';
+
+    kb_value = get_kb_item(kb_name);
+    if(!isnull(kb_value))
+    {
+      if (kb_value)
+      {
+        has_user_filepath_inclusions = TRUE;
+        user_filepath_inclusions = split(kb_value, keep:FALSE);
+      }
+      else
+      {
+        has_user_filepath_inclusions = FALSE;
+      }
+
+      return;
+    }
+
+    if (cache_only)
+    {
+      has_user_filepath_inclusions = FALSE;
+      return;
+    }
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Checking for user supplied filepath inclusions for find command.");
+    has_user_filepath_inclusions = FALSE;
+    data = NULL;
+    user_pref = 'sh_commands_find[file]:Filepath Inclusions';
+    if (get_preference(user_pref))
+    {
+      data = get_preference_file_content(user_pref);
+    }
+
+    if (isnull(data) || strlen(data) < 1)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No user supplied filepath inclusions found.");
+      replace_kb_item(name:kb_name, value:FALSE);
+
+      return;
+    }
+    else
+    {
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "User supplied filepath inclusions",
+        msg_details: {
+          "Filepaths": {"lvl": 3, "value": data}});
+    }
+
+    inclusions = [];
+    paths = split(data, keep:FALSE);
+    foreach path (paths)
+    {
+      # Do validation before caching to KB
+      if (command_builder::validate_no_injection(path))
+      {
+        append_element(var:inclusions, value:path);
+      }
+      else
+      {
+        dbg::detailed_log(
+          lvl: 1,
+          src: FUNCTION_NAME,
+          msg: "Invalid user supplied path",
+          msg_details: {
+            "path": {"lvl": 1, "value": path}});
+      }
+    }
+
+    if (max_index(inclusions) > 0)
+    {
+      has_user_filepath_inclusions = TRUE;
+      user_filepath_inclusions = inclusions;
+      kb_value = join(inclusions, sep:'\n');
+      replace_kb_item(name:kb_name, value:kb_value);
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "Validated user supplied filepath inclusions",
+        msg_details: {
+          "kb_value": {"lvl": 3, "value": kb_value}});
+    }
+    else
+    {
+      replace_kb_item(name:kb_name, value:FALSE);
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No valid user supplied filepath inclusions found.");
+    }
+  }
+
+  ##
+  # Check if there are user supplied filepath exclusions.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [NULL] This function always returns ``NULL`` no matter if user-supplied filepath exclusions we found or not.
+  ##
+  function get_user_filepath_exclusions(cache_only)
+  {
+    var data, user_pref, paths, path, exclusions, kb_name, kb_value;
+
+    if(isnull(cache_only))
+      cache_only = FALSE;
+
+    kb_name = 'Host/sh_commands_find/user_filepath_exclusions';
+
+    kb_value = get_kb_item(kb_name);
+    if(!isnull(kb_value))
+    {
+      if(kb_value)
+      {
+        has_user_filepath_exclusions = TRUE;
+        user_filepath_exclusions = split(kb_value, keep:FALSE);
+      }
+      else
+      {
+        has_user_filepath_exclusions = FALSE;
+      }
+
+      return;
+    }
+
+    if(cache_only)
+    {
+      has_user_filepath_exclusions = FALSE;
+      return;
+    }
+
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Checking for user supplied filepath exclusions for find command.");
+    has_user_filepath_exclusions = FALSE;
+    data = NULL;
+    user_pref = 'sh_commands_find[file]:Filepath Exclusions';
+
+    if(get_preference(user_pref))
+      data = get_preference_file_content(user_pref);
+
+    exclusions = make_list();
+    if(!empty_or_null(data))
+    {
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "User supplied filepath exclusions",
+        msg_details: {
+          "Filepaths": {"lvl": 3, "value": data}});
+
+      paths = split(data, keep:FALSE);
+      foreach path (paths)
+      {
+        # Do validation before caching to KB
+        if(command_builder::validate_no_injection(path))
+        {
+          exclusions = make_list(exclusions, path);
+        }
+        else
+        {
+          dbg::detailed_log(
+            lvl: 1,
+            src: FUNCTION_NAME,
+            msg: "Invalid user supplied path",
+            msg_details: {
+              "path": {"lvl": 1, "value": path}});
+        }
+      }
+    }
+
+    var sloc;
+    var container_storage_locations = get_kb_list("*/container/find/exclusions");
+    for(sloc of container_storage_locations)
+      append_element(var:exclusions, value:sloc);
+
+    if(max_index(exclusions) > 0)
+    {
+      has_user_filepath_exclusions = TRUE;
+      user_filepath_exclusions = exclusions;
+      kb_value = join(exclusions, sep:'\n');
+      replace_kb_item(name:kb_name, value:kb_value);
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "Validated user supplied and container storage filepath exclusions",
+        msg_details: {
+          "kb_value": {"lvl": 3, "value": kb_value}});
+    }
+    else
+    {
+      replace_kb_item(name:kb_name, value:FALSE);
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No valid user supplied filepath exclusions found.");
+    }
+  }
+
+  ##
+  # Check if there are user supplied filesystem exclusions.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [NULL] This function always returns ``NULL`` no matter if user-supplied type exclusions we found or not.
+  ##
+  function get_user_filesystem_exclusions(cache_only)
+  {
+    var data, user_pref, filesystems, filesystem, exclusions, kb_name, kb_value;
+
+    if (isnull(cache_only)) cache_only = FALSE;
+
+    kb_name = 'Host/sh_commands_find/user_filesystem_exclusions';
+
+    kb_value = get_kb_item(kb_name);
+    if(!isnull(kb_value))
+    {
+      if (kb_value)
+      {
+        has_user_filesystem_exclusions = TRUE;
+        user_filesystem_exclusions = split(kb_value, keep:FALSE);
+      }
+      else
+      {
+        has_user_filesystem_exclusions = FALSE;
+      }
+
+      return;
+    }
+
+    if (cache_only)
+    {
+      has_user_filesystem_exclusions = FALSE;
+      return;
+    }
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Checking for user supplied filesystem exclusions for find command.");
+    has_user_filesystem_exclusions = FALSE;
+    data = NULL;
+    user_pref = 'sh_commands_find[file]:Filesystem Exclusions';
+    if (get_preference(user_pref))
+    {
+      data = get_preference_file_content(user_pref);
+    }
+
+    if (isnull(data) || strlen(data) < 1)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No user supplied filesystem exclusions found.");
+      replace_kb_item(name:kb_name, value:FALSE);
+
+      return;
+    }
+    else
+    {
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "User supplied filesystem exclusions",
+        msg_details: {
+          "Filesystem": {"lvl": 3, "value": data}});
+    }
+
+    exclusions = make_list();
+    filesystems = split(data, keep:FALSE);
+    foreach filesystem (filesystems)
+    {
+      # Do validation before caching to KB
+      if (validate_fstype(filesystem))
+      {
+        exclusions = make_list(exclusions, filesystem);
+      }
+      else
+      {
+        dbg::detailed_log(
+          lvl: 1,
+          src: FUNCTION_NAME,
+          msg: "Invalid user supplied filesystem",
+          msg_details: {
+            "filesystem": {"lvl": 1, "value": filesystem}});
+      }
+    }
+
+    if (max_index(exclusions) > 0)
+    {
+      has_user_filesystem_exclusions = TRUE;
+      user_filesystem_exclusions = exclusions;
+      kb_value = join(exclusions, sep:'\n');
+      replace_kb_item(name:kb_name, value:kb_value);
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "Validated user supplied filesystem exclusions",
+        msg_details: {
+          "kb_value": {"lvl": 3, "value": kb_value}});
+    }
+    else
+    {
+      replace_kb_item(name:kb_name, value:FALSE);
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No valid user supplied filesystem exclusions found.");
+    }
+  }
+
+  ##
+  # Check if there is a user-supplied timeout for the command in the scan's preferences.
+  #
+  # @return [NULL] This function always returns ``NULL`` no matter if a user-supplied timeout was found or not.
+  ##
+  function get_user_timeout()
+  {
+    var kb_name = 'Host/sh_commands_find/user_timeout';
+
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Checking for a user-supplied timeout for the find command.');
+    user_timeout = get_preference('sh_commands_find[integer]:Command Timeout');
+    user_timeout = int(user_timeout);
+    if(user_timeout)
+    {
+      has_user_timeout = TRUE;
+      replace_kb_item(name:kb_name, value:user_timeout);
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Found a user-supplied timeout with value: ' + user_timeout);
+
+      return NULL;
+    }
+
+    has_user_timeout = FALSE;
+    user_timeout = 0;
+    rm_kb_item(name:kb_name);
+  }
+
+  ##
+  # Check if automount process is running on the host.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [NULL] This function always returns ``NULL``,
+  #                instead its findings are stored in the KB item ``Host/sh_commands_find/automount_running``.
+  ##
+  function is_automount_running(cache_only)
+  {
+    var buf, kb_name, cmd;
+
+    if (isnull(cache_only)) cache_only = FALSE;
+
+    kb_name = "Host/sh_commands_find/automount_running";
+
+    # check cache
+    automount_running = get_kb_item(kb_name);
+    if(!isnull(automount_running))
+    {
+      return NULL;
+    }
+
+    automount_running = FALSE;
+
+    if (cache_only)
+    {
+      # In the case of the automount service error on the side of caution
+      # with no cached result even though we would error out before running
+      # find anyway.
+      automount_running = TRUE;
+    }
+    else
+    {
+      cmd = 'ps -aef';
+      buf = info_send_cmd(cmd:cmd);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Checked if automount is running with the following command which returned the following output.',
+        msg_details:{
+          "Command":{"lvl":3, "value":cmd},
+          "Output":{"lvl":3, "value":buf}});
+
+      if (buf && 'automount' >< buf)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Automount appears to be running on host.");
+        automount_running = TRUE;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Automount does not appear to be running on host.");
+      }
+
+      # cache finding
+      replace_kb_item(name:kb_name, value:automount_running);
+    }
+
+    return NULL;
+  }
+
+  ##
+  # Validate value for ``find -exec``. This only accepts
+  # a whitelisted set of commands. Additional commands must be
+  # added as needed.
+  #
+  # @anonparam [cmd:string] The value passed to the ``-exec`` argument in the ``find`` command.
+  #
+  # @return [boolean] TRUE if valid. FALSE if invalid.
+  ##
+  function validate_exec()
+  {
+    var cmd = _FCT_ANON_ARGS[0];
+
+    if (isnull(cmd))
+      return FALSE;
+
+    var find_exec_whitelist = [
+      "^unzip -[vl] '\{\}' \\;$",
+      "^(\/usr)?(\/bin)?\/?ls -[a-zA-Z]+ '\{\}' \\;$",
+      "^file(?: --mime)? '\{\}' \\;$",
+      "^grep -il " + '"' + "\/([A-Za-z0-9_\-]+\/?)+" + '"' + " '\{\}' \\;$",
+      "^(\/usr)?(\/bin)?\/?stat -c " + '"' + "[%a-zA-Z ]+" + '"' + " '\{\}' \\;$",
+      "^runat '?\{\}'? ls -[a-zA-Z]+ \\;$"
+    ];
+
+    for (var idx in find_exec_whitelist)
+      if (preg(string:cmd, pattern:find_exec_whitelist[idx]))
+        return TRUE;
+
+    return FALSE;
+  }
+
+  ##
+  # Validate value is valid for ``find -type``.
+  #
+  # @anonparam [1st:string] The value passed to the ``-type`` argument in the ``find`` command.
+  #
+  # @return [boolean] TRUE if valid. FALSE if invalid.
+  ##
+  function validate_type()
+  {
+    var type = _FCT_ANON_ARGS[0];
+
+    if (isnull(type) || type !~ "^[bcdpflsD]$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validate value is valid for ``find -size``.
+  #
+  # @anonparam [1st:string] The value passed to the ``-size`` argument in the ``find`` command.
+  #
+  # @return [boolean] TRUE if valid. FALSE if invalid.
+  ##
+  function validate_size()
+  {
+    var size = _FCT_ANON_ARGS[0];
+
+    if (isnull(size) || size !~ "^\d+[ckMGTP]?$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validate value is valid for ``find -perm``.
+  #
+  # @anonparam [1st:string] The value passed to the ``-perm`` argument in the ``find`` command.
+  #
+  # @return [boolean] TRUE if valid. FALSE if invalid.
+  ##
+  function validate_perm()
+  {
+    var perm = _FCT_ANON_ARGS[0];
+    if (isnull(perm) || perm !~ "^[-+\/]?[0-9A-Za-z+=,]+$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validate value is valid for ``find -fstype``.
+  #
+  # @anonparam [1st:string] The value passed to the ``-fstype`` argument in the ``find`` command.
+  #
+  # @return [boolean] TRUE if valid FALSE if invalid.
+  ##
+  function validate_fstype()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if (isnull(value) || value !~ "^[0-9A-Za-z\.]+$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validates the value for ``-group`` and ``-user``.
+  #
+  # @anonparam [value:string] The value to use with ``-group`` or ``-user``.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  #
+  # @remark
+  # If the target's OS is AIX then it will aslo check if the value is in the ``+/-int`` format.
+  ##
+  function validate_name_group()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if (isnull(value) || value !~ "^[\w.][\w.-]{0,30}[\w.$-]?$")
+    {
+      if (get_kb_item("Host/AIX/version"))
+        return validate_pm_int(value);
+
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validates values in the ``+/-int`` format.
+  #
+  # @anonparam [value:string] The value to validate.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_pm_int()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if (isnull(value) || value !~ "^[-+]?\d+$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validates the value for ``-context``.
+  #
+  # @anonparam [value:string] The value to use with ``-context``.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_context()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if (isnull(value) || value !~ "^'[:a-z0-9_\*]+'$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Check the ``find`` command output to determine if the option is supported.
+  #
+  # @anonparam [1st:string] Output of the find command testing the existence of an option.
+  #
+  # @return [boolean] TRUE if has option. FALSE if the option is missing.
+  ##
+  function find_option_exists()
+  {
+    var buf;
+
+    buf = _FCT_ANON_ARGS[0];
+
+    if(!empty_or_null(buf))
+    {
+      if (
+          ( get_kb_item("Host/AIX/version") &&
+            'lacks a required parameter' >< buf
+          )
+          ||
+          (
+            'bad option' >< buf ||
+            'unknown predicate' >< buf ||
+            'illegal option' >< buf ||
+            'unknown primary or operator' >< buf ||
+            'is not a valid option' >< buf ||
+            'SELinux is not enabled' >< buf
+          )
+        )
+            return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Look for final dir in user-supplied filepath exclusions, depending
+  # on how the path was specified by the customer.
+  #
+  # @param [exc_path:string] The exclude string to parse.
+  #
+  # @return [string] The parsed exclude_dir string.
+  ##
+  function parse_exclude_string(exc_path)
+  {
+    var exc_path_orig = exc_path;
+    if("/" >< exc_path)
+    {
+      if(exc_path =~ "^.+\/$")
+      {
+        dbg::detailed_log(
+          lvl: 3,
+          src: FUNCTION_NAME,
+          msg: "Stripping trailing slash from path",
+          msg_details: {
+            "exc_path": {"lvl": 3, "value": exc_path}});
+
+        #exc_path is guaranteed to be at least 2 characters long by "^.+\/$"
+        exc_path = substr(exc_path, 0, strlen(exc_path) - 2);
+      }
+      var split_exc = NULL;
+      split_exc = split(exc_path, sep:"/", keep: FALSE);
+
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "Parsed final directory name from the given path.",
+        msg_details: {
+          "Directory": {"lvl": 3, "value": split_exc[max_index(split_exc)-1]},
+          "Path": {"lvl": 3, "value": exc_path_orig}});
+
+      return split_exc[max_index(split_exc)-1];
+    }
+    else
+    {
+      return exc_path;
+    }
+  }
+
+  ##
+  # Assembles an array of predicates and their values into a list.
+  #
+  # @anonparam [array:array] The array with keys being predicates for the find command,
+  #                          and the values are the predicate's value.
+  #
+  # @return [list] The list of predicates and their values, having removed the predicates with empty or null values.
+  ##
+  function assemble_args_values()
+  {
+    var array = _FCT_ANON_ARGS[0];
+    var list = [];
+
+    for (var key in array)
+    {
+      if (!empty_or_null(array[key]))
+      {
+        append_element(var:list, value:key);
+        append_element(var:list, value:array[key]);
+      }
+    }
+
+    return list;
+  }
+}
+
+namespace sh_commands
+{
+  ##
+  # Find command for unix systems.
+  #
+  # @param [args:list] List representing the arguments that should be in the ``find`` command.
+  #                    Each element in the list is an argument for the command. The order is important.
+  #                    (The elements of this list can be passed anonymously).
+  #
+  # @param [fstype_exclusions:list]     List of fstype to exclude. Defaults to library list of fstypes (optional).
+  # @param [exclude_paths:list]         List of paths to exclude. Are only used if ``-path`` is supported (optional).
+  # @param [inclusions_paths:list]      List of paths to inclusions (optional).
+  # @param [disable_inclusions:boolean] Boolean to disable the ``inclusions_paths`` and UI inclusions.
+  # @param [timeout:integer]            Override default timeout (optional)
+  # @param [use_user_timeout:boolean]   Boolean to use the user-supplied timeout from the preferences instead of the
+  #                                     value in ``timeout`` (optional, defaults to FALSE).
+  # @param [run:boolean]                If TRUE command is ran if FALSE command is validated and returned as a string (optional, defaults to TRUE).
+  # @param [pread_options:array]        Options to pass to ``pread_ex()`` for agents.
+  #
+  # @return [list] The list containing the success status of the function and the output of the function or error message.
+  #
+  # @remark
+  # The list returned is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - | Index 1: The output of the ``find`` command if ``run`` is TRUE, or the validated command if ``run`` is FALSE,
+  #   |          or the error message if the function ran into an error.
+  #
+  # @remark
+  # This function looks for user supplied path and fstype exclusions and includes
+  # them as part of the final command.
+  #
+  # It also looks for user-supplied timeout value if ``user_user_timeout`` is set to TRUE.
+  # If a value is given in the settings and is not zero, it will be used as the timeout value
+  # regardless of the value given in ``timeout``.
+  ##
+  function find(args, fstype_exclusions, exclude_paths, inclusions_paths, disable_inclusions, timeout, use_user_timeout, run, pread_options)
+  {
+    var i, final_args, tmp_args, status, err, buf;
+
+    var xautofs_found = FALSE;
+    var tenb_fstype_exclusions_found = FALSE;
+    var tenb_path_exclusions_found = FALSE;
+    var multi_cmd = FALSE;
+
+    if (isnull(run))
+      run = TRUE;
+    if (isnull(use_user_timeout))
+      use_user_timeout = FALSE;
+
+    if (isnull(args) && !isnull(_FCT_ANON_ARGS))
+    {
+      args = _FCT_ANON_ARGS;
+    }
+    else if(isnull(args))
+    {
+      args = [];
+    }
+
+    var init_result = sh_commands_find::init_find(cache_only:TRUE);
+
+    if (init_result[0] == sh_commands::CMD_FAIL)
+    {
+      return init_result;
+    }
+
+    if(use_user_timeout && sh_commands_find::has_user_timeout)
+    {
+      timeout = sh_commands_find::user_timeout;
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Running command with the ' + timeout + '-second user-supplied timeout.');
+    }
+
+    # Only run find without -xautofs if automount is running when running thorough tests
+    if (!sh_commands_find::find_builder.named_argument_exists_on_host("-xautofs") &&
+        sh_commands_find::automount_running &&
+        !thorough_tests)
+    {
+      status = sh_commands::CMD_FAIL;
+      err = "The remote filesystem uses autofs and find doesn't support -xautofs. Enable thorough tests to override.";
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "Returned status and value string.",
+        msg_details: {
+          "Status": {"lvl": 1, "value": status},
+          "Error": {"lvl": 1, "value": err}});
+      return [status, err];
+    }
+
+    final_args = [];
+    for (i = 0; i < max_index(args); ++i)
+    {
+      # If -exec is used then the command must be ran with multi_cmd set so timeout
+      # is handled correctly.
+      if (args[i] == "-exec")
+      {
+        multi_cmd = TRUE;
+      }
+
+      if (args[i] == "-xautofs")
+      {
+        xautofs_found = TRUE;
+        # automount isn't running so remove -xautofs if it isn't supported.
+        if (!sh_commands_find::find_builder.named_argument_exists_on_host("-xautofs"))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"-xautofs not supported on host removing from command.");
+          continue;
+        }
+
+        tmp_args = args[i];
+      }
+      else if (args[i] == "-tenb_fstype_exclusions")
+      {
+        tenb_fstype_exclusions_found = TRUE;
+        tmp_args = sh_commands_find::filesystem_exclude_argument_helper(fstype_exclusions:fstype_exclusions);
+        if (tmp_args[0])
+        {
+          tmp_args = tmp_args[1];
+        }
+        else
+        {
+          return tmp_args;
+        }
+      }
+      else if (args[i] == "-tenb_path_exclusions")
+      {
+        tenb_path_exclusions_found = TRUE;
+        tmp_args = sh_commands_find::filepath_exclude_argument_helper(exclude_paths:exclude_paths);
+        if (tmp_args[0])
+        {
+          tmp_args = tmp_args[1];
+        }
+        else
+        {
+          return tmp_args;
+        }
+      }
+      else
+      {
+        tmp_args = args[i];
+      }
+
+      final_args = make_list(final_args, tmp_args);
+    }
+
+    # provides the ability to disable inclusions if set
+    if (!disable_inclusions)
+    {
+      tmp_args = sh_commands_find::filepath_inclusions_argument_helper(inclusions_paths:inclusions_paths);
+      if (tmp_args[0])
+      {
+        #must insert the inclusion at the very start with the "start" values , position matters here
+        final_args = make_list(tmp_args[1], final_args);
+      }
+      else
+      {
+        return tmp_args;
+      }
+    }
+
+    # Make -xautofs is a required argument.
+    if (!xautofs_found)
+    {
+      status = sh_commands::CMD_FAIL;
+      err = "Find must have -xautofs.";
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "Returned status and value string.",
+        msg_details: {
+          "Status": {"lvl": 1, "value": status},
+          "Error": {"lvl": 1, "value": err}});
+      return [status, err];
+    }
+
+    # Make -tenb_fstype_exclusions is a required argument.
+    if (!tenb_fstype_exclusions_found)
+    {
+      status = sh_commands::CMD_FAIL;
+      err = "Find must have -tenb_fstype_exclusions.";
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "Returned status and value string.",
+        msg_details: {
+          "Status": {"lvl": 1, "value": status},
+          "Error": {"lvl": 1, "value": err}});
+      return [status, err];
+    }
+
+    # Make -tenb_path_exclusions a required argument.
+    if (!tenb_path_exclusions_found)
+    {
+      status = sh_commands::CMD_FAIL;
+      err = "Find must have -tenb_path_exclusions.";
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "Returned status and value string.",
+        msg_details: {
+          "Status": {"lvl": 1, "value": status},
+          "Error": {"lvl": 1, "value": err}});
+      return [status, err];
+    }
+
+    var cmd = sh_commands_find::find_builder.generate_command(args:final_args);
+
+    if (cmd[0] != sh_commands::CMD_OK)
+    {
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "The function command_builder::command.generate_command() encountered an error.",
+        msg_details: {
+          "Status": {"lvl": 1, "value": cmd[0]},
+          "Error": {"lvl": 1, "value": cmd[1]}});
+      return cmd;
+    }
+
+    if (!run)
+    {
+      dbg::detailed_log(
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: 'Argument "run" set to FALSE, so returning generated command without running it.',
+        msg_details: {
+          "Status": {"lvl": 2, "value": cmd[0]},
+          "Value": {"lvl": 2, "value": cmd[1]}});
+      return cmd;
+    }
+
+    buf = sh_commands_find::find_builder.run(cmd:cmd[1], timeout:timeout, multi_cmd:multi_cmd, pread_options:pread_options);
+
+    return buf;
+  }
+}

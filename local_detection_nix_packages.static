@@ -1,0 +1,297 @@
+#TRUSTED 63bb8433acd0a05df798f4d27fbdbc0c038b27210acab28e144bb324c7c80fce7c9dd4b5cd6464b639f28e004ec4e31a71a188a529f71298bcb7c20dd2ee32aa747931d56d87a51e295ea8b7ffb9cad7e6901cca42ac23fc0c1a9595b66f730e781249fbfae194f77490a67f4cd12a4e12f56a3e238e5b1d22b61d16706800d6889db1c6946cb56f94b7713dfb361d598db22b1a7b94a5995ed493e2c35d28a16b764f86bfc33a05a15d719c0012b6de200672b28d38baf830db363c217060930a65769e1bace3fcdaa867b46347a76015d41e8fafde926d684de7adc07809216ae08336983e744716f82c0bd811d43979f47f243ee89ce7a7c20db5c10120755c9c2bbf5c007a9a00074c96f9b27ebebe8631072ae19dd00b74e23a7adf186bd60d41a1b52d65808c910c8f5312278465b17159c11b02838c5548a834b1d84f62869e2fe4a3c0d9ac670c9f02418a61f7aae13bb6efc477bc19c89cb599bd30332be16cd6845ac4476ed1f800f59ec9b2ddaf8744df333de3e524d4cf5e517c2a41f832000edf56346b05b6f3d5283e7074a9451598036a59e6e13f85963a2fc6af74cc2613f2635f476cf31b6c8fd7cefd072def057993c4ca3a2d6fd5cf629ac7892f4584b6039013ef05c2d125a46c4c331a4f4a4025766632719941d70b0272592ca299cee52f7919d0a0d6b3e5383339aed3767cd251227fd834d8826e
+#TRUST-RSA-SHA256 3d6d06a8ce9efa602c9850bfb8afc8d4eb0c9a79f38302dbd6d26e8a3f012db6e99b135fe79e805451c59f430a4b028cdbc12736214ce14f05296e82b1648238a4e871ba48c9c1f16e52e35f73af799020579e7799ca5e4b8d1bfc3ea56e0a7532d52cdbed682695a87166b3f86dc6d67ebfbbd15aeba2dc938f9139c96826d64cff3e578fef400513f8a2726131019b7b14396c33c92d4976b516f3d660a01ca35b758913da1ee36c727692fcde6eab172cccf22cee96c7694138e8f385bf68af622b9b9d53c0c9619a665f923575a7d001771704678dcbde50571d5116bb734a697d9d39ab2c0bfe2fce20de0d2b9cf40626182ffec79bb53f83dcccbece3d83acf02408e38f245464cb5db2557d958fbd1f9edc8de44a9b2c2c03ecc8f2ee103650a17454c1757ee335070b157197632217d68ebdd2fa2f4374b536488a9702b4cd755d15a8e4f15a38dfd6d9ec8703687c4e79211a3614a49c24b39e087db352d14ff3a4a5f33d71e5a1ac786c3c4e4173caff5502b126312f0ab67acbec8c4a24e5e2339aaa55d5fe96e67464fdb0045331147e902906725f1c0a3c0b1787f9762f24df08c048daadb845cb7e5378a008954bc6336321af817b64807b0a2abe1e72ad4ff1bcad78788eddbbc8fb493fd54291c146add51e86b2d74bb416be37b6555f9ddf6d7a4522e9f359202720e1783e50669aec23e51eb471c07386
+#------------------------------------------------------------------------------
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.6
+#
+# @library local_detection_nix.inc
+#
+###
+
+namespace ldnix
+{
+  namespace packages
+  {
+    var defaults = {
+      pattern : {
+        start     : '^ *',                 # Start of the pattern
+        delimiter : '[-\\s]+',              # Delimiter between package name and version
+        version   : '([\\d.]+[a-z]{1,2}|[\\d.]+)-?[\\w.-]*)', # End of pattern including version info (e.g. "7.15.1-19.30.1", "7.37.1-1ubuntu3.4")
+        prefix    : {
+          rpm     : '(',                                   # RPM example      : curl-7.15.1-19.30.1
+          dpkg    : '(?:ii *)?(',                          # dpkg example     : ii  curl     7.37.1-1ubuntu3.4
+          pkglist : '((?:\\w+/)*',                         # pkg-list example : web/curl           7.79.0-11.4.42.0.0.111.0   i--
+          pkginfo : '((?:SUNW|SFW|CSW|JDS|HPC|GDS|VRTS)?', # pkginfo example  : CSWcurl
+          lslpp   : '(?:[^:]+:)?(',                        # lslpp example    : curl:curl-7.72.0-1:7.72.0-1: : :
+          swlist  : '(?:# *)?('                            # swlist example   : # curl						8.4.0  
+        },
+        suffix    : {
+          macos   : '.*)'
+        }
+      }
+    };
+
+    # Use the package version for any files that are found to be associated with the package.
+    #  - Example: /usr/local/Cellar/xz/5.6.1/lib/liblzma.a is associated with "xz 5.6.1" package,
+    #             if this flag is set to true, use 5.6.1 as the version for liblzma.a
+    var USE_PACKAGE_VERSION = false;
+
+    ##
+    # Find packages that match specified regular expressions and process results
+    #
+    # @param [patterns:list]        list of patterns to match on packages with first match group for the package name and second match group for the version
+    # @param [modify_patterns:bool] allow build_pattern() to modify the patterns (Default: true) (optional)
+    #
+    # @return processed packages as a list of arrays from ldnix::packages::process()
+    ##
+    function find_and_process(patterns, modify_patterns)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ patterns:patterns }))
+        return NULL;
+
+      if (empty_or_null(modify_patterns)) modify_patterns = true;
+
+      var processed_packages, processed_package, pattern, duplicate, packages, package;
+
+      processed_packages = [];
+
+      foreach pattern (patterns)
+      {
+        # Build pattern
+        if (modify_patterns)
+          pattern = ldnix::packages::build_pattern(pattern:pattern);
+
+        # Search package list for specified pattern
+        packages = ldnix::search_packages([new ldnix::pkg_target('', pattern)]);
+        foreach package (packages)
+        {
+          package = ldnix::packages::process(package:package);
+
+          # Check that the package has not already been recorded
+          duplicate = false;
+          for (processed_package of processed_packages)
+          {
+            if (package.name == processed_package.name)
+            {
+              dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Package already recorded: ' + package.name);
+              duplicate = true;
+              break;
+            }
+          }
+  
+          if (duplicate) continue;
+
+          append_element(var:processed_packages, value:package);
+        }
+      }
+
+      return processed_packages;
+    }
+
+
+    ##
+    # Process package:
+    #  - replace more than whitespace with only one whitespace
+    #  - package base name for package utilites (e.g. 'curl' from 'curl 8.3.0') 
+    #
+    # @param [package:object] package info returned from ldnix::search_packages()
+    #
+    # @return processed package info array with keys: 'name', 'base_name', 'version'
+    ##
+    function process(package)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ 'package.path' : package.path }))
+        return NULL;
+
+      var processed_package, package_split;
+
+      processed_package = {};
+
+      # Replace whitespace characters with a single space character
+      processed_package.name = ereg_replace(pattern:'\\s+', replace:' ', string:package.path);
+
+      # Base package name (e.g. 'curl' from 'curl 8.3.0')
+      package_split = split(package.path, sep:' ', keep:FALSE);
+      processed_package.base_name = package_split[0];
+
+      processed_package.version = package.version;
+
+      # Return value example:
+      # {
+      #   'base_name' : 'curl',
+      #   'name'      : 'curl 7.58.0-2ubuntu3.24',
+      #   'version'   : '7.58.0'
+      # }
+      return processed_package;
+    }
+
+    ##
+    # Build package pattern
+    #
+    # @param [pattern:str] package name as a pattern (e.g. 'curl(?:-devel)?')
+    #
+    # @return built package pattern
+    ##
+    function build_pattern(pattern)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ pattern:pattern }))
+      return NULL;
+
+      var new_pattern;
+
+      new_pattern = defaults.pattern.start;
+
+      # Add prefix before package name
+      new_pattern += build_pattern_prefix();
+
+      # Add specified pattern
+      new_pattern += pattern;
+
+      # Add delimiter between package name and version
+      new_pattern += defaults.pattern.delimiter;
+
+      # Add version
+      new_pattern += defaults.pattern.version;
+
+      # Additional processing
+      new_pattern = process_pattern(pattern:new_pattern);
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:strcat('New pattern: "', new_pattern, '"'));
+
+      return new_pattern;
+    }
+
+    ##
+    # Build the package pattern prefix based on the host's OS
+    #
+    # @remark This can be overwritten by setting the relevant 'defaults.pattern.prefix' key/value pair.
+    #
+    # @return package pattern prefix as a string
+    ##
+    function build_pattern_prefix()
+    {
+      var pattern_prefix;
+
+      # RPM example: curl-7.15.1-19.30.1
+      if (!empty_or_null(get_kb_list('Host/*/rpm-list')))
+        pattern_prefix = defaults.pattern.prefix.rpm;
+
+      # dpkg example : ii  curl     7.37.1-1ubuntu3.4 
+      else if (!empty_or_null(get_kb_list('Host/*/dpkg-l')))
+        pattern_prefix = defaults.pattern.prefix.dpkg;
+        
+      # pkg-list example : web/curl           7.79.0-11.4.42.0.0.111.0   i--
+      else if (get_kb_item('Host/Solaris11/pkg-list')) 
+        pattern_prefix = defaults.pattern.prefix.pkglist;
+
+      # pkginfo example : CSWcurl
+      else if (get_kb_item('Host/Solaris/pkginfo')) 
+        pattern_prefix = defaults.pattern.prefix.pkginfo;
+
+      # lslpp example: curl:curl-7.72.0-1:7.72.0-1: : :
+      else if (get_kb_item('Host/AIX/lslpp'))
+        pattern_prefix = defaults.pattern.prefix.lslpp;
+
+      # swlist example: # curl						8.4.0        
+      else if (get_kb_item('Host/HP-UX/swlist'))
+        pattern_prefix = defaults.pattern.prefix.swlist;
+      
+      # Add start of capture group for the package name
+      else
+        pattern_prefix += '(';
+
+      return pattern_prefix;
+    }
+
+
+    ##
+    # Additional processing on the pattern.
+    #
+    # @param [pattern:str]  package pattern to manipulate
+    #
+    # @return the processed pattern, possibly the original pattern
+    ##
+    function process_pattern(pattern)
+    {
+      # macOS packages may have the package manager (e.g. homebrew) appended to the end of the package
+      if (get_kb_item('Host/MacOSX/InstalledSW'))
+      {
+        # Remove last parenthesis to open up the capture group
+        pattern = ereg_replace(pattern:"\)$", replace:defaults.pattern.suffix.macos, string:pattern);
+      }
+
+      return pattern;
+    }
+
+
+    ##
+    # Get files installed by packages.
+    #
+    # @param [packages:array] package info returned from ldnix::packages::search_and_process()
+    #
+    # @remark This is useful for caching package files since ldnix::get_package_files() executes commands on the host.
+    #
+    # @return array with the the package name as the key and files as the values
+    #         NULL otherwise
+    ##
+    function get_files(packages)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ packages:packages }))
+        return NULL;
+  
+      var package_file_list, package, package_split, package_name, file_list;
+
+      package_file_list = {};
+
+      for (package of packages)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Processing package: ' + package.name);
+
+        # Add file list of all file associated packages.
+        #  - Allow for the value to be set to NULL to cache response.
+        file_list = ldnix::get_package_files(package:package.base_name);
+        package_file_list[package.name] = file_list;
+      }
+
+      return package_file_list;
+    }
+
+
+    ##
+    # Build report info for package.
+    #
+    # @param [package:array] processed package return value from ldnix::packages::find_and_process()
+    #
+    # @remark This should only be used if the package cannot be associated with a path.
+    #
+    # @return array of install info meant for register_install()
+    ##
+    function report_info(package)
+    {
+      # Argument checks
+      if (!validate::empty_or_null_args(src:FUNCTION_NAME, args:{ package:package, 'package.name': package.name }))
+        return NULL;
+
+      var install = {
+        path            : package.name + ' (via package manager)',
+        version         : package.version,
+        extra           : { 'Managed by OS' : 'True' },
+        extra_no_report : { 'Managed' : TRUE }
+      };
+
+      return install;
+    }
+  }
+}

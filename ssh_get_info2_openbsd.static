@@ -1,0 +1,109 @@
+#TRUSTED 1d2403bb4fc233edbbd2ebf9604f618a44bf752607ad5b7014673a407cd0a0cc9f153983b0ea4e99083d72191c8de9ee2c5242203a3b72068102d0f39785ccb69abd1c2396c480eff85541ee38a323a972a00ade9f26fa07ac6ed1f7b0bef6dcf86d45655430e10e6bac8aa22932cff96c9bd8f05e783f5538c3fc34ab67f5c7f0ec230b5f07722baa0fd5c21114716c6fca22947b5a2040303116ae15681db40f4bb86cd0f0757236997eddaf415b953e641a1c6581009cff11354839aa2ab5cad09df33f1ec08e381f7296f1d45010101bc81d2cf15f0be0fc8293411f1cba78613f2134cef316776a6075225cad790d2f771a4c17b18ee9902e7f04577cdead688c30dba0c995e55ec30a4a24a2bb8ed395e8dd1df301a1ebbac4a08e146eb127938823b824944662004b19e3aec23b9ce1bfc8f2d55a826dcacdd4f2c6e454ae18f17a6fcdc377a38e11ddf22d98d4a36147bc455eb826c4b1d1c3a2c9ec1213a9dc82e48b8a5bd97b4d79957c6349d3a5953b876ab49021cac9af82b949c6f09c086c178a9bdfd05b33e5855fb8b6158b4c41e752eced9dfeafa15124ddf6be7485ae9c549eb08e4a1d2e4b5d7002a03071d1b54efcea2eef94617dc09bd40afc6aae56c191c96ab9873711e876d6b435e32a98f74526a6899aeef7512d117018ab081a9d8e1281aa6f24be2153c406291aedfdf0a8324afb2c209fdf14
+#TRUST-RSA-SHA256 380c174d32ee534bcf3f4a14b5cfe647aaf9bde062831b07cf903d778be426150b274fc176570107a0b68b51a853f3002fc388f49674204753b265a0ffc15d62d29a81b87f0766531202c0f01624f59f6d3de2216428bdd423a175da92f29c11af4f394b610fe839e6afd947af8bd6de99d8ab4f485127fc29378ffe9dd246f4d95fffc2c6512b9f980e42a77f493f869f435cea9063705b26b2e1a9c559ed6c4fa4b3533fce21b8f71b65dd2fb0ad31c45e248f3d42a6d25ea078c42afbe3cd5207e15873a1210734290bbed7771641ea7def3d1955c6f28ee72b6236f165f0ee68b6aef05880e306caa42248946c91cc4d9febcd2d96929ad29f51641631aa2d0d2321340362446a5efc8ad8d5cc35d75b250bc3babd80c67e779146654542bf9e67772a70117a124ab85e11d2116aa974180d2354dd07b5fa1418a9eed7fc6a654b22ef7e003c598a726b52848e5e5439021da458ef614996151703fe41896b5841a071f0db46649401555e2df6fa7666522424b3db0b0b790fe72065e39aef87e428b9323f3a5dace39cb92b8ff1a059a8970563487fe4d0aa4b9078827fde424bad1d3ff373ea44e01bc61001d4bf7b3d5662f7e7692f79cf7092811bde8074579fb4f7a1d3b75a1d9bcd9ad08eff52256632b4836d759711e193c0073e5c4a04faefba488c9d2aa3aca8ac99c6c9c542d55832b3dfacb086d59c1aecd4
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+
+
+function openbsd_pre_check_fail()
+{
+  # we've already checked that the host is not OpenBSD previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_openbsd']) return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not OpenBSD if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:openbsd_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+function handle_openbsd(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var release, cmd, pfctl, match, rules, errmsg, uname_r;
+
+  release = ereg_replace(pattern:".*OpenBSD[ ]+.*[ ]+([0-9]+[0-9.]+)[ ]+.*", replace:"\1", string:cmd_res);
+
+  release = "OpenBSD-" + release;
+  set_kb_item(name:"Host/OpenBSD/release", value:release);
+
+  # Get firewall rules.
+  cmd = "/sbin/pfctl -sa";
+  pfctl = run_command(cmd:cmd+" 2>&1", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if (
+    !isnull(pfctl) &&
+    "Status: " >< pfctl &&
+    'FILTER RULES:\n' >< pfctl
+  )
+  {
+    match = pgrep(pattern:"Status: Disabled", string:pfctl);
+    if (match) set_kb_item(name:'Host/fwrules/errmsg'+cmd, value:match);
+    else
+    {
+      cmd = str_replace(find:"-sa", replace:"-sr", string:cmd);
+      rules = strstr(pfctl, 'FILTER RULES:') - 'FILTER RULES:';
+      if ('\nSTATES:' >< rules) rules = rules - strstr(pfctl, '\nSTATES:');
+      if (strlen(rules)) set_kb_item(name:"Host/fwrules/output/"+cmd, value:rules);
+      else set_kb_item(name:'Host/fwrules/errmsg'+cmd, value:"Failed to extract filter rules.");
+    }
+  }
+  else
+  {
+    errmsg = session.error;
+    if (!errmsg)
+    {
+      if (
+        'command not found' >< tolower(pfctl) ||
+        'operation not permitted' >< tolower(pfctl)
+      ) errmsg = pfctl;
+      else errmsg = 'The command \'' + cmd + '\' failed to produce any results.';
+    }
+    set_kb_item(name:'Host/fwrules/errmsg'+cmd, value:errmsg);
+  }
+
+  report += '\n' + 'Note that Nessus does not support OS Security Patch Assessment' +
+            '\n' + 'for OpenBSD, which typically publishes updates as patches to' +
+            '\n' + 'the source code.' +
+            '\n';
+
+  uname_r = run_command(cmd:"uname -r", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if (uname_r)
+  {
+   uname_r = chomp(uname_r);
+   set_kb_item(name:"Host/uname-r", value: uname_r);
+  }
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  failure_kb_msg = "OS Security Patch Assessment is not supported for OpenBSD.";
+  failure_kb_type = lcx::ISSUES_INFO;
+}
+
+function handle_not_openbsd(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  host_info_key_val['host_not_openbsd'] = TRUE;
+}
+
+

@@ -1,0 +1,97 @@
+##
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+#
+# @NOGPL@
+#
+# cql_result_message_decoder.inc
+#
+# Revision: 1.3
+#
+# @include cql.inc
+###
+
+
+##
+# Decodes a passed in blob of bytes from a CQL query for a RESULT
+# response.
+##
+object cql_result_message_decoder : cql_binary_decoder
+{
+  ##
+  # Array of frame header values.
+  ##
+  var fh = {};
+
+  ##
+  # RESULT reponse kind. Int mapping to
+  ##
+  var kind;
+  
+  ##
+  # Body of the RESULT response. Equivalent to the blob minus the frame header.
+  ##
+  var body;
+
+  ##
+  # Result of calling the kind decoder
+  ##
+  var result;
+  
+  ##
+  # Constructor
+  # Assigns the bytes that will be decoded to the blob member variable.
+  #
+  # @anonparam Blob of bytes to decode. Required.
+  #
+  # @return NULL
+  ##
+  private function cql_result_message_decoder() : super(_FCT_ANON_ARGS[0])
+  {
+    if(blob) parse();
+  }
+  
+  ##
+  # Checks the frame header, sets the RESULT kind, and set the
+  # body member variable. 
+  #
+  # @return NULL
+  ##
+  private function parse()
+  {
+    fh = get_frame_header();
+    
+    if(fh.body_len == 0 || fh.opcode != CQL_RESULT)
+      return;
+
+    body = substr(blob, 9);
+    kind = getdword(body);
+    
+    get_result();
+  }
+
+  ##
+  # Calls the correct decoder object based on the RESULT kind and assigns
+  # it to the result member variable.
+  #
+  # @return NULL
+  ##
+  private function get_result()
+  { 
+    var obj = NULL, result_body = substr(body, 4);
+    
+    if(kind == CQL_VOID_KIND)              obj = NULL;
+    else if(kind == CQL_ROWS_KIND)         obj = new("cql_rows_kind_decoder", result_body);
+    else if(kind == CQL_SETKEYSPACE_KIND)  set_error('Set_keyspace RESULT kind is not supported');
+    else if(kind == CQL_PREPARED_KIND)     set_error('Prepared RESULT kind is not supported');
+    else if(kind == CQL_SCHEMACHANGE_KIND) set_error('Schema_change RESULT kind is not supported');
+    else set_error(strcat('Unknown kind ', kind, ' in RESULT message'));
+    
+    result = obj;
+    errors = make_list(errors, obj.errors);
+  }
+}

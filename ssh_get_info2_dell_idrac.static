@@ -1,0 +1,635 @@
+#TRUSTED 216429cca5b33419687a8a4b232207b574f7ad16c66085b047c2388c70c5e4b6e44c224bf4541ee95d87a4b1738b18c195d7d5ff28ad93fab87c905987fce95127a9384da43e9e11c37f79446a4dffebdd61ee19d1a8ebdb54929c090f1165d440a7d22906a7c2e2689fe6e6039afb512aadb81795f4e89962b4f9da7266eb9df339825dc539aa97d0e0950682a7920f22a3ffa30c25a671b6d246edbd22b22df45f01605801cddab091e37a83e93cf81f0287528cdbbc8e8ce4963ee0578fa907a9e9aa470e54f6570d8bd5ce426d790cc112a2b0806fdbe58ee99435276d314029e41e94d3373f2d2367765b05601392ca322c6769ece90ccb958ef0d7da3742ce7929cf1efc86242d78a1763ecbc1afba309c2f61448bf77d0f77838b7b3c234e8b3eba67be90efad0f734a4ea6110dbb42e247dab7555f5dc10b65853e2db6d4732e37ee0798ab66529971561f342faf7c6b9b060efc5e568a3bce44c567e5bf5344a49cb9f15484a3cc0fa82d752af982beec26d77815aba036c5e19135187789380c06f8ad350e25fd4bbd1b8a1fd0b383ad04b2483f7739b60d148d0aae43a1da21bc698b0f05d5b650b1bbcf0918e11e99b599d9f046c1e9efe91a8c3f8435fd1b40a490a0b239d200142651222f75be2a61b0024a777cc1b2be40375804ca097f5fdbcdd2ddba75eaefc6f67ca46163876df63f2adb91ec61bf2576
+#TRUST-RSA-SHA256 4ebcf5a13bbab0d06ac95c371bc75aca55aa48fd36fba45297076dc2035098ed6387c0fdc7a84af483100c002d440ade86115af0ce5e404d46a94a3d900982a6bcc5a6b96d8b77c3abf49f5566f35ec3ebdf39950b115a25a2a7e37b7d555896d6ae6078ef04e88e18401056677b4a5de9b5f9b516798396551bcc8a4d1190894fa9a4bd0ee0ef4e981faeb0b18a8fc2f89b627561100a063b6080231e3b63456d083e1bfd952ea0ca400007f2c98af656dcb16f9d6e5868f436b77c8800ec2c2457660ab8f09441365ac668a4ce70ac09001d999403a6a6262f3e32a60cbb2e794f5e1acd9b4f5f52276a0c614d551bb8d54c0f4368bd8255d594bbec8ea54d265c93c083af73c4f2e4478c12cfacfcd270f6c9c463eb5583c16d6f34a2851b348b8458f70aa417ebcd471f2d43e678cdded7a65b09b88290d0d0eb63aa9694749989a00834d08be7164dd872582da436e709874e4dbd571bf2d02c9406b8a32e1b21c009c2c8eb9045a89bfa3ebfc85e2200f86a4c671759b2f41c7e1692f60dd8c2887c080ef857081960b16c1118e77946ee1e02a9fd90284dfce097d5e7a33340c9e9aeeb60733cb355f7e27922495db052584f19bf474523e3e28b34e22f2945f021cc0e8a053d58b6101531a153f927390ccd3c0b06b4e956399581707fd9ba75288d07f15ab8266f4977732c6bfdd30642560b21ee93651ea39cbd12
+###
+# This is the description of an SSH Info library file for a Dell iDRAC
+#
+# @license
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.3
+#
+# @library ssh_get_info2.inc
+#
+# @os Dell iDRAC
+#
+# @command [racadm getversion =~ "(^|\n)\s*iDRAC Version *="] This command is ran without privileges.
+#
+# @noexec
+###
+
+##
+# Basic check if the host appears to be Dell iDRAC based on the error messages.
+#
+# @return [boolean] TRUE if 'show version' output appears to be an error that Dell iDRAC produces; FALSE otherwise
+##
+function is_dell_idrac()
+{
+  # Check the recognized output from 'show version'.
+  if ('ERROR: Invalid command specified.' >< host_info_key_val['showversion_unrecognized'])
+    return TRUE;
+
+  # Alternative output example:
+  /*
+  cmdstat
+           status        : 2
+           status_tag    : COMMAND PROCESSING FAILED
+           error         : 252
+           error_tag     : COMMAND SYNTAX ERROR
+  */
+  if ('COMMAND SYNTAX ERROR' >< host_info_key_val['showversion_unrecognized'] &&
+      'COMMAND PROCESSING FAILED' >< host_info_key_val['showversion_unrecognized'])
+    return TRUE;
+
+  return FALSE;
+}
+
+
+##
+# Check if this is Dell iDRAC based on information collected
+#
+# @return Returns TRUE if we know this is not Dell iDRAC, FALSE otherwise.
+##
+function dell_idrac_pre_check_fail()
+{
+  # Have we already checked that the host is not Dell iDRAC?
+  if (host_info_key_val['host_not_dell_idrac'])
+    return TRUE;
+
+  # Not Dell iDRAC if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_qnap_standard() ||
+      is_infoblox_nios() ||
+      is_arrayos()
+    )
+    return TRUE;
+
+  return FALSE;
+}
+
+
+##
+# Callback for systems without the expected values in collected data.
+#
+# @param [session:object]          A session object for current SSH connection.
+# @param [use_shell_handler:bool]  Flag to enable shell handler in run_command.
+# @param [channel:object]          A channel object for the current SSH connection.
+# @param [cmd_res:str]             Command result from ssh_get_info2: "racadm getversion"
+#
+# @return [NULL] always
+##
+function handle_not_dell_idrac(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:'Host/showversion_unrecognized', value:cmd_res);
+
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_dell_idrac'] = TRUE;
+  }
+}
+
+
+##
+# Callback for systems with the expected values in collected data.
+#
+# @param [session:object]          A session object for the current SSH connection.
+# @param [use_shell_handler:bool]  Flag to enable shell handler in run_command.
+# @param [channel:object]          A channel object for the current SSH connection.
+# @param [cmd_res:str]             Command result from ssh_get_info2: "racadm getversion"
+#
+# @return [boolean] TRUE if this is Dell iDRAC; FALSE otherwise
+##
+function handle_dell_idrac(session, use_shell_handler, &channel, cmd_res)
+{
+  # Perform an additional since the dell_idrac_check in ssh_get_info2.inc is weak but the best we can do.
+  if (!is_dell_idrac())
+    return FALSE;
+
+  if (session)
+    session.clear_cmd_error();
+
+  # Collect attributes
+  var collector = new dell_idrac::collector(session, use_shell_handler, channel, cmd_res);
+
+  collector.racadm_getversion();
+  collector.racadm_getsysinfo();
+  collector.racadm_license_view();
+  collector.racadm_netstat();
+
+  # Register using the OS and hardware registration library.
+  collector.register();
+
+  for (var key in collector.errors)
+    replace_kb_item(name:'Host/Dell/iDRAC/errors/' + key, value: collector.errors[key]);
+
+  # Local checks just means we can run commands on the target host.
+  sshlib::enable_local_checks();
+
+  # Build report section
+  report += strcat(
+    '\nLocal checks have been enabled for this host.\n',
+    '\nThe remote host is running ', collector.attributes.os_name, '.\n',
+    '\nOS Security Patch Assessment is not supported for Dell iDRAC.\n'
+  );
+
+  delete(collector);
+
+  return TRUE;
+}
+
+
+namespace dell_idrac
+{
+  ##
+  # Collects attributes by running commands and parsing the output.
+  ##
+  object collector
+  {
+    var session, use_shell_handler, channel, cmd_res;
+    var attributes = {};
+    var errors = {};
+
+    ##
+    # Constructor
+    ##
+    function collector()
+    {
+      session           = _FCT_ANON_ARGS[0];
+      use_shell_handler = _FCT_ANON_ARGS[1];
+      channel           = _FCT_ANON_ARGS[2];
+      cmd_res           = _FCT_ANON_ARGS[3];
+    }
+
+
+    ##
+    # Run the specified command and run basic checks capturing any issues.
+    #
+    # @param [cmd:str]  command to run
+    # @param [note:str] note to include providing additional insight (optional)
+    #
+    # @return [str] command output if successfully run, false if unsuccessful
+    ##
+    public function run_and_check_command(cmd, note)
+    {
+      var cmd_res = run_command(cmd:cmd, session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+      if (
+        empty_or_null(cmd_res) ||
+        'ERROR: Invalid command specified' >< cmd_res ||
+        'COMMAND SYNTAX ERROR' >< cmd_res ||
+        'COMMAND PROCESSING FAILED' >< cmd_res ||
+        ('ERROR:' >< cmd_res && 'specified object is not supported' >< cmd_res)
+      )
+      {
+        errors[cmd] = strcat('Failed to run "', cmd, '" command.');
+        if (note)
+          errors[cmd] += ' ' + note;
+
+        return false;
+      }
+
+      # Remove return carriages.
+      cmd_res = str_replace(string:cmd_res, find:'\r', replace:'');
+
+      return cmd_res;
+    }
+
+
+    ##
+    # Run the 'racadm getversion' command and parse output.
+    #
+    # @remark 'attributes' member variable is updated to collect attributes
+    # @remark 'errors' member variable is updated to collect errors when errors occur
+    #
+    # @return [boolean] true if the command was executed and parsed correctly; false, otherwise
+    ##
+    public function racadm_getversion()
+    {
+      var cmd = 'racadm getversion';
+
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (!cmd_res) return false;
+
+      var patterns = {                               # Examples (one space at the start of each line including empty lines):
+        'Bios Version'                 : '([0-9.]+)', #  Bios Version                     = 2.1.5
+        'iDRAC Version'                : '([0-9.]+)', #  iDRAC Version                    = 2.83.83.83
+        'Lifecycle Controller Version' : '([0-9.]+)', #  Lifecycle Controller Version     = 2.83.83.83
+        'IDSDM Version'                : '([0-9.]+)'  #  IDSDM Version                    = NA
+      };
+
+      var matches = extract_values(output:cmd_res, patterns:patterns);
+
+      for (var key in matches)
+      {
+        for (var match of matches[key])
+        {
+          if (key == 'iDRAC Version')
+            attributes['Firmware Version'] = match[1];
+          else
+            attributes[key] = match[1];
+        }
+      }
+
+      # Validation
+      if (!attributes['Firmware Version'])
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+
+      return true;
+    }
+
+
+    ##
+    # Run the 'racadm getsysinfo' command and parse the output.
+    #
+    # @remark 'attributes' member variable is updated to collect attributes
+    # @remark 'errors' member variable is updated to collect errors when errors occur
+    #
+    # @return [boolean] true if the command was executed and parsed correctly; false, otherwise
+    ##
+    public function racadm_getsysinfo()
+    {
+      var cmd = 'racadm getsysinfo';
+
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (!cmd_res) return false;
+
+      var patterns = {                         # Examples:
+                                                # RAC Information:
+        'Firmware Version' : '([0-9.]+)',         # Firmware Version    = 2.20.20.20
+        'Firmware Build'   : '([0-9.]+)',         # Firmware Build      = 41
+        'MAC Address'      : '([A-Z0-9:]+)',      # MAC Address         = 14:18:77:2B:EE:84
+
+                                                # System Information:
+        'System Model'        : '([A-Z0-9].*)',   # System Model        = PowerEdge R730xd
+        'System BIOS Version' : '([0-9.]+)',      # System BIOS Version = 1.3.6
+        'Service Tag'         : '([A-Z0-9]+)',    # Service Tag         = GSF7282
+        'Host Name'           : '([\\w.-]+)',     # Host Name           = tpp-fca-r630-h01.elabtpp.local
+        'OS Name'             : '([A-Z0-9].*)',   # OS Name             = VMware ESXi
+        'OS Version'          : '([A-Z0-9].*)'    # OS Version          = 7.0.3 20328353 U3 P55
+      };
+
+      var matches = extract_values(output:cmd_res, patterns:patterns);
+
+      for (var key in matches)
+        for (var match of matches[key])
+            attributes[key] = match[1];
+
+      # Validation
+      if (!attributes['Firmware Version'])
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+
+      return true;
+    }
+
+
+    ##
+    # Run the 'racadm license view' command and parse the output.
+    #
+    # @remark 'attributes' member variable is updated to collect attributes
+    # @remark 'errors' member variable is updated to collect errors when errors occur
+    #
+    # @return [boolean] true if the command was executed and parsed correctly; false, otherwise
+    ##
+    public function racadm_license_view()
+    {
+      # Command output example:
+      /*
+      iDRAC.Embedded.1
+              Status               = OK
+              Device               = iDRAC.Embedded.1
+              Device Description   = iDRAC9
+              Unique Identifier    = BLH99R3
+                      License #1
+                              Status               = OK
+                              Transaction ID       = 2
+                              License Description  = OpenManage Enterprise Advanced
+                              License Type         = PERPETUAL
+                              Entitlement ID       = FD00000027741465
+                              License Bound        = BLH99R3
+                              Expiration           = Not Applicable
+                      License #2
+                              Status               = OK
+                              Transaction ID       = 3
+                              License Description  = iDRAC9 x5 Datacenter License
+                              License Type         = PERPETUAL
+                              Entitlement ID       = FD00000027741471
+                              License Bound        = BLH99R3
+                              Expiration           = Not Applicable
+      */
+      var cmd = 'racadm license view';
+
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (!cmd_res) return false;
+
+      var patterns = {
+        'Device Description'  : 'iDRAC([0-9]+)',
+        'Unique Identifier'   : '([A-Z0-9]+)',
+        'License Description' : '([A-Z0-9].+)'
+      };
+
+      var matches = extract_values(output:cmd_res, patterns:patterns);
+
+      attributes['Licenses'] = [];
+
+      for (var key in matches)
+      {
+        for (var match of matches[key])
+        {
+          # This version (e.g. 8, 9) matches the version used in the remote detection (drac_detect.nasl).
+          if (key == 'Device Description' && empty_or_null(attributes.release))
+            attributes.release = match[1];
+
+          if (key == 'Unique Identifier' && empty_or_null(attributes[key]))
+            attributes[key] = match[1];
+
+          if (key == 'License Description')
+            append_element(var:attributes['Licenses'], value:match[1]);
+        }
+      }
+
+      # Validation
+      if (!attributes.release)
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+
+
+      return true;
+    }
+
+
+    ##
+    # Run the 'racadm netstat' command and parse the output.
+    #
+    # @remark 'attributes' member variable is updated to collect attributes
+    # @remark 'errors' member variable is updated to collect errors when errors occur
+    #
+    # @return [boolean] true if the command was executed and parsed correctly; false, otherwise
+    ##
+    public function racadm_netstat()
+    {
+      var cmd = 'racadm netstat';
+
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (!cmd_res) return false;
+
+      # Validation
+      if ('Active Internet connections' >!< cmd_res)
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+
+      replace_kb_item(name:'Host/netstat', value:cmd_res);
+
+      return true;
+    }
+
+
+    ##
+    # Extract the values from the command output.
+    #
+    # @param  [output:str]     command output (reference)
+    # @param  [patterns:array] patterns with keys / values mappings (e.g. { 'Firmware Version' : '([0-9.]+)' })
+    # @param  [sep:str]        separator regex pattern to use (default: '\\s*=\\s*') (optional)
+    #
+    # @return [array] extracted key / value pairs (possibly empty array)
+    ##
+    public function extract_values(&output, patterns, sep)
+    {
+      var line, matches;
+
+      # Defaults
+      if (empty_or_null(sep))
+        sep = '\\s*=\\s*';
+
+      # Build patterns
+      var line_patterns = {};
+      var value, pattern;
+
+      for (var key in patterns)
+      {
+        value = patterns[key];
+        pattern = strcat('^', key, sep, value);
+
+        line_patterns[key] = pattern;
+      }
+
+      # Process each line matching against patterns
+      var results = {};
+
+      var lines = split(output, sep:'\n', keep:FALSE);
+      foreach line (lines)
+      {
+        line = trim(line);
+        if (empty_or_null(line)) continue;
+
+        for (key in line_patterns)
+        {
+          pattern = line_patterns[key];
+
+          matches = pregmatch(pattern:pattern, string:line, icase:TRUE);
+          if (empty_or_null(matches)) continue;
+
+          if (empty_or_null(results[key]))
+            results[key] = [];
+
+          append_element(var:results[key], value:matches);
+        }
+      }
+
+      return results;
+    }
+
+
+    ##
+    # Register OS and hardware including parsing and standardizing.
+    #
+    # @return [boolean|NULL] the return value of register_os() or NULL if an error occurred
+    ##
+    public function register()
+    {
+      var type    = 'local';
+      var method  = 'SSH';
+      var conf    = 100;
+
+      var vendor  = 'Dell';
+      var product = 'iDRAC';
+
+      var extra = {
+        'System OS Name'    : attributes['OS Name'],
+        'System OS Version' : attributes['OS Version']
+      };
+
+      var extra_items = [
+        'Firmware Build',
+        'Lifecycle Controller Version',
+        'Licenses',
+        'IDSDM Version'
+      ];
+
+      for (var extra_item of extra_items)
+      {
+        if (empty_or_null(attributes[extra_item]))
+          continue;
+
+        extra[extra_item] = attributes[extra_item];
+      }
+
+      var extra_no_report = {};
+      if (!empty_or_null(errors))
+        extra_no_report.errors = errors;
+
+      # OS Name
+      attributes.os_name = strcat(vendor, ' ', product);
+      if (!empty_or_null(attributes.release))
+        attributes.os_name += ' ' + attributes.release;
+
+      # Base CPE
+      #  - Examples:
+      #    cpe:/o:dell:idrac9_firmware:4.20.20.20
+      #    cpe:/o:dell:idrac8_firmware:2.70.70.70
+      var cpe = 'cpe:/o:dell:idrac';
+
+      # Product version (e.g. 8, 9)
+      if (!empty_or_null(attributes.release))
+        cpe += attributes.release;
+
+      cpe += '_firmware:';
+
+      # Use firmware version as the version
+      if (!empty_or_null(attributes['Firmware Version']))
+        cpe += attributes['Firmware Version'];
+      else
+        cpe += '-';
+
+      # Register KB items
+      replace_kb_item(name:'Host/Dell/iDRAC', value:TRUE);
+
+      var ret = register_os(
+        type        : type,
+        method      : method,
+        confidence  : conf,
+
+        vendor      : vendor,
+        product     : product,
+
+        release     : attributes.release,
+        version     : attributes['Firmware Version'],
+        update      : attributes['Firmware Build'],
+        os_name     : attributes.os_name,
+        cpe         : cpe,
+
+        extra           : extra,
+        extra_no_report : extra_no_report
+      );
+
+      host_os_add(method:'iDRAC_SSH', os:attributes.os_name, confidence:100, type:'embedded');
+
+      ##
+      # Register the hardware
+      ##
+
+      # iDRAC device
+
+      var full_name = strcat(vendor, ' ', product);
+      if (!empty_or_null(attributes.release))
+        full_name += ' ' + attributes.release;
+
+      # CPE
+      #  - Examples:
+      #    cpe:/h:dell:idrac9:-
+      #    cpe:/h:dell:idrac8:-
+      cpe = 'cpe:/h:dell:idrac';
+
+      # Product version (e.g. 8, 9)
+      if (!empty_or_null(attributes.release))
+        cpe += attributes.release;
+
+      # Extra attributes
+      extra = {
+        'System OS Name'     : attributes['OS Name'],
+        'System OS Version'  : attributes['OS Version'],
+        'System Service Tag' : attributes['Service Tag']
+      };
+
+      extra_items = [
+        'System Model',
+        'System BIOS Version'
+      ];
+
+      for (extra_item of extra_items)
+      {
+        if (empty_or_null(attributes[extra_item]))
+          continue;
+
+        extra[extra_item] = attributes[extra_item];
+      }
+
+      extra_no_report = {};
+      if (!empty_or_null(errors))
+        extra_no_report.errors = errors;
+
+      register_hardware(
+        type        : type,
+        method      : method,
+        confidence  : conf,
+
+        category    : 'BMC',
+
+        full_name   : full_name,
+        vendor      : vendor,
+        product     : product,
+        cpe         : cpe,
+
+        product_number   : attributes.release,
+        hardware_uuid    : attributes['Unique Identifier'],
+        firmware_version : attributes['Firmware Version'],
+
+        extra           : extra,
+        extra_no_report : extra_no_report
+      );
+
+      ##
+      # Others
+      ##
+
+      # MAC address
+      if (attributes['MAC Address'])
+        replace_kb_item(name:'Host/raw_macs', value:attributes['MAC Address']);
+
+      # Hostname
+      #  - The FQDN will be set based on this KB item if other methods don't work.
+      if (attributes['Host Name'] && !get_kb_item('Host/hostname'))
+        replace_kb_item(name:'Host/hostname', value:attributes['Host Name']);
+
+      return ret;
+    }
+  }
+}

@@ -1,0 +1,105 @@
+#TRUSTED 59eb727d5f25528f3e1ade30217d4e9aa7caf600769994ba65eb34884c20a8eeaca258e3325269fe5d1e1404771efcc5e314706b6cf0574d67f7ad0af2df0ecd8bdbebbcee9a58e12b678a1688cd8bf8b43efa04826714fd0ced69ea8e6daf34e2ac93b65c1a29aef39f91ac3fa87cb61747bccbcfee68cde2b7395f6a969f0b2c1f01538ac40d20cc64bf2509a79d436af3564969a83fd4b51e8601a8b53c79fe629ce4a62c941d822cff79e6b6e5837c4a8a47716c075836f4af5f2365229cdfa93d97841e91cdc9a0f4e4b68a8f03cca03b6cf3c818e7ed3a8677b9e5635003189c23ee03a12daef9cb55f70f8905e676b362a23839fb148f6e955d88032c74fbdfe59f93646baad1083936c6c55df1226e412eaac5028cec83b8075ad38bb746056dbfd936531fd1c335200969aaab914b25e94d0bf3688806c7835f7414231fe8bf1e77e0c3f18fc2629fb2c86f7c9f7d79756bf341aa0142e78c56814d0aa736386b5811d146a8f69cbebb63f3094c884713922f4dfe02bc4bff5bc23275165e80aa804adcc87aedbe8c0d73693ac2361154f9487a1a1789c3c5966507ed647aa91bad9a2dc65b0f2c9e16c1b11f8a6bf677dbea83aabad6b7348400289c694f9c8dfaf0283650f3956fbc905d34bf61f3863103ae3de161d041fd5134ec315f2e26448869da4e2dfd639f35b70fc0722e7922781dd4ab506a77ad3369
+#TRUST-RSA-SHA256 4bdf9f84fa0baada61964ee7b29ed5f8a6a118252d47a13907bf25b183ea7f2d6d8ccbc6b3b531a19ab9e7a7cc25fcef8e7b6a597577dbcc5ebc5af7c2b774705b7e953f0bae21ce8ff2c5eadf8237b9450c447478dcd3797f1aff132b2d4e59820bc9e56b1fe416aa0535dc01ab64d24ece28275084d0b59b8bbcd815429bcc4eb05442df410e246fba65809ad46a180b2a661d07ff41c3db47a622f487edbc9b24fb5545296c005345b106f08263816e60ec5c00788e0afe9faf85b8f1775161ce4e782b50a86629e0974f28c6c7990668b8fd796503fd403d6557e9cc57be8a3224d2add71d6efff90151be7da2826d86a9751f5b0c59c328b4d218721c2fa8d6cf90a1e83701a251fdf4685d77419c4fd741f266dd2b0aa73cde5aa1a41435f9320394ebd139e6c0f882fc682394e9af5bcc70fb32304d78b5b498d04d6077ae5826cf5a1c624536fbd1d56514af0b1f7f9718beab39afde50bfceedb6babfa7ba530045dd50f49fc7fc982fb3720e258d67a495bb4f898663e7d3f815c64a1cf930454c420f4030644e21d18446282b404fdcf2f8f968ac469f3abff6969e82a53c440c87ae521758d11175c77609ea60a31734627d1facb8b7b3a4f1514a2696af808f986662fd2b6723c180507ed1adb6e47c452f8c41c14555784a0bc879c5662392fc11e3291208623ac2f8f4d2efe8bbf8996bd1c5c69e9280dd49
+
+# (C) Tenable, Inc.
+#
+# Revision: 1.7
+#
+
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+function is_citrix_adc_sdx()
+{
+  if ("Product\sName:\sADC\sSDX" >< host_info_key_val['showversion_unrecognized'])
+    return TRUE;
+
+  return FALSE;
+}
+
+
+#
+# citrix_adc_sdx_pre_check_fail
+#
+function citrix_adc_sdx_pre_check_fail()
+{
+  if(host_info_key_val['host_not_citrix_adc_sdx'])
+    return TRUE;
+
+  if (is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  return FALSE;
+}
+
+
+#
+# callback for systems with 'Product Name: ADC SDX' or 'Product Name: NetScaler SDX' component in show systemstatus
+#
+function handle_citrix_adc_sdx(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var version, model, build, matches, os_name = "Citrix ADC SDX";
+
+  matches = pregmatch(pattern:".*Build:\s([\d.]+):\sBuild\s([\d.]+)\,\sDate", string:cmd_res);
+  if(isnull(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find version in output of "'+chomp(cmd_res)+'".');
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+    failure_kb_msg = 'The remote host appears to be running Citrix ADC SDX.\n' +
+                     'However, we were unable to parse the version or build\n' +
+                     'from the output of running the "show systemstatus" command.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+
+    return FALSE;
+
+  }
+  version = matches[1];
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Version determined to be '+version+'.\n');
+  os_name += " " + version;
+
+  build = matches[2];
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Build determined to be '+build+'.\n');
+
+  matches = pregmatch(string:cmd_res, pattern:'Platform:\\s(.*)');
+  if (!isnull(matches))
+    model = matches[1];
+
+  #We have a local detection for Citrix ADC SDX (citric_netscaler_detect.nasl)
+  #So local checks enabled
+  report += strcat('\nLocal checks have been enabled for ', os_name, '.\n');
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_citrix_adc_sdx.static', value: 76);
+
+  replace_kb_item(name:"Host/OS/show_systemstatus", value:os_name);
+  replace_kb_item(name:"Host/OS/show_systemstatus/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/show_systemstatus/Type", value:'General');
+  replace_kb_item(name:"Host/NetScaler/Version", value:version);
+  replace_kb_item(name:"Host/NetScaler/Build", value:build);
+  replace_kb_item(name:"Host/NetScaler/Model", value:model);
+  replace_kb_item(name:"Host/NetScaler/device_type", value:'General');
+  replace_kb_item(name:"Host/NetScaler/show_systemstatus", value:cmd_res);
+
+  return TRUE;
+}
+
+
+#
+# callback for systems without a NetScaler ADC SDX component in show systemstatus
+#
+function handle_not_citrix_adc_sdx(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/show_systemstatus_unrecognized", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['host_not_citrix_adc_sdx'] = TRUE;
+  }
+}

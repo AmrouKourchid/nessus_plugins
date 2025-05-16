@@ -1,0 +1,458 @@
+#TRUSTED 5e5dc7437a298192aed1d57d6755082c2850d659fd3adfc147bda5e88eb28b4177cdea30df5709c6d77d80583b2b001958369ab6d661346aef0a267fd054a0356797081d59ec239c3ac64b700e7c3781e44ac73c587794f21b56cbdef0c4b39c2ccc3dfdac06d08db70f5efd9c6d6dcec1a1d96bcc7ea68061fcad8ae75c7b7dc0a84c1cb45ea22d1e2ff4d72d5cbcf94ec7294a6dc12c15577a64aec4e5cf905f04e799741c3d73c7712a0942c99dcd299e4aa60b439a16d27745bebb48c3015e025b0b20b3df460b501248cc10e7209e9fe8f1d7c7701020b69478cc8324a445959ba4d37109be2b2332fc166e78b58ac44681fcf5dcd853464319bb9f20e3d25a41130f8dbe5302bbfc09fd36a6debb24f98840246ef0c3c4f9898d27ecef1ba3c0833a2b29c51435e883cf6bd81f7f588cba9161bd8189ff36d4862a56382fc784efbe486b2f58a05fbcce983f67e95de7763661b41dcf1c29fe203179e6e7c01f3b126727a2aa807a5f65f0da9b3db1b50d2a651222458e27cd0ab4acfbff522b4af783b9d92aa6e8216480b3de2ddc4ec52edef42bcf458b3278de17383d91e94656ee11b791788c44eea01d442bda1469a5dcdfe2f8091dc4766e5612c23f149ce0087b85157d2c1bfea8fe4cf672c9efa3b91bbdbd76d5bc1e00914c7987d260ae2b71b6d1f1b8e57d7422573b68960fcc0291584dc6ecc817bbcbf2
+#TRUST-RSA-SHA256 638ab6cf39560e9d696618206c2086963a173d905c8c2827df9be9f95b2484d429d2395c90ebdfcd5b9f841b46f9c1bb3d2484f269c4b8c184265726851fec1c2e7db1814cfad899bc6350cdb85f990d0461bd5bdc8765be00bbb61da8e1ecd2dcd278de3adbc2338c5e6f178c5627173192859592f02cbcdcafce125782fdb9b1a05b7ad223d3b26623e2e2e5de78df1b16ece1f8384021c6a8964ffe63aa71043ed14daeff0471dd369507f8fded3e08019db84328e6c96b01718ab39c032adb40109646c67fb1120443ceead01960a43cad3b9a05152fd435b10cc6836b15c25776f7110b92e3de6173ddafa3659e5dcd518eec5ff6aa87298f80bfb8398a16f2609367d9333e3a356d36eda73db223a70e3e96ba5d3c34596720a69bb92482e6a8e170757ec3468732c91df65c9ba44261ecd73a2f7b7cee2f95cd1988324afb51851e5f00cac3e2423b5fd56ebe87a5e9428c46d761c9f5c31b25370bcff85acb955d276fe8dc0d51af011db8e7b1d6540a3d9090cbfd27f0eafcb80deecd61a799a238a5879eaecdaafe5db599ebdcdb5c7a4dd655a6fe268e59958427210772894ded0824f8f4ad94c32b2ed4312a937668524d6a567da32b2c9d7adfaadf0af319f7671efe6d27e0938ffcddc56ae178fc3329f99c7845ab9ac6b4006f3e54892bab002c9341cd86a4a8443c6e6d1b33c94700ba4fdc705c4aef900e
+###
+# Base structured data object used to create structured data objects given a schema.
+# Schema are generated from the JSON schema specification using the structured data
+# object generator (sdog) found at the link below.
+#
+# https://github.eng.tenable.com/Research/structured-data-object-generator
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+#
+# @NOGPL@
+#
+#
+# Revision: 1.5
+#
+# compat_shared.inc
+# json2.inc
+# spad_log_func.inc
+###
+
+object structured_data_base
+{
+  var schema;
+  var tag;
+  var port = "0";
+  var protocol = "tcp";
+  var data = {};
+
+  ##
+  # Constructor.
+  #
+  # @anonparam [0:array] The schema to use for the data structure.
+  # @anonparam [1:string] The tag to use for reporting the data structure.
+  # @anonparam [2:string] The port to use for reporting the data structure.
+  # @anonparam [3:string] The protocol to use for reporting the data structure.
+  ##
+  function structured_data_base()
+  {
+    this.schema = _FCT_ANON_ARGS[0];
+    this.tag = _FCT_ANON_ARGS[1];
+    if(!isnull(_FCT_ANON_ARGS[2]) && (typeof(_FCT_ANON_ARGS[2]) == "string" || typeof(_FCT_ANON_ARGS[2]) == "data"))
+      this.port = _FCT_ANON_ARGS[2];
+    if(!isnull(_FCT_ANON_ARGS[3]) && (typeof(_FCT_ANON_ARGS[3]) == "string" || typeof(_FCT_ANON_ARGS[3]) == "data"))
+      this.protocol = _FCT_ANON_ARGS[3];
+  }
+
+  ##
+  # Sets a value in the data structure.
+  #
+  # @anonparam [0:string] The field to set the value for using dot notation.
+  #            e.g. 'field1.field2.field3'
+  # @anonparam [0:any] The value to set for the field. Must be of the same type as that
+  #            specified in the schema.
+  #
+  # @return [boolean] TRUE on success, FALSE otherwise.
+  ##
+  public function set()
+  {
+    if(_FCT_ANON_ARGS[0] == NULL || typeof(_FCT_ANON_ARGS[1]) == 'undef')
+      return FALSE;
+
+    var fields = split(_FCT_ANON_ARGS[0], sep:'.', keep:FALSE);
+    var value = _FCT_ANON_ARGS[1];
+
+    if(!validate(fields:fields, value:value))
+      return FALSE;
+
+    if(len(fields) == 1)
+      this.data[fields[0]] = value;
+    else
+      this.data[fields[0]] = copy_modify(obj:this.data[fields[0]], fields:fields, value:value, depth: 0);
+
+    return TRUE;
+  }
+
+  ##
+  # Appends a value to an array.
+  #
+  # @anonparam [0:string] The field to append the value to using dot notation.
+  #            e.g. 'field1.field2.field3'
+  # @anonparam [0:any] The value to append to the array. Must be of the same type as that
+  #            specified in the schema.
+  #
+  # @return [boolean] TRUE on success, FALSE otherwise.
+  ##
+  public function append()
+  {
+    var fields = split(_FCT_ANON_ARGS[0], sep:'.', keep:FALSE);
+    var value = _FCT_ANON_ARGS[1];
+
+    var subschema = this.schema;
+    var si = get_schema_item_if_exists(fields:fields, subschema:subschema);
+    if(!si) return FALSE;
+
+    var type = si[0];
+    subschema = si[1];
+
+    if (type != 'array')
+    {
+      spad_log(message: "Property '" + join(fields, sep:'.') + "' is of the wrong type. Expected: array Got: " + typeof_ex(value));
+      return FALSE;
+    }
+
+    if(!validate_array_items(array:[value], field:fields[len(fields) - 1], subschema:subschema))
+      return FALSE;
+
+    var current = get(_FCT_ANON_ARGS[0]);
+    if(!current) current = [value];
+    else append_element(var:current, value:value);
+
+    if(len(fields) == 1)
+      this.data[fields[0]] = current;
+    else
+      this.data[fields[0]] = copy_modify(obj:this.data[fields[0]], fields:fields, value:current, depth: 0);
+  }
+
+  ##
+  # Retrieves the value of a field in the data structure.
+  #
+  # @anonparam [0:string] The name of the field to retrieve using dot notation.
+  #            e.g. 'field1.field2.field3'
+  #
+  # @return [string|boolean] The value of the field if it exists, or FALSE if it does not exist.
+  #
+  # @remark
+  #   TODO: Possibly add support for getting a value at an array index. Is it needed?
+  ##
+  public function get()
+  {
+    var fields = split(_FCT_ANON_ARGS[0], sep:'.', keep:FALSE);
+    var depth = len(fields);
+
+    if(depth == 1)
+    {
+      return this.data[fields[0]];
+    }
+    else
+    {
+      var property = this.data[fields[0]];
+      for(var i = 1; i < depth; i++)
+      {
+        property = property[fields[i]];
+      }
+
+      return property;
+    }
+
+    return FALSE;
+  }
+
+  ##
+  # Dump the data structure as a JSON string.
+  #
+  # @param [format:bool] Optional, defaults to FALSE.
+  #
+  # @return [string] The JSON string.
+  ##
+  public function json_serialize()
+  {
+    return serialize(this.data);
+  }
+
+  ##
+  # Report the data structure as a host internal tag but only if data exists.
+  #
+  # @return [boolean] TRUE on success, FALSE otherwise.
+  ##
+  public function report_internal()
+  {
+    if(empty_or_null(this.data)) return FALSE;
+
+    if(defined_func("report_tag_internal"))
+    {
+      var env = nasl_environment(flags:ENV_PLUGIN);
+      if (!empty_or_null(env['plugin_id']) && this.tag)
+      {
+        report_tag_internal(
+          tag:strcat(this.tag, ':', env['plugin_id'], ':', this.port, ':', this.protocol),
+          value:this.json_serialize()
+        );
+        return TRUE;
+      }
+    }
+
+    return FALSE;
+  }
+
+  ##
+  # Gets the sub-schema item for the supplied fields.
+  #
+  # @param [fields:array] The fields to get the sub-schema item for.
+  # @param [subschema:array] The subschema sub-schema item. Can be the root schema.
+  #
+  # @return [array] Array with [type, subschema] on success, FALSE otherwise. Where type is the
+  #         is the type of the sub-schema item and subschema is the sub-schema item itself.
+  ##
+  function get_schema_item_if_exists(&fields, &subschema)
+  {
+    var field, type, pos = 0;
+
+    foreach field(fields)
+    {
+      subschema = subschema[field];
+      if(!subschema)
+      {
+        spad_log(message:"Supplied property(" + field + ") does not exist on schema.");
+        return FALSE;
+      }
+
+      if(subschema.type == 'object' || subschema.type == 'array')
+      {
+        if(subschema.type == 'object')
+        {
+          type = 'object';
+          subschema = subschema.properties;
+        }
+        else if(subschema.type == 'array')
+        {
+          type = 'array';
+          subschema = subschema.items;
+        }
+      }
+      else if(subschema.type == 'integer' || subschema.type == 'string' || subschema.type == 'boolean')
+      {
+        type = subschema.type;
+      }
+
+      pos++;
+    }
+    return [type, subschema];
+  }
+
+  ##
+  # Checks value against the object schema to ensure it is of the right type
+  # and pattern.
+  #
+  # @param [value:any]    value The value to validate.
+  # @param [fields:array] The field name.
+  # @param [schema:array] Optional. The schema/subschema to validate against. Defaults to the object's schema.
+  #
+  # @return [boolean] Returns TRUE if the value is correct for the field in the schema, FALSE otherwise.
+  ##
+  function validate(fields, value, &schema)
+  {
+    var depth = len(fields);
+    var field = fields[len(fields) - 1];
+    var subschema;
+
+    if(schema) subschema = schema;
+    else subschema = this.schema;
+
+    var si = get_schema_item_if_exists(fields:fields, subschema:subschema);
+    if(!si) return FALSE;
+
+    var type = si[0];
+    subschema = si[1];
+
+    if(type == 'integer')      return validate_integer(value:value, field:field);
+    else if(type == 'boolean') return validate_boolean(value:value, field:field);
+    else if(type == 'string')  return validate_string(value:value, field:field, subschema:subschema);
+    else if(type == 'object')  return validate_object(value:value, field:field, subschema:subschema);
+    else if(type == 'array')   return validate_array(value:value, field:field, subschema:subschema);
+
+    return FALSE;
+  }
+
+  ##
+  # Validate a string to include pattern matching.
+  #
+  # @param [value:string] The value to validate.
+  # @param [field:string] The field name.
+  # @param [subschema:array] The subschema to validate against.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_string(value, field, subschema)
+  {
+    if(typeof_ex(value) != 'data' && typeof_ex(value) != 'string')
+    {
+      spad_log(message: "Property '" + field + "' is of the wrong type. Expected: string Got: " + typeof_ex(value));
+      return FALSE;
+    }
+
+    if(subschema['pattern'] && value !~ subschema['pattern'])
+    {
+      spad_log(message: "Property '" + field + "' failed to match schema pattern. Skipping.");
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validate an integer
+  #
+  # @param [value:int] The value to validate.
+  # @param [field:string] The field name.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_integer(value, field)
+  {
+    if(typeof_ex(value) == 'int')
+      return TRUE;
+
+    spad_log(message: "Property '" + field + "' is of the wrong type. Expected: int Got: " + typeof_ex(value));
+    return FALSE;
+  }
+
+  ##
+  # Validate a boolean
+  #
+  # @param [value:int] The value to validate.
+  # @param [field:string] The field name.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_boolean(value, field)
+  {
+    if(typeof_ex(value) == 'int' && (value == 0 || value == 1)){
+      return TRUE;
+    }
+
+    spad_log(message: "Property '" + field + "' is of the wrong type. Expected: boolean Got: " + typeof_ex(value));
+    return FALSE;
+  }
+
+  ##
+  # Validate object. JSON schema `object` maps to Nasl `array`
+  #
+  # @param [value:array] The value to validate.
+  # @param [field:string] The field name.
+  # @param [subschema:array] The subschema to validate against.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_object(value, field, subschema)
+  {
+    if(typeof_ex(value) != 'array')
+    {
+      spad_log(message: "Property '" + field + "' is of the wrong type. Expected: array Got: " + typeof_ex(value));
+      return FALSE;
+    }
+
+    foreach var key (keys(value))
+    {
+      if(!validate(fields:[key], value:value[key], schema:subschema))
+        return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Validate array. JSON schema `array` maps to Nasl `list`
+  #
+  # @param [value:list] The value to validate.
+  # @param [field:string] The field name.
+  # @param [subschema:array] The subschema to validate against.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_array(value, field, subschema)
+  {
+    if(typeof_ex(value) != 'list')
+    {
+      spad_log(message: "Property '" + field + "' is of the wrong type. Expected: list Got: " + typeof_ex(value));
+      return FALSE;
+    }
+
+    if(!validate_array_items(field:field, array:value, subschema:subschema))
+      return FALSE;
+
+    return TRUE;
+  }
+
+  ##
+  # Handle item validation for arrays.
+  #
+  # @param [field:string] The field name.
+  # @param [array:array] The array to validate.
+  # @param [subschema:array] The subschema to validate against.
+  #
+  # @return [boolean] TRUE if the value is valid, FALSE otherwise.
+  ##
+  function validate_array_items(field, array, subschema)
+  {
+    var item;
+
+    if( subschema.type == 'integer')
+    {
+      foreach item (array)
+        if(!validate_integer(value:item, field:field)) return FALSE;
+    }
+    else if(subschema.type == 'string')
+    {
+      foreach item (array)
+        if(!validate_string(value:item, field:field, subschema:subschema)) return FALSE;
+    }
+    else if(subschema.type == 'object')
+    {
+      foreach item (array)
+        if(!validate_object(value:item, field:field, subschema:subschema.properties)) return FALSE;
+    }
+    else if (subschema.type == 'array')
+    {
+      foreach item (array)
+        if(!validate_array(value:item, field:field, subschema:subschema)) return FALSE;
+    }
+    return TRUE;
+  }
+
+  ##
+  # Checks if the required properties are present in the data structure. This should
+  # be called after all data has been added to the data structure (i.e. before reporting).
+  ##
+  function has_required_properties()
+  {
+    # FUTURE WORK
+  }
+
+  ##
+  # Writes a nested value to the data structure
+  #
+  # @param [obj:array] The data structure to write to.
+  # @param [fields:array] The fields to write to.
+  # @param [value:array] The value to write.
+  # @param [depth:int] The current depth in the data structure.
+  #
+  # @return [array] The modified data structure.
+  ##
+  function copy_modify(obj, &fields, &value, depth)
+  {
+    var copy = {};
+    if(obj[fields[depth + 1]] == NULL) obj[fields[depth + 1]] = NULL;
+    foreach var key(keys(obj)){
+      if(key == fields[depth + 1])
+      {
+        depth += 1;
+        if(depth + 1 == len(fields))
+          copy[key] = value;
+        else
+          copy[key] = copy_modify(obj:obj[fields[depth]], fields:fields, value:value, depth:depth);
+      }
+      else
+      {
+        copy[key] = obj[key];
+      }
+    }
+    return copy;
+  }
+}

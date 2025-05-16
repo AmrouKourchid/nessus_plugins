@@ -1,0 +1,63 @@
+#TRUSTED a8164440a5fbfb68a883b64492b009a5ba17fee499b59aba65e318137aa18ac2db82a3759ead65cc211ca635c8e248e8e5ec150fd50722fb1a22b9e2bc0345366e8c9638719b982fe26aa7b4894dbbf8d8b7ac06a7781a95de706daa58df77a1b56db111d003cb10c5870bbc621017f84005979ff081e8c51e797d015a3ce9a8849bbc1cde45d69cb2673f70d3fb92f0dec07293a9092dfec82b567a05a8f908f08d549976f12dc2dfc492b11f3aa7a28c3f204f044063ae8f7477581fcb93f2eaef10a34a52c7c3ce598b8ee01db4f72559cc206760b47bdc70a6da48192cb1002183ba19505fa1e048f85f4244a5074920af1c5b2724442d81493b31996b1806cc5446e2f018d1102e22ccf6a2c2220a4506ba2051f012ef061799f4da205ad66df2effc7789e7b0bc3b40621ea11a848bf71102ef30127b473b948cb428fe101f30ae0bafc86e89abfd2a36f59dab51f1b3a0f1bf72e53e357d8102654d6960ea881f05cff7f98e358ec3c78fea187b34dca592ebc9c7c5ca55c66d7594226887c0e434ac7d05c7b66629f30595fba1f1b5b79fc52abb542b4e2b8abd2bdc98f6dad9eb122cb1d1a689712611d15d967265e832e98f4de02f7278b7e1ea02b94eedb8b870a9b830bb3eb5f8262fb9fcc7672fdce16b000a38c59c468abc6e668e5390cf7cdf51a9f047e575ac3f08f39a0c95bf4f64a91ad71aba4306ed27
+#TRUST-RSA-SHA256 a5d0961020a92a598469f643d66d88cc70841631795ac43b6de4afa40025f555a14114c6056a413109fcc2bd9a399b130675d59604dd14db46b0f27cf5232953960cb8072ad2f9f438620418ba9c6c6b8f5843cc70e0da968142a5967402011723aa49fcebe27b0ad9c7f17956a67e0db278f669c42a1693c89ff01f334f951efeb50e99e4fb2cbe0d95bb5815a4859b288bf5606c7ff0f62ed50bff7e964beb2f2556779fd3145b307f64937ee0efaa6502a5c20a7e51d60144233839b6d4e03ce670661a8038470f539b6ef2760e398765664d6ac939d6f382defa1d18a7f4f942c61e075110763da824b67bb55dc848e647da20fc703f5d17dd8685cdae2ceae98feeb23d58f15e01a2b4aacf41a1fb436b03a8d4c6957d08422c4899c849d539b7164178057538bc053a5372e7a698859120f518852b35b0a2cab7f0314d3216c3504938042358dddbcd3ce2259c73279bb8872dfc0af17a7201467367611cf05fb4d21af6a445406c69126fe11fe8e535dde4a73223d58cbd17d33fefb45e6496ef0a0ff844261d9c0843cffc2669e100810678edb138fbc0e0f8acfdf87598497afecfaa5d2b17899c6f3d8f84ded46427595daa401619b4d5ccda9cb77c0e152a033ea6397393ccbe262149b7a5ac1e879daf6456789fae04cf1596d2a900117a6cd06ae9268ce000c11576f8df010dd377700cfd55c161faf839a96a
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.3
+
+# Virtuozzo helper functions
+
+
+function handle_virtuozzo_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  var virtuozzo_minor_pattern = "Virtuozzo Linux release [0-9]+\.([0-9]+)(\D|$)";
+  var minor = pregmatch(string: cmd_res, pattern: virtuozzo_minor_pattern);
+  if(!isnull(minor) && !isnull(minor[1]) && strlen(minor[1]))
+    replace_kb_item(name: "Host/Virtuozzo/minor_release", value: minor[1]);
+
+  # Store results of "readykernel info" if available
+  # Should always have a result on Virtuozzo machines, and even if it doesn't,
+  # only affects whether or not we discover the readykernel-patch level.
+  var readykernel_info = run_command(
+    cmd:"readykernel info 2>/dev/null",
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel);
+
+  if(!isnull(readykernel_info) && strlen(readykernel_info))
+  {
+    replace_kb_item(name:'Host/readykernel-info', value:readykernel_info);
+    # Patch name: readykernel-patch-20.18-8.0-1.vl7
+    var readykernel_patch_pattern = '(Patch name|Installed package): (.*?)\n';
+    var patch_level = pregmatch(string: readykernel_info, pattern: readykernel_patch_pattern);
+    if(!isnull(patch_level) && !isnull(patch_level[2]) && strlen(patch_level[2]))
+      replace_kb_item(name: "Host/readykernel-patch-level", value: patch_level[2]);
+
+    # Status Details:      Subscription is current
+    var readykernel_licinfo = run_command(
+      cmd: "readykernel licinfo 2>/dev/null",
+      session:session,
+      use_shell_handler:use_shell_handler,
+      channel:channel);
+
+    if(!isnull(readykernel_licinfo) && strlen(readykernel_licinfo))
+    {
+      var readykernel_status_pattern = 'Status Details: *(.*?)\n';
+      var readykernel_lic_status = pregmatch(string: readykernel_licinfo, pattern: readykernel_status_pattern);
+      if(!isnull(readykernel_lic_status) && !isnull(readykernel_lic_status[1]) && strlen(readykernel_lic_status[1]))
+        replace_kb_item(name: "Host/readykernel-licinfo", value: readykernel_lic_status[1]);
+      else
+        replace_kb_item(name: "Host/readykernel-licinfo", value: readykernel_licinfo);
+    }
+  }
+
+  if (session) session.clear_cmd_error();
+
+  return handle_rpm_generic_os(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                 cmd_res:cmd_res, internal_label:"Virtuozzo", display_label:"Virtuozzo",
+                                 release_file:"/etc/redhat-release");
+}

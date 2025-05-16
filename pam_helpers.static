@@ -1,0 +1,252 @@
+#TRUSTED 8c0a016e694570845fa95ad9f132055dad39a4e47cf03a1c5c0213b7fdc9411727b6d053e770d77e33f3ce1a8e60cdc30cb1a24ec1cdb86f329974562d3d18c602ab4434a892e55166213888d3670057c21c8b3c259aca3a4fad2492cead98f710cacc341a8437f0e5722b08f695f6f85b3afd1441633d94e7ffdeba6b1f3be9c2b0e5de47b4c3cd0ae8ca6b106168e9f382eabb8f37ec0b5901029c6152d44ff6d6f4752173657acb9ab4be0cac9992550bb00490cecffa7690f9cbec297737afcdcc0df44026400d7949af66c9a83c821fe0e2e1ff7ffdf1ad3606eb4b29ed7d0035e03aa916b2e7697c40a0b2d6ff495f9996a9e935d22abcd4970cbfbea6311d659e5327d4e3c93956f43769df9aa74a061501d060f4863f33a02fbb25308d614b78a9b53d1084c040445327ab44f23a8af49a3f8aab426ab846f7f670537baefea03fa710006bc436f94a2f6a247e659dda417977c23ff0bab63b200389be78650f71dee7dab4f1f7d168798db60344997d637c783ea56e58f69d7d629a5fc25fa3bc898d40a75aaf524b9337b562dd3038dcc41f257f0d5491413312eaf4de740f51a9ce081116b5ec3f967a9f07a0e6c327c7b15b2dea18053fef3aeccae2158105d782ddd709c2030972925ae783e8527e77b49c2cf894c16580c49d3768f89f74398884b75d2d5f01b199547abd0917682cfc95551cbfbd2793de43
+####
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.3
+#
+# Convert a string "yes" or "no" to a boolean
+# @anonparam [string] the string to be converted
+# @return true iff the param is 'yes'
+##
+function pam_from_boolean()
+{
+  if (_FCT_ANON_ARGS[0] == 'yes') return true;
+  return false;
+}
+
+##
+# Parse a HTTP header
+# @param [header:string] the http header
+# @return map containing the parse header
+#         code -> the HTTP code
+#         message -> the HTTP message
+##
+function pam_parse_header(header) 
+{
+  local_var m = pregmatch(pattern: "^HTTP/1\.[01]\s+(\d{1,3})\s+(.*)", string: header);
+  if (!m) return {code: '0', message: "Invalid HTTP Header"};
+  return {code: m[1], message: chomp(m[2])};
+}
+
+
+##
+# Parse a URL into parts to be used.
+#
+# @param [url:string] url to parse
+#
+# @return {ssl:BOOL, target:string, directory:string, port: int} || NULL on fail
+##
+function pam_parse_url(url)
+{
+  local_var val, directory, i , ret, target, has_proto_field, loop_start_index, target_component;
+  directory = "";
+  ret = make_array();
+
+  val = split(sep:"/", url, keep:FALSE);
+
+  has_proto_field = true;
+  if (val[0] == "http:") ret["ssl"] = FALSE; #sslfalse
+  else if (val[0] == "https:") ret["ssl"] = TRUE; #ssltrue
+  else {
+    ret["ssl"] = FALSE;
+    has_proto_field = false;
+  }
+
+  if (has_proto_field) target_component = val[2];
+  else target_component = val[0];
+
+  if (target_component =~ ":")
+  {
+    target = split(sep:":", target_component, keep:FALSE);
+    ret["target"] = target[0];
+    ret["port"] = int(target[1]);
+  }
+  else
+  {
+    if (ret["ssl"]) ret["port"] = 443;
+    else ret["port"] = 80;
+    ret["target"] = target_component;
+  }
+
+  loop_start_index = 1;
+  if (has_proto_field) loop_start_index = 3;
+
+  for (i=loop_start_index;i<max_index(val);i++)
+  {
+    if (isnull(val[i])) break;
+    directory += "/" + val[i];
+  }
+  ret["directory"] = directory += "/";
+
+  return ret;
+}
+
+function pam_verbose_output()
+{
+  return "Verbose" >< get_kb_item("global_settings/report_verbosity");
+}
+
+##
+# Debug Message
+# @param [config:array] A config object from a pam. 
+# - Must contain pam_name
+# - Optional scrubber function reference for removing sensitive data
+# - Optional debug to print messages to console
+# @param [msg:string] The message to send to manipulate and then send to spad_log
+# @param [report:bool] Report error in the UI
+##
+function pam_debug_message(config,msg,report)
+{
+  if (!isnull(config['scrubber'])) msg = config['scrubber'](msg:msg);
+  msg = strip(msg)+'\n';
+  spad_log(message:msg, name:SCRIPT_NAME + "~" + config['pam_name']);
+  if (!isnull(report) && report) report_error(title:config['pam_name'], message:msg, severity:1);
+  if (!empty_or_null(config['debug'])) display(msg);
+}
+
+##
+# Make a PAM API Call
+# @param [config:array] A config object
+# - Requires: host, port, ssl, verify, pam_name, and a scrubber if applicable.
+# @param [method:string] The type of call Post/Get/etc
+# @param [command:string] The API call to make, e.g. "login"
+# @param [headers:array] Any headers required on the call
+# @param [data:string] body for the request
+# @param [cert:file] Certificate required for request
+# @param [key:file] Key for the certificate file
+# @param [passphrase:string] passphrase for the cert/key pair
+# @param [json:bool] Should the data be encoded as json... Fixes weird error (bad types 24:31)
+# @return an object with {header: http header, success: TRUE | FALSE, body: the json response}
+##
+function pam_api_call(config, method, command, headers, data, cert, key, passphrase, json)
+{
+  local_var res, body;
+
+  if (!empty_or_null(json) && json && !empty_or_null(data) && data)
+  {
+    data = json_write(path_store(data));
+  }
+  if (!empty_or_null(config.username) || !empty_or_null(config.password))
+  {  
+    res = http_send_recv3(
+      target       : config['host'],
+      method       : method,
+      item         : command,
+      port         : config['port'],
+      username     : config['username'],
+      password     : config['password'],
+      data         : data,
+      add_headers  : headers,
+      transport    : ssl_transport(ssl:config['ssl'], verify:config['verify']),
+      exit_on_fail : FALSE
+    );
+  }
+  else if (empty_or_null(cert))
+  {  
+    res = http_send_recv3(
+      target       : config['host'],
+      method       : method,
+      item         : command,
+      port         : config['port'],
+      data         : data,
+      add_headers  : headers,
+      transport    : ssl_transport(ssl:config['ssl'], verify:config['verify']),
+      exit_on_fail : FALSE
+    );
+  } 
+  else 
+  {
+    res = http_send_recv3(
+      target       : config['host'],
+      method       : method,
+      item         : command,
+      data         : data,
+      port         : config['port'],
+      add_headers  : headers,
+      transport    : ssl_transport(ssl:config['ssl'], verify:config['verify']),
+      client_cert  : cert,
+      client_private_key : key,
+      client_private_key_password : passphrase,
+      exit_on_fail : FALSE
+    );
+  }
+
+  if (isnull(res))
+  {
+    return {success: false, message: "Server did not respond to request."};
+  }
+  
+  pam_debug_message(msg: "Response ~ " + res[0], config:config);
+  pam_debug_message(msg: "Headers ~ " + res[1], config:config);
+  pam_debug_message(msg: "Body ~ " + res[2], config:config);
+  
+  if (res[1] =~ "Content-Type: application/json")
+  {
+    body = json_read(res[2]);
+    body = body[0];
+  }
+  else
+  {
+    body = res[2];
+  }
+  
+  if ("200" >< res[0])
+  {
+    return {header: pam_parse_header(header: res[0]), body: body, success: TRUE};
+  }
+  else
+  {
+    if ("404" >< res[0])
+    {
+      return {success: FALSE, message:"Not Found, check URL or secret and try again."};
+    }
+    else 
+    {
+      return {success: FALSE, message:body};
+    }
+  }
+}
+
+##
+# Set Cache
+# This will loop all kv keys and store each individually for future reference. Completely dynamic.
+# @param [secret:string] the secret for the kv item. Used as a key.
+# @param [kv:array] Object containing all the keys to cache. Looped and stored.
+##
+function pam_set_cache(secret,kv) 
+{
+  local_var key;
+  set_global_kb_item(name:"pam/global/"+secret+"/status", value:"success");
+  foreach key(keys(kv)) {
+    set_global_kb_item(name:"Secret/pam/global/"+secret+"/kv/"+key, value:kv[key]);
+  }
+}
+
+##
+# Get KV Cache
+# This will loop all available keys for a secret and rebuild a kv item from them.
+# @param [secret:string] the secret for the kv item. Used as a key.
+# @return an object with {success:TRUE, cached:TRUE, KV:the cached keys}
+##
+function pam_get_cache(secret) 
+{
+  local_var cached_password_status, cached_key_list, creds, key, keyname;
+  cached_password_status = get_global_kb_item("pam/global/"+secret+"/status");
+  if (!isnull(cached_password_status)) 
+  {
+    pam_debug_message(msg:"Found cached credential for "+secret);
+    cached_key_list = get_global_kb_list("Secret/pam/global/"+secret+"/kv/*");
+    foreach key (keys(cached_key_list)) 
+    {
+      keyname = pregmatch(string:key, pattern: '([^/]+$)');
+      if(!isnull(keyname)) creds['kv'][keyname[0]] = get_global_kb_item(key);
+    }
+    creds['cached'] = TRUE;
+    creds['success'] = TRUE;
+    return creds;
+  }
+}

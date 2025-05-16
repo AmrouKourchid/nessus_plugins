@@ -1,0 +1,256 @@
+#TRUSTED 2a64fca1eb43a1a7eb4586d49ac9070e487c4168461ef17cb81a79bc16705465c2d197a7887abae2e733aaabaa6d3b3263967d0c7f004a91dd7e95cd27b884c94b9521e41db795c263cc457237eb81861d03ea15ce92612092d4ab4af43a92a6f49025c8876207f1c9718aea96c61bded168344fce2023118188377e0145b0f620981c1bc8a06499174f5d0565f3c66141ba6bc338437b81c412b1db938b097f6835658faa6c14efe1f4bc4c630dfac20b75c7d75256c0b764780c85be7fa0e18951649f8c2e279832ea47e1888b58cd0e048ecfb3edfedf7e23453f43145b348dd5cabd67c0679a70bd66de3534435ff2ee0f25dcaed2a725fdd4f16ae8df08dfb1ef0a87c2c5e9013d893ff3b1e0c0cb34821edaa1a85961e41f9f9ea21949a3a4f4667763360f663a058fe3b26086129c0d8406377546e58a52901a6c93e51b6a04abd500122d143c9327c0d5f27590623fe36d711dc1020d779da631e349f4f1ebc7d10c1f004ed7b9f8597e9c6d23ed37a0b47ed25b25040cc2a0b4a5d01c74f3b6247a4cd31a9f2a3c79c7071618fc22070ed7cf3e847912d830474af54e2ec0e812289046f6b5232273c1c97a970da7038032657eed538ce9b659101843b3885946b5a8ea0a811ef5cebb58e77df794e26eeecfbc60a57e88e489561c3fb268267a1486d70ef944fe1e16308cd3d9f2dca5f7f3130b47733f8c13efc0
+#TRUST-RSA-SHA256 8fc29d087d3d4e61877c86dd2a6f22dca305a2a1b0de5b81277c54a64c8b69407ab2b87443023defc9916e2f52cb6f3af71aff7c637ea9f7bcc91d66109e6e80fee39962de9e832a5135c48c643f9cbb1a54eb75bda5ccb929c5a922d8fcf7260ea0f3e231f21d11d4d5fb22d0d4dd2b4b417871b4e00f0a2c33bfa2090a98799da676bcd74f87925ba826ba55c4d3a3d43bec69faa42c2ad91a894a6a27673b4f1df9b3fa0bd38746268dc9c6f997090bc80eb9035e7005a53bfe95fede3593920117e99cd2a9585f8974784ee37e70a73dcf9888d1df292757b1718743e52582f8668fdee2f565c6a7fbed7a62d42d14917bbb2f25b5c967a69d543c600cb0712326832cdcd48bb6cac9fb7468e4ba4d315ed48ab9d38618ec6b0ea1fb8003d30a2f8af194eff0925eae0006dbc06e698bedcc3ac73ef28bf7e0e3ad9f23774afb2ae70d315af945bba46a7021f45f1b893f11cf8ec1e3198166653f62897365620e3f9a71988a85ef61b703ece0ecae92ab7712ec8d3eeeabf77e1078ad5716c141febb44d1d6ae9f48a5b7f9e4d9f364bc7206c3788e6a337c7e44774592578ea6fce7ff51361ce1114c9a74c09454e4c43340f3f05efc489e95826008449bfe5e8c22649db107f619730f47f5b55013757c8b7eea3ba6a7d24f10ca5ecaf5b691f21dd9eedc9260d175fb0e3b00a6258b938971313db7801ce079b576d3
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.8
+
+# Generic RPM distro OS handler functions
+
+##
+# Gather RPM packages
+#
+# @param [session:object]            session object associated with connection
+# @param [use_shell_handler:boolean] shell handler information for commands to be run
+# @param [channel:object]            address of channel object associated with connection
+# @param [internal_label:string]     label used for KBs to identify this rpm based system
+#
+# @return  [string|NULL] Returns a buffer of rpm results if gathering rpms was successful.  Returns NULL otherwise.
+##
+function gather_rpm_info(session, use_shell_handler, channel, internal_label)
+{
+  var interruption_errors = FALSE;
+
+  # Gather RPM info
+  var rpm_buf = run_command(
+      cmd:"/bin/rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}|%{EPOCH} %{INSTALLTIME:date}|%{VENDOR}|%{PACKAGER}\n'",
+      session:session,
+      use_shell_handler:use_shell_handler,
+      cmd_timeout_min:600,
+      channel:channel);
+
+  if (check_cmd_interrupted_local_checks(session:session,
+        command:"/bin/rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}|%{EPOCH} %{INSTALLTIME:date}|%{VENDOR}|%{PACKAGER}\n'"))
+    interruption_errors = TRUE;
+
+  if(!rpm_buf)
+  {
+    var err_msg;
+    if (session.cmd_error)
+    {
+      err_msg = 'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+    }
+
+    if(!err_msg)
+      err_msg = "OS Security Patch Assessment is not available because the command 'rpm
+-qa' failed to produce any results.";
+    failure_kb_msg = "'rpm -qa' did not return any result.";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += '\n' + err_msg;
+    return NULL;
+  }
+
+  if(interruption_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because\n' +
+              'the following commands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing OS Security Patch Assessment:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  var avayadevice, avayaversion;
+
+  # Check for Avaya Communications Systems, not currently handled by
+  # this plugin
+  var ecs_contents = run_command(cmd:"cat /etc/ecs.conf",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+  if(ecs_contents && strlen(ecs_contents) && 'SystemDescription "Avaya' >< ecs_contents)
+  {
+    avayadevice = avayaversion = NULL;
+    avayadevice = strstr(ecs_contents, 'SystemDescription "Avaya') - 'SystemDescription "';
+    avayadevice = avayadevice - strstr(avayadevice, '"');
+
+    if("Version" >< ecs_contents)
+    {
+      avayaversion = strstr(ecs_contents, 'Version') - 'Version ';
+      avayaversion = avayaversion - strstr(avayaversion, "CDA");
+      avayaversion = chomp(avayaversion);
+    }
+
+    if(!isnull(avayadevice) && strlen(avayadevice) && !isnull(avayaversion) && strlen(avayaversion))
+    {
+      replace_kb_item(name:'Host/Avaya/Product', value: avayadevice);
+      replace_kb_item(name:'Host/Avaya/Version', value: avayaversion);
+    }
+
+    # Remove .AV## from the end and near-end of Avaya-altered packages
+    rpm_buf = ereg_replace(string:rpm_buf, pattern:"\.AV[^|\-.]*([|\-.])", replace:"\1");
+    rpm_buf = ereg_replace(string:rpm_buf, pattern:"-AV[0-9a-zA-Z]*[\-.]", replace:"-");
+    rpm_buf = ereg_replace(string:rpm_buf, pattern:"-AV[0-9a-zA-Z]*\|", replace:"|");
+  }
+
+  if(session)
+    session.clear_cmd_error();
+
+  replace_kb_item(name:'Host/' + internal_label + '/rpm-list', value:rpm_buf);
+  return rpm_buf;
+}
+
+
+##
+# Runs standard rpm OS assessment commands and declare local checks available.
+#
+# @param   session              session object associated with connection
+# @param   use_shell_handler    shell handler information for commands to be run
+# @param   channel              address of channel object associated with connection
+# @param   internal_label       label of OS for use in KB storage
+# @param   display_label        label of OS for use in output
+# @param   release_file         file where release info is obtained from
+# @param   shorten_cmd_res      boolean if the cmd_res is multiline, use first line only
+# @remark  sshlib::set_support_label may be set based on command output
+#
+# @return  TRUE, unless internal label is not supplied, in which case NULL
+##
+function handle_rpm_generic_os(session, use_shell_handler, &channel, cmd_res, internal_label,
+                               display_label, release_file, shorten_cmd_res)
+{
+  if(empty_or_null(internal_label))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'ERROR: empty or NULL internal_label for OS');
+    # This is a rare scenario but could only be caused by an internal coding goof.
+    # In such an event we would not want the remaining ssh_get_info2_linux OS handlers to be skipped.
+    return NULL;
+  }
+
+  if(empty_or_null(display_label))
+  {
+    display_label = internal_label;
+  }
+
+  if(empty_or_null(release_file))
+  {
+    release_file="/etc/redhat-release";
+  }
+
+  if (empty_or_null(shorten_cmd_res))
+  {
+    shorten_cmd_res = FALSE;
+  }
+
+  replace_kb_item(name: "Host" + release_file, value:cmd_res);
+
+
+  # If we get OSes in the future which diverge between their display label and their redhat-release appearance,
+  # we may need to refactor this regex and potentially add a new argument.
+  report += '\nThe remote ' + display_label + ' system is :\n' + pgrep(pattern:"^" + display_label, string:cmd_res);
+
+  if(shorten_cmd_res == TRUE)
+  {
+    var short_cmd_res = split(cmd_res, keep:FALSE);
+    replace_kb_item(name:'Host/' + internal_label + '/release', value:short_cmd_res[0]);
+  }
+  else
+  {
+    replace_kb_item(name:'Host/' + internal_label + '/release', value:cmd_res);
+  }
+
+  var cpu = host_info_key_val['cpu'];
+
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:internal_label);
+  if(!empty_or_null(rpm_buf) && !empty_or_null(cpu))
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_rpm_generic.static', value: 143);
+  }
+
+  return TRUE;
+}
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [vendor:str]       Describes person or organization that manufactured or created the product.
+# @param [cpe:str]          The CPEv2.2 ID assigned to the OS.
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_rpm_generic_os(release_info, vendor, cpe)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Rocky Linux release 9.3 (Blue Onyx)
+  #    AlmaLinux release 8.6 (Sky Tiger)
+  #    Scientific Linux release 7.9 (Nitrogen)
+  #
+  #  - Match groups:
+  #    1: Product (.e.g Rocky Linux, AlmaLinux)
+  #    1: Release (e.g. 9, 8)
+  #    2: Version (e.g. .3, .6)
+  #    3: Codename (e.g. Blue Onyx, Sky Tiger)
+  var pattern = "^(.+)[ \n]release V?([0-9]+)(\.[0-9.]+)? *(?:\(([^)]+)\))?";;
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Product
+  var product = matches[1];
+
+  # Release
+  var release = matches[2];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version = release;
+  if (!empty_or_null(matches[3]))
+    version += matches[3];
+
+  # Codename
+  if (!empty_or_null(matches[4]))
+    var display_version = strcat(version, ' (', matches[4], ')'); 
+
+  # OS Name
+  var os_name = product;
+  if (!empty_or_null(display_version))
+    os_name += ' ' + display_version;
+  else
+    os_name += ' ' + version;
+
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : vendor,
+    product     : product,
+
+    release     : release,
+    version     : version,
+    display_version : display_version,
+    os_name     : os_name,
+    target_hw   : get_kb_item("Host/cpu"),
+    cpe         : cpe
+  );
+}

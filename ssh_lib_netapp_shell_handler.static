@@ -1,0 +1,617 @@
+#TRUSTED 0b4103ee55b3d87d2825df87797a1d224215a5a477e479118b7014a76fbf3ff8099ae94df2cf21e6cc01040c800e4c731240bfbbecba3b28339a737caa298e740ca4527023ad06c9da135c4d3537d672c0a9b027733f09ea4dfdad5ba07e1dd8ac2bfa80b38f303eba400c22258aa31936f7b8afb1762037c0d62b10b451871d02b7c68920a59b72a8d5e925bcf11daaa07cc6e3df89c3ed377172b3d2e79397b33f1d8f2322b69aa839147d6dd8fe65d078f8aafff7673dc8a67a357ed471a08a4f87af44f5f188d69afff10ae78df9b0de65715fa2ec5cfcdd3fb53a037da4a9a0cef85e938ab23f07a8259fd76179eba1bd9e41451099eecfc451b27dba011fbf9ccd816ae265e2e6b7855caa718ffe7749063fc78507cf894392e390b571da347bd70c1e277e2c77cc8539a4e1e40070e9aa8f46fd7c4baca615160813dd9b0b97ea87b09eda7ccaeb1cce871c136dcd6f96b278f3a7e31cf2cda429d403f5a30a382c01ac9836e7b803e8cd87c2e9de784cfbb897f880a666d31605e35bea5ae348888f09a156d45cecd6fa42f2f186ebdc80f093f4e70ae7155e4eeadb2e97e6dc380ebff220a8cbbdc79692831f0bba2b04cc7b4353157dc1f7d12f6baa190f269c6340142bb39cba9cedcbadd87ad75db5839715b91e47738aa3fbd7dce35b5e02690cca19063cef9d5114f5bc7881d15de045a68edbb1923fb6f1de
+#TRUST-RSA-SHA256 b028856d337ed91a0b713296f5f1db4de804083d2f4da524cd28bd58645f7db977649b1fc826ce5b171424d952add5ee5cbe69d64c913a6be907502b5c13edf7bd072f824e8e3e189401e280a18dbbf43bbac159c0ace07662c79b16914baf629a54c516fc7809b938c3fcd4ac5a676873f89c3699a9de36bd765c46c8999a40f90380d4bc87c49c6e1b60d98d6ba6ce102a844c3bf4a4cabef8f2d8d58ab4714f4d8c6129d2cf46e00f7adb2bb00acbfeb5c9cc2c1eb0b9c6c132820217e87b6ab40e2e364b0c21d06c436b56f6d87aa9d4e6d55a102cee559ad52097a1d40f264ddb848bf748e99dc11a888cdd3fbbc882d0a7a2174a64d22a06cdfe2041da4f8880a45c140bbabde1b0a679f8b24fdfbadb7a991957b0cdb92e2f7e4f4e083664c26b2698ce5345e581d0751c2a190b2cde1d65507659301c1c3393f9fd79b66852848ac83c105fae5c87a4106827449350150b8312b54752a99c4b6a2b3d7a378099f087d0c786db1e58f8d632c814975caad02a4d040fdccf71eef89b13c0134af8651a248ca596732a2c53f64dcb7e5e5e4cb7af8f857f8be5376e562e591e29a8c425180a07c6d598532814cd21de9c1d90076169e20fa19d6342d4157401f2e71099adfdc0873250a4c4014be8ed7d0d90d0c8e23e7eb214ec9860b07c011f87f10298f06df4b985c2d18b999757872371389bc6a53fb993a94d1fb0
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.8
+
+namespace sshlib
+{
+  # all timeouts are controlled by a timer with 1s resolution
+  # for that reason keep the shell timeout sufficiently beyond
+  # the timer resolution (10s = 10x resolution)
+  global_var _NETAPP_DEFAULT_CMD_TIMEOUT = 60;
+  global_var _NETAPP_DEFAULT_INACTIVITY_TIMEOUT = 45;
+  global_var _NETAPP_INITIAL_INACTIVITY_TIMEOUT = 2;
+
+  # a space is included in shell prompt
+  global_var _NETAPP_DEFAULT_PROMPT = "> ";
+
+  # cmd_states
+  # _NETAPP_CMD_STATE_SEND_REQ: ready to send a command to device
+  # _NETAPP_CMD_STATE_RECV_RSP: ready to recv a response from device
+  # _NETAPP_CMD_STATE_AT_PROMPT: found command prompt in response
+  global_var _NETAPP_CMD_STATE_SEND_REQ = 0;
+  global_var _NETAPP_CMD_STATE_RECV_RSP = 1;
+  global_var _NETAPP_CMD_STATE_AT_PROMPT = 2;
+  global_var _NETAPP_CMD_STATE_SEND_ESCL_REQ = 3;
+  global_var _NETAPP_CMD_STATE_RECV_ESCL_RSP = 4;
+  global_var _NETAPP_CMD_STATE_GET_PROMPT = 5;
+
+
+  global_var _NETAPP_DEFAULT_ENABLE_PROMPT = "Password:";
+
+
+  function netapp_shell_handler_incoming_data_timeout_cb(session, channel)
+  {
+    var fn = 'netapp_shell_handler_incoming_data_timeout_cb';
+    var sh = channel.shell_handler;
+    var obj_ch_id = 'netapp_shell_handler [channel '+channel.local_channel+']: ';
+    if( isnull(channel) || isnull(channel.session))
+    {
+      if(!isnull(session))
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:"Channel does not exist");
+      }
+      return FALSE;
+    }
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "_NETAPP_STATE : " + sh.cmd_state);
+    return sh.check_inactivity_timeout(channel:channel);
+  }
+
+
+  function netapp_shell_handler_incoming_data_timeout_or_prompt_cb( session, channel )
+  {
+    var fn = 'netapp_shell_handler_incoming_data_timeout_or_prompt_cb';
+    var obj_ch_id = 'netapp_shell_handler [channel '+channel.local_channel+']: ';
+    var lines = split(channel.data_buf, sep:'\n', keep:FALSE);
+    var last_line = lines[max_index(lines)-1];
+    # does a channel exist?
+    if ( isnull(channel) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Channel does not exist");
+      return FALSE;
+    }
+    # does channel have a valid data buffer?
+    if ( isnull(channel.data_buf) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Channel.data_buf does not exist");
+      return FALSE;
+    }
+    if ( isnull(channel.shell_handler ) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Shell handler does not exist");
+      return FALSE;
+    }
+    var sh = channel.shell_handler;
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "_NETAPP_STATE : " + sh.cmd_state);
+
+    return sh.at_prompt_or_timeout(channel:channel);
+
+  }
+
+
+  object netapp_shell_handler
+  {
+    var settings;
+    var cmd_state;
+    var cmd_last;
+    var cmd_prompt;
+    var cmd_timeout;
+    var inactivity_timeout;
+    var cmd_enable_password;
+    var cmd_enable_prompt;
+    var last_md5;
+    var last_buffer_update_ts;
+    var last_cmd_error = FALSE;
+    var priv_escalation_type;
+    var priv_escalation_extra;
+    var fresh_shell = TRUE;
+    var timed_out = FALSE;
+    var escalated_shell = FALSE;
+    var least_privilege = FALSE;
+    var previous_prompt;
+    var priv_escl_failed = FALSE;
+    var new_channel_needs_new_connection = TRUE;
+
+    function netapp_shell_handler()
+    {
+      settings = _FCT_ANON_ARGS[0];
+      this.init(settings:settings);
+    }
+
+    public function init(settings)
+    {
+      this.cmd_last = "";
+      this.cmd_prompt = _NETAPP_DEFAULT_PROMPT;
+      this.cmd_timeout = _NETAPP_DEFAULT_CMD_TIMEOUT;
+      this.inactivity_timeout = _NETAPP_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_enable_prompt = _NETAPP_DEFAULT_ENABLE_PROMPT;
+      this.cmd_state = _NETAPP_CMD_STATE_SEND_REQ;
+      this.last_cmd_error = FALSE;
+      this.priv_escalation_type = NULL;
+      this.last_buffer_update_ts = unixtime();
+      if (!isnull(settings))
+      {
+        this.settings = settings;
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.cmd_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.previous_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_timeout']) )
+          this.cmd_timeout = this.settings['cmd_timeout'];
+        if ( !isnull(this.settings['least_privilege']) )
+          this.least_privilege = this.settings['least_privilege'];
+        if ( !isnull(this.settings['cmd_enable_prompt']) )
+          this.cmd_enable_prompt = this.settings['cmd_enable_prompt'];
+        if ( !isnull(this.settings['priv_escalation_type']) )
+          this.priv_escalation_type = this.settings['priv_escalation_type'];
+        if ( !isnull(this.settings['priv_escalation_extra']) )
+          this.priv_escalation_extra = this.settings['priv_escalation_extra'];
+      }
+      else this.settings = make_array();
+    }
+
+    # This function is not implemented or supported by the NetApp Shell
+    public function get_supported_escalation_method()
+    {
+      return NULL;
+    }
+
+    # This function is not implemented or supported by the NetApp Shell
+    public function get_least_privilege()
+    {
+      return NULL;
+    }
+
+    public function get_cmd_prompt()
+    {
+      return this.cmd_prompt;
+    }
+
+    ##
+    # Returns terminal options
+    #
+    # @no53   If true don't populate flag 53 with any value - flag 53 (PTY_OPT_ECHO)
+    #         reputedly breaks Palo Alto's SSH implementation. (optional)
+    # @return Returns an array with a terminal carriage return Opcode
+    ##
+    public function get_pty_opts(no53)
+    {
+      if(isnull(no53))
+        no53 = FALSE;
+
+      return make_array(PTY_OPT_OCRNL, 0);
+    }
+
+    public function get_pty_size_chars()
+    {
+      return make_list(200, 200);
+    }
+
+    public function get_pty_size_pixels()
+    {
+      return DEFAULT_PTY_SIZE_PIXELS;
+    }
+
+    public function get_pty_term()
+    {
+      return DEFAULT_PTY_TERM;
+    }
+
+    public function is_nosetup()
+    {
+      return FALSE;
+    }
+
+    public function send_pty_req()
+    {
+      return TRUE;
+    }
+
+    ##
+    # do we want to handle the "shell" channel request?
+    #
+    # @category SSH
+    ##
+    public function get_shell_channel_request_cb()
+    {
+      return NULL;
+    }
+
+    public function set_last_cmd_error()
+    {
+      this.last_cmd_error = _FCT_ANON_ARGS[0];
+    }
+
+    public function set_cmd_prompt()
+    {
+      this.previous_prompt = this.cmd_prompt;
+      this.cmd_prompt = _FCT_ANON_ARGS[0];
+    }
+
+    # This function is not implemented or supported by the NetApp Shell
+    public function set_least_privilege()
+    {
+      return NULL;
+    }
+
+    # This function is not implemented or supported by the NetApp Shell
+    public function set_escalated_shell()
+    {
+      return NULL;
+    }
+
+    public function set_cmd_state(new_cmd_state)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      if(!isnull(channel))
+      {
+        var obj_ch_id = 'netapp_shell_handler [channel '+channel.local_channel+']: ';
+        dbg::detailed_log(lvl:3, src:'netapp_shell_handler.set_cmd_state',
+          msg:obj_ch_id + ' updating from state ' + this.cmd_state + ' to state ' + new_cmd_state);
+      }
+      this.cmd_state = new_cmd_state;
+    }
+
+    public function run_command(channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = 'netapp_shell_handler.run_command';
+      var obj_ch_id = 'netapp_shell_handler [channel '+channel.local_channel+']: ';
+      var cmd_logger = new("sshlib::cmd_logger");
+      var lines;
+      var last_line;
+      var escl_result;
+      var kb_id = channel.session.get_kb_connection_id();
+      var kb_base = SSH_LIB_KB_PREFIX + kb_id;
+      # Local reference to session, channel's reference gets deleted
+      # if the channel gets closed
+      var session = channel.session;
+
+      if ( isnull(channel) )
+      {
+        return NULL;
+      }
+      if ( isnull(command) )
+      {
+        return NULL;
+      }
+      if(force_priv_escl)
+      {
+        dbg::detailed_log(lvl:2, src:fn,
+          msg:obj_ch_id + "Privilege escalation was forced, however theNetApp shell handler does not support privilege escalation");
+      }
+
+
+      if( this.last_cmd_error )
+      {
+        session.set_error(obj_ch_id +
+          'ERROR - shell is in unknown state from last interaction, ' +
+          'no additional commands via this shell will be executed.');
+        return NULL;
+      }
+
+      if(get_kb_item("SSH/attempt_least_privilege"))
+      {
+        dbg::detailed_log(lvl:2, src:fn,
+          msg:obj_ch_id+"Attempt least privilege is enabled, however the NetApp shell handler does not support privilege escalation");
+        this.least_privilege = TRUE;
+      }
+
+      # Reset default timeouts
+      this.inactivity_timeout = _NETAPP_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_timeout = _NETAPP_DEFAULT_CMD_TIMEOUT;
+
+      # If custom inactivity_timeout and cmd_timeout values are passed,
+      # ensure the values in use meet or exceed passed values
+      if (inactivity_timeout_min &&
+          this.inactivity_timeout < inactivity_timeout_min)
+        this.inactivity_timeout = inactivity_timeout_min;
+
+      if (cmd_timeout_min &&
+          this.cmd_timeout < cmd_timeout_min)
+        this.cmd_timeout = cmd_timeout_min;
+
+      if (this.fresh_shell)
+      {
+        if(this.cmd_prompt != _NETAPP_DEFAULT_PROMPT)
+        {
+          check_prompt = TRUE;
+        }
+        else
+        {
+          var post_login_buffer = get_kb_blob(kb_base + "/post_login_buffer");
+          var tmp_prompt = get_kb_blob(kb_base + "/cmd_prompt");
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id + "Getting prompt on fresh shell.");
+
+          var check_prompt = FALSE;
+          # see if we can look for prompt from previous login rather
+          # than waiting for timeout
+          if(strlen(tmp_prompt) >= 3)
+          {
+            # remove first found instance of prompt from previous post
+            # login buffer
+            var sub_prompt = substr(
+                               tmp_prompt,
+                               strlen(tmp_prompt) - 3,
+                               strlen(tmp_prompt) - 1
+                             );
+            post_login_buffer -= sub_prompt;
+
+            # if we don't find it again (e.g. in MOTD), it's probably ok
+            # to look for last characters of prompt to recognize prompt
+            if(sub_prompt >!< post_login_buffer)
+            {
+              this.cmd_prompt = tmp_prompt;
+              this.settings['cmd_prompt'] = this.cmd_prompt;
+              check_prompt = TRUE;
+            }
+          }
+        }
+
+        var initial_recv_timeout = _NETAPP_INITIAL_INACTIVITY_TIMEOUT;
+
+        if(check_prompt)
+        {
+          dbg::detailed_log(lvl:2, src:fn,
+            msg:obj_ch_id + "Using command prompt from previous login to find cmd prompt.");
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @netapp_shell_handler_incoming_data_timeout_or_prompt_cb,
+            channel        : channel,
+            cmd_timeout    : initial_recv_timeout
+          );
+        }
+        else
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id + "Waiting for inactivity period to find command prompt.");
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @netapp_shell_handler_incoming_data_timeout_cb,
+            channel        : channel,
+            cmd_timeout    : initial_recv_timeout
+          );
+        }
+
+        if(empty_or_null(channel.data_buf))
+        {
+          if(this.timed_out)
+            return session.set_cmd_error(obj_ch_id +
+              "Timed out waiting for data from server after opening shell.");
+
+          last_cmd_error = TRUE;
+          return session.set_cmd_error(obj_ch_id +
+            "No data received from server after opening shell.");
+        }
+
+        post_login_buffer = channel.data_buf;
+        if(isnull(get_kb_item(kb_base + "/post_login_buffer")))
+          set_kb_blob(name:kb_base + "/post_login_buffer", value:post_login_buffer);
+        channel.clear_data_buf();
+        this.fresh_shell = FALSE;
+        this.timed_out = FALSE;
+
+        lines = split(post_login_buffer, sep:'\n', keep:FALSE);
+        this.cmd_prompt = lines[max_index(lines)-1];
+
+        if(isnull(get_kb_item(kb_base + "/cmd_prompt")))
+          set_kb_blob(name:kb_base + "/cmd_prompt", value:cmd_prompt);
+
+        dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + 'Detected command prompt  "' + this.cmd_prompt + '".');
+
+        if(strlen(this.cmd_prompt) == 0)
+        {
+          session.set_cmd_error(obj_ch_id +
+            "Unable to detect command prompt on shell.");
+          last_cmd_error = TRUE;
+          return NULL;
+        }
+
+        this.settings['cmd_prompt'] = this.cmd_prompt;
+      }
+
+      this.cmd_last = command + '\n';
+      session.reset_cmd_interrupted();
+
+      dbg::detailed_log(lvl:1, src:fn, msg:"sending command: " + cmd_last);
+      channel.clear_data_buf();
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _NETAPP_CMD_STATE_SEND_REQ;
+      dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "cmd_state:_NETAPP_CMD_STATE_SEND_REQ(" + this.cmd_state + ")");
+      channel.window_send_data(data:cmd_last);
+      session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @netapp_shell_handler_incoming_data_timeout_or_prompt_cb,
+        channel        : channel,
+        cmd_timeout    : this.cmd_timeout
+      );
+
+      var ret = NULL;
+
+      if(channel && channel.data_buf )
+      {
+        ret = channel.data_buf;
+
+        if ( this.cmd_state != _NETAPP_CMD_STATE_AT_PROMPT )
+        {
+          session.set_cmd_error(obj_ch_id +
+            "Unable to return to command prompt after last command.");
+          this.last_cmd_error = TRUE;
+        }
+
+        ret = str_replace(string:ret, find:command, replace:'');
+
+        ret = chomp(string_reverse(chomp(string_reverse(remove_cmd_prompt(cmd_res:ret)))));
+
+        cmd_logger.add(
+          cmd                : this.cmd_last,
+          response           : ret,
+          error              : session.cmd_error,
+          ran_with_priv_escl : this.escalated_shell,
+          forced_escl        : force_priv_escl,
+          priv_escl_failed   : FALSE,
+          escl_method        : this.priv_escalation_type,
+          user               : session.user,
+          escl_user          : NULL
+        );
+        if ( "Error: " >< ret && "is not a recognized command" >< ret)
+        {
+          session.set_cmd_error(obj_ch_id + 
+              'Command not recognized.');
+          return NULL;
+        }
+      }
+
+      if(ret == '')
+      {
+        session.set_cmd_error(obj_ch_id + "No output returned from command.");
+
+        return NULL;
+      }
+
+      if(isnull(ret))
+      {
+        cmd_logger.add(
+          cmd                : this.cmd_last,
+          response           : ret,
+          error              : session.cmd_error,
+          ran_with_priv_escl : this.escalated_shell,
+          forced_escl        : force_priv_escl,
+          priv_escl_failed   : FALSE,
+          escl_method        : this.priv_escalation_type,
+          user               : session.user,
+          escl_user          : NULL
+        );
+      }
+
+      return ret;
+
+    }
+
+    private function deescalate_shell(channel, obj_ch_id)
+    {
+      return NULL;
+    }
+
+    private function escalate_shell(channel, obj_ch_id, tmp_bad_escl_kb, escl_hexstr)
+    {
+      return NULL;
+    }
+
+    ##
+    # Sets the privilege escalation method for the shell handler.
+    #
+    # NOTE: this function is not used
+    #
+    # @param [type:string] the privilege escalation method
+    # @param [extra:array] key value pair with the escalation details
+    # @param [timeout:int] timeout for escalation
+    #
+    # @return NULL
+    ##
+    public function set_priv_escalation(type, extra)
+    {
+      return NULL;
+    }
+
+    ##
+    # Removes privilege escalation information from the shell handler.
+    #
+    # @return NULL;
+    ##
+    public function unset_priv_escalation()
+    {
+      return NULL;
+    }
+
+    ##
+    # Removed the command prompt from the output
+    #
+    # @param [cmd_res:string] command results
+    #
+    # @return the command output stripped of the prompt
+    ##
+    public function remove_cmd_prompt(cmd_res)
+    {
+      var idx = stridx(cmd_res, this.cmd_prompt);
+      if(idx < 1)
+        return cmd_res;
+
+      return substr(cmd_res, 0, idx-1);
+    }
+
+    ##
+    # Determines if the shell is back at the command prompt. 
+    #
+    # @param [buf:data] the incoming data buffer
+    # @anonparam First the channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt, esle implicitly returns NULL
+    ##
+    function at_cmd_prompt(buf)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      var lines = split(buf, sep:'\n', keep:FALSE);
+      var last_line = lines[max_index(lines)-1];
+      dbg::detailed_log(lvl:3, src:'netapp_shell_handler.at_cmd_prompt',
+        msg:"last line = "+serialize(last_line)+'\ncmd_prompt = '+serialize(this.cmd_prompt));
+      if(this.cmd_prompt >< last_line)
+      {
+        this.set_cmd_state(
+           new_cmd_state: _NETAPP_CMD_STATE_AT_PROMPT,
+           channel);
+        return TRUE;
+      }
+    }
+
+    ##
+    # Determines if the shell is at the prompt or a timeout has occurred
+    #
+    # @param [channel:object] the channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt or timed out, FALSE if neither
+    ##
+    public function at_prompt_or_timeout(channel)
+    {
+      if(at_cmd_prompt(buf:channel.data_buf, channel)) return TRUE;
+      return check_inactivity_timeout(channel:channel);
+    }
+
+    ##
+    # Determines if there has been a timeout to inactivity
+    #
+    # @param [channel:object] the channel belonging to the shell handler
+    #
+    # @return TRUE if timeout reached, else FALSE
+    ##
+    public function check_inactivity_timeout(channel)
+    {
+      var fn = 'netapp_shell_handler.check_inactivity_timeout';
+      if ( channel && channel.data_buf && strlen(channel.data_buf) > 0 )
+      {
+        var new_md5 = MD5( channel.data_buf );
+        if ( this.last_md5 != new_md5 )
+        {
+          if(!isnull(channel) && !isnull(channel.session))
+          {
+            dbg::detailed_log(lvl:3, src:fn, msg:"New data found, updating last_buffer_update_ts");
+          }
+          this.last_md5 = new_md5;
+          this.last_buffer_update_ts = unixtime();
+          return FALSE;
+        }
+      } 
+      if (channel && (unixtime() - this.last_buffer_update_ts) >= this.inactivity_timeout)
+      {
+        if(channel.session)
+        {
+          dbg::detailed_log(lvl:1, src:fn, msg:"Inactivity timeout.");
+        }
+        this.timed_out = TRUE;
+        return TRUE;
+      }
+      else if(isnull(channel))
+      {
+        return TRUE;
+      }
+
+      return FALSE;
+    }
+
+  }
+}
+

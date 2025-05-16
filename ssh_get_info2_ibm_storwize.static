@@ -1,0 +1,172 @@
+#TRUSTED 84b5077c135548ede9f80e203dca67e60ef06549a5d003e14d9eb29ca07e2ed455e5392b7204a1ff01be5bb054043e2b46e0ae39c7d6c5b0467f8215068b056a4b3a56f5b8c1b5d7ec2cd95a47b89bd11ea34191e86e458162fccce496935b67b0e661981928f6797b2b9a41d9856acbdb89f0b85b551da99bcc3669314b2951d0905a8c98c380f4114148c4705f6d170927fcf843838ae7af1518415f16700328e07d7614e8c9453e809ff884e8183b05d63b86366adaaa83a33e4fd1c30e33beed2c4ad49fd3787c72c4ca6843f41fc301de6e9e0e0a9560c7d3fbfb393f4863f8269a70953ed2d8e5c30e23bd084e2ca2b428c53e0cba00195d1c2d530f05e06d30b4f9471b7997f9573003667727acbfc042793cd67f3dc2212f0efb277e7ba2997fa9526c86e7b179b69fab0b27c49758825df99be1b755840891a2e6ba6db0ab91af6f8f68d5c115a389da9c7cd42262eba7d11f9b807f823d0096b318443f709e0b99e5a6e885c6e2be1106d8b3696847192b3350909fc1aa7540b357ee81fa75cc51cfcd55e68dfe6144e8305760afa89e7f232801e61f09284dda8baeaeb2c731f1604fbfcb23a0587fcce0f845c5845edaa67008912cbcd4abb70c1cbedab67ea0865b9495740af08b7515b7e4996700662cc77f3040c19a914eb210de3ff4f817c4824aa145ae47e818a09a322b41f04067540a502bf4a0dc1a1b
+#TRUST-RSA-SHA256 6900398db3530efc9e674eb5e2830ac4eb8388e5b55d656277691264e5e76ddedcf821dc3882456f06481007b96194867948300aaf9110ab3012469df0cc7081d58a8b4106198389423eaf218097d6f6407d9192910dc5335b39aa31984e9f76eda69501e84a98f73a89cead24d6fd5fd7467492058e679ae16347773dc83890cf92a880cc315872562e56abe245843ae64d44863eca5ed12203694931846856194f07eec44812c9a223ab35d567eda636b9f3b2396d492f1a8735046be9aa04a254834c5295dc8793e4942be82be5139ff7732f6a829e3f9209063038f6fda62993b7ddf73faf0ed994d4415541790a72ee23aade4133b245517be46c57509e099944f93f93b198e442641301fcb6e4d57cc40d678ba0685950856fb8267923ce570946e4b300dcaa0a9d2e97fc6e7b5e36c66d1edabbfc33d44959f0cce122adb55046fc6fa287977046c3d1436585c138e3c177b83a02997552064282e55ba31025e2418b1ca76a9b86321f1c04ff4730b387348fc1a013e89b91a4185e38488639cb63a7a9f3f153445d89c0e1cb2b38581c9e57a2a535059eeb4c855b83e6c8f314f15ea20cb4aca43e806c4cefa47a15a0d54e5f63a81aea7f1c40c5e7850dfeaf5446520648a8415a698fa4a720aad010a94f2131bf2fd57bbb8acf18553982734662624d6eeea58c9e34ba90ddbb7e47a01713585a0acf00d4c2a324
+#
+# (C) Tenable Network Security, Inc.
+#
+
+global_var ibm_storwize_major_to_name_map =
+{
+  "2071": "IBM Storwize V3500",
+  "2072": "IBM Storwize V3700",
+  "2073": "IBM Storwize V7000 Unified",
+  "2076": "IBM Storwize V7000",
+  "2077": "IBM Storwize V5000",
+  "2078": "IBM Storwize V5000",
+  "2145": "IBM SAN Volume Controller",
+  "4939": "IBM Flex System V7000 Storage Node",
+  "9846": "IBM FlashSystem V9000",
+  "9848": "IBM FlashSystem V9000"
+};
+
+##
+# Converts the legacy IBM Storwize machine major code into an OS name
+##
+function ibm_storwize_major_code_to_os_name(code)
+{
+  if(empty_or_null(code))
+    return NULL;
+
+  return ibm_storwize_major_to_name_map[code];
+}
+
+##
+# Converts an IBM Storwize machine name into a legacy major code used in plugins
+##
+function ibm_storwize_os_name_to_major_code(osname)
+{
+  var code;
+  foreach var c (keys(ibm_storwize_major_to_name_map))
+  {
+    if(ibm_storwize_major_to_name_map[c] == osname)
+    {
+      code = c;
+      break;
+    }
+  }
+
+  return code;
+}
+
+##
+# check if this is a IBM Storwize device based on information collected.
+##
+function ibm_storwize_pre_check_fail()
+{
+  # have we already checked that the host is not a IBM Storwize device?
+  if(host_info_key_val['host_not_ibm_storwize'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['lsservicestatus_unrecognized']) &&
+     host_info_key_val['lsservicestatus_unrecognized'] !~ ibm_storwize_check['test_cmd_regex'])
+    return TRUE;
+
+  # verify target is not another product based on SSH banner etc
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "[\r\n]\s*node_code_version [0-9.]+[\r\n]" in output of "sainfo lsservicestatus".
+##
+function handle_ibm_storwize(session, use_shell_handler, channel, cmd_res)
+{
+  var os = "Unknown IBM Storwize device";
+  var version, build, os_code, os_type;
+
+  report += '\nLocal checks have been enabled for this host.';
+
+  var match = pregmatch(pattern:"[\r\n]\s*node_code_version ([0-9.]+)[\r\n]", string:cmd_res);
+  if(!isnull(match) && !isnull(match[1]))
+  {
+    version = match[1];
+    replace_kb_item(name:"Host/IBM/Storwize/version", value:version);
+  }
+
+  match = pregmatch(pattern:"[\r\n]\s*node_code_build ([0-9.]+)[\r\n]", string:cmd_res);
+  if(!isnull(match) && !isnull(match[1]))
+  {
+    build = match[1];
+    replace_kb_item(name:"Host/IBM/Storwize/build", value:build);
+  }
+
+  match = pregmatch(pattern:"[\r\n]\s*product_mtm ((.*)-\w+)[\r\n]", string:cmd_res);
+  if(!isnull(match) && !isnull(match[1]) && !isnull(match[2]))
+  {
+    os_code = match[2];
+    os_type = match[1];
+    os = ibm_storwize_major_code_to_os_name(code:os_code);
+  }
+
+  if(!isnull(os))
+    replace_kb_item(name:"Host/IBM/Storwize/machine_name", value:os);
+
+  if(!isnull(os_type))
+    replace_kb_item(name:"Host/IBM/Storwize/machine_type", value:os_type);
+
+  if(!isnull(os_code))
+    replace_kb_item(name:"Host/IBM/Storwize/machine_major", value:os_code);
+
+  replace_kb_item(name:'Host/IBM/Storwize/sainfo_lsservicestatus', value:cmd_res);
+
+  if(isnull(version) || isnull(os_code))
+  {
+    failure_kb_msg = '\nThe remote host appears to be running a ' + os + '.\n' +
+                     'However, we were unable to parse the OS type or version\n' +
+                     'from the output of running the "sainfo lsservicestatus" command.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    report +=
+      '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  replace_kb_item(name:'Host/OS/lsservicestatus', value:os + ' ' +  version);
+  replace_kb_item(name:'Host/OS/lsservicestatus/Confidence', value:100);
+  replace_kb_item(name:'Host/OS/lsservicestatus/Type', value:'NAS');
+
+  report += '\nThe remote system is : ' + os + ' version ' + version + '\n' +
+            '\nOS Security Patch Assessment is available for ' + os + '.\n';
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_ibm_storwize.static', value: 153);
+  return NULL;
+}
+
+##
+# callback for systems without "[\r\n]\s*node_code_version [0-9.]+[\r\n]" in output of "sainfo lsservicestatus".
+##
+function handle_not_ibm_storwize(session, use_shell_handler, channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+
+  host_info_key_val['host_not_ibm_storwize'] = TRUE;
+  if(!empty_or_null(cmd_res))
+  {
+    # store more details for other handlers to use.
+    host_info_key_val['lsservicestatus_unrecognized'] = cmd_res;
+  }
+}

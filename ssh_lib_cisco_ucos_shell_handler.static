@@ -1,0 +1,401 @@
+#TRUSTED 0309ab948a9837de2df469a9568740661e73bca47755ff51494f6d6af0a3032fa43d53d3c6b5595a0c60c25da395ab8b6c489de1c186fee392a226d72692d37627c068a2dc946b0dced979c92df1535f003baded979d0ac392a11cdc4cccba1b6110d3a8e11595ae0d937f68f680a8cc89d596bde4a96a86fa45785b0ec29df99fed33aec73c20a1efc87fb4c633562d9cb8b6220452f945a30f0cb350825e3e6cf4f733b2dd5a07c8e9dd265419fbd3d20d5958394e2b8d82344f1815aad81bff7d569a4df647bf757d4904554be79256ee429f5e1f7c45ed318646bd1674f6e389b1dd23ebe7d800ea1df849873f0a42fa53b607085bfa7911b509740d551189d6656373d503d4111c3ab50c3b0a624ce743850fcd50e67a9b5dba5f9a546b62b29bc7bd3c526b6e433b98c1203d000771a4d0018198de5c648a7fe097932a034d6519a8417d057c094783c6ffec2ab77e79f565db5356c5efebc40ffff196979e0774c05a214c339ad8190e28b2992cc4c289003dd35b1ad783e74d11968fbb64d63edc765368ebfeca5044218f644ee22366a276817cd58f92e1213738add438ed3901a00ec62094af3a95762ac76904fbad8c6bab444d2f85513deb2abd8c2b5d8a72154c0e156dcbd092ada48e4a99fe5548e04282336841d97ae1b06e44d6752890cf3089e2c6c32d26310efd01b5d82eb90f1baf5a16f10a8be68fb3
+
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.2
+#
+###
+
+namespace sshlib
+{
+  ### RECV_UNTIL CALLBACKS ###
+
+  ##
+  # callback function that checks for startup message, command prompt, or timeout
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if timeout reached
+  # @category SSH
+  ##
+  function cisco_ucos_cb_at_startup_msg_or_prompt3_or_timeout(&session, &channel)
+  {
+    var sh = channel.shell_handler;
+    if(!sh) return channel_closed_return_true(channel:channel);
+    return sh.cb_at_startup_msg_or_prompt3_or_timeout(channel:channel);
+  }
+
+  ##
+  # callback function that checks for startup line, command prompt, or timeout
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if timeout reached
+  # @category SSH
+  ##
+  function cisco_ucos_cb_at_banner_or_prompt3_or_timeout(&session, &channel)
+  {
+    var sh = channel.shell_handler;
+    if(!sh) return channel_closed_return_true(channel:channel);
+    return sh.cb_at_banner_or_prompt3_or_timeout(channel:channel);
+  }
+
+  ### End Cisco UCOS shell handler utils ###
+
+  ##
+  # Shell handler for Cisco UCOS based on the basic shell handler
+  #
+  # @remark UCOS needs its own shell handler because of its unique
+  # post-login behavior.
+  #
+  # The message 'Command Line Interface is starting up, please wait'
+  # is presented, and then there is a delay before the welcome banner
+  # is received. Depending on the target product, the delay may be
+  # 4 minutes or more, with variation due to environmental factors
+  # expected. This shell handler should accommodate UCOS target behavior
+  # while avoiding delays for non-UCOS targets.
+  ##
+  object cisco_ucos_shell_handler : sshlib::basic_shell_handler
+  {
+    var objname = 'cisco_ucos_shell_handler::';
+    var obj_kb  = '/cisco_ucos_shell_handler';
+
+    var startup_msg = 'Command Line Interface is starting up, please wait';
+    var welcome_banner = 'Welcome to the Platform Command Line Interface';
+
+    var found_startup_msg;
+    var found_banner;
+
+    ##
+    # Set up timeouts for different stages of handling a fresh shell
+    # Timeout types for each stage:
+    #   inactivity : Maximum time to receive during inactivity
+    #   hard_limit : Maximum time to receive regardless of activity
+    #   recv       : Maximum time per recv() call (time between callback checks)
+    # Stages:
+    #   initial    : Receive startup message
+    #   banner     : Receive welcome banner
+    #   cmd_prompt : Receive command prompt
+    #   cmd        : Receive command response
+    ##
+    var TIMEOUTS = {
+      initial    : {inactivity:90,    hard_limit:120,   recv:15},
+      banner     : {inactivity:10*60, hard_limit:15*60, recv:30},
+      cmd_prompt : {inactivity:90,    hard_limit:NULL,  recv:10},
+      cmd        : {inactivity:90,    hard_limit:NULL,  recv:10}
+    };
+
+    ##
+    # Constructor
+    ##
+    function cisco_ucos_shell_handler()
+    {
+      super.set_objname(this.objname);
+    }
+
+    ##
+    # Check for startup message, command prompt, or timeout
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE
+    # @category SSH
+    ##
+    public function cb_at_startup_msg_or_prompt3_or_timeout(&channel)
+    {
+      if (startup_msg >< channel.data_buf)
+      {
+        dbg::detailed_log(lvl:2, src:objname + FUNCTION_NAME,
+          msg:this.obj_ch_id+'Found startup message. Channel data contains "'+this.startup_msg+'".');
+        this.found_startup_msg = TRUE;
+        return TRUE;
+      }
+      if(this.at_cmd_prompt(buf:channel.data_buf, check_len:3)) return TRUE;
+      return this.check_inactivity_timeout(channel:channel);
+    }
+
+    ##
+    # Check for welcome banner, command prompt, or timeout
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE
+    # @category SSH
+    ##
+    public function cb_at_banner_or_prompt3_or_timeout(&channel)
+    {
+      if (welcome_banner >< channel.data_buf)
+      {
+        dbg::detailed_log(lvl:2, src:objname + FUNCTION_NAME,
+          msg:this.obj_ch_id+'Found welcome banner. Channel data contains "'+this.welcome_banner+'".');
+        this.found_banner = TRUE;
+        return TRUE;
+      }
+      if(this.at_cmd_prompt(buf:channel.data_buf, check_len:3)) return TRUE;
+      return this.check_inactivity_timeout(channel:channel);
+    }
+
+    ##
+    # Handle a fresh shell, getting the post-login buffer and command
+    # prompt and setting in KB if needed
+    #
+    # @param [session:session object] Session object
+    # @param [channel:channel object] Channel object with fresh shell
+    # @return TRUE if successful, else FALSE
+    # @category SSH
+    ##
+    public function handle_fresh_ucos_shell(&session, &channel)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # run_command() should have already validated this, but just in case
+      if (!session) return NULL;
+
+      dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Getting prompt on fresh shell.');
+
+      # Check to see if command prompt has been cached from previous
+      # login and is usable for initial command prompt detection
+      # rather than waiting for timeout
+      var _cmd_prompt = get_kb_blob(this.kb_id + this.obj_kb + '/cmd_prompt');
+      var _post_login_buffer = get_kb_blob(this.kb_id + this.obj_kb + '/post_login_buffer');
+
+      var check_prompt = FALSE;
+      if(strlen(_cmd_prompt) >= 3)
+      {
+        # Remove first found instance of prompt from previous post
+        # login buffer
+        var sub_prompt = substr(_cmd_prompt, strlen(_cmd_prompt) - 3, strlen(_cmd_prompt) - 1);
+        _post_login_buffer -= sub_prompt;
+
+        # If we don't find it again (e.g. in MOTD), it's probably ok
+        # to look for last characters of prompt to recognize prompt
+        if(sub_prompt >!< _post_login_buffer)
+          check_prompt = TRUE;
+      }
+
+      if (check_prompt) super.set_cmd_prompt(_cmd_prompt);
+
+      # Receive startup message
+      dbg::detailed_log(lvl:2, src:fn,
+        msg:this.obj_ch_id + 'Waiting to receive startup message. Expecting channel data to contain "' + this.startup_msg + '".');
+
+      var timeouts = this.TIMEOUTS.initial;
+      super.set_timeout_check(timeouts.inactivity);
+      super.reset_buffer_update_time();
+      channel.set_shell_handler(this);
+      session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @sshlib::cisco_ucos_cb_at_startup_msg_or_prompt3_or_timeout,
+        channel        : channel,
+        cmd_timeout    : timeouts.hard_limit,
+        timeout        : timeouts.recv
+      );
+
+      # Check received data and return appropriate error message
+      if (empty_or_null(channel.data_buf))
+      {
+        if (this.timed_out)
+        {
+          session.set_cmd_error(this.obj_ch_id +
+            'Timed out waiting for data from server after opening shell.');
+          return FALSE;
+        }
+
+        this.set_last_cmd_error(TRUE);
+        session.set_cmd_error(this.obj_ch_id +
+          'No data received from server after opening shell.');
+        return FALSE;
+      }
+
+      if('password has expired' >< channel.data_buf)
+      {
+        session.set_error(this.obj_ch_id + 'Account password has expired.');
+        this.set_last_cmd_error(TRUE);
+        return FALSE;
+      }
+
+      if (!this.found_startup_msg)
+      {
+        session.set_cmd_error(this.obj_ch_id +
+          'Did not receive expected startup message on fresh shell.');
+        return FALSE;
+      }
+
+      # Check channel state before receiving again
+      if (channel.state == CHANNEL_STATE_CLOSED)
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:this.obj_ch_id + 'Channel is closed.');
+        this.set_last_cmd_error(TRUE);
+        return FALSE;
+      }
+
+      # Receive welcome banner
+      dbg::detailed_log(lvl:2, src:fn,
+        msg:this.obj_ch_id + 'Waiting to receive welcome banner.'+
+        'Expecting channel data to contain "' + this.welcome_banner + '". This may take several minutes.');
+
+      timeouts = this.TIMEOUTS.banner;
+      super.set_timeout_check(timeouts.inactivity);
+      super.reset_buffer_update_time();
+      channel.set_shell_handler(this);
+      session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @sshlib::cisco_ucos_cb_at_banner_or_prompt3_or_timeout,
+        channel        : channel,
+        cmd_timeout    : timeouts.hard_limit,
+        timeout        : timeouts.recv
+      );
+
+      if (!this.found_banner)
+      {
+        session.set_cmd_error(this.obj_ch_id +
+          'Did not receive expected banner on fresh shell.');
+        return FALSE;
+      }
+
+      # Check channel state before receiving again
+      if (channel.state == CHANNEL_STATE_CLOSED)
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:this.obj_ch_id + 'Channel is closed.');
+        this.set_last_cmd_error(TRUE);
+        return FALSE;
+      }
+
+      # Receive command prompt, if not already received
+      if (!this.found_cmd_prompt)
+      {
+        timeouts = this.TIMEOUTS.cmd_prompt;
+        super.set_timeout_check(timeouts.inactivity);
+        super.reset_buffer_update_time();
+        channel.set_shell_handler(this);
+        if (check_prompt)
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Using command prompt from previous login to find cmd prompt.');
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @sshlib::basic_shell_handler_at_prompt3_or_timeout,
+            channel        : channel,
+            cmd_timeout    : timeouts.hard_limit,
+            timeout        : timeouts.recv
+          );
+        }
+        else
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id +
+            'Waiting for inactivity period to find command prompt.');
+          session.sshrecv_until(
+            end_states     : make_list('SOC_CLOSED'),
+            check_callback : @sshlib::basic_shell_handler_on_channel_buffer_inactivity,
+            channel        : channel,
+            cmd_timeout    : timeouts.hard_limit,
+            timeout        : timeouts.recv
+          );
+        }
+      }
+
+      # Set post-login buffer
+      this.post_login_buffer = channel.data_buf;
+
+      if (isnull(get_kb_item(this.kb_id + this.obj_kb + '/post_login_buffer')))
+        set_kb_blob(name:this.kb_id + this.obj_kb + '/post_login_buffer', value:this.post_login_buffer);
+      # Replace the standard blob also, since this one is more accurate
+      replace_kb_blob(name:this.kb_id + '/post_login_buffer', value:this.post_login_buffer);
+
+      channel.clear_data_buf();
+      super.set_fresh_shell(FALSE);
+
+      # Parse and set command prompt
+      var lines = split(this.post_login_buffer, sep:'\n', keep:FALSE);
+      super.set_cmd_prompt(lines[max_index(lines)-1]);
+
+      if (isnull(get_kb_item(this.kb_id + this.obj_kb + '/cmd_prompt')))
+        set_kb_blob(name:this.kb_id + this.obj_kb + '/cmd_prompt', value:this.cmd_prompt);
+
+      # Replace the standard blob also, since this one is more accurate
+      replace_kb_blob(name:this.kb_id + '/cmd_prompt', value:this.cmd_prompt);
+
+      dbg::detailed_log(lvl:1, src:fn, msg:this.obj_ch_id + 'Detected command prompt  "' + this.cmd_prompt + '".');
+
+      if(strlen(this.cmd_prompt) == 0)
+      {
+        session.set_cmd_error(this.obj_ch_id +
+          'Unable to detect command prompt on shell.');
+        super.set_last_cmd_error(TRUE);
+        return FALSE;
+      }
+
+      super.set_timed_out(FALSE);
+      return TRUE;
+    }
+
+    ##
+    # run given command
+    #
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+      super.set_obj_ch_id('[channel ' + channel.local_channel + ']: ');
+
+      # Check channel state
+      if (!channel.session || channel.state == CHANNEL_STATE_CLOSED)
+      {
+        this.last_cmd_error = TRUE;
+        return channel_closed_return_null(fn:fn, channel:channel);
+      }
+      var session = channel.session;
+
+      # Check shell state
+      if (this.last_cmd_error)
+      {
+        return session.set_error(this.obj_ch_id +
+          'ERROR - shell is in unknown state from last interaction, ' +
+          'no additional commands via this shell will be executed.');
+      }
+
+      # Initialize variables
+      super.set_kb_id(SSH_LIB_KB_PREFIX + session.get_kb_connection_id());
+
+      # Clear any errors from previous commands
+      session.clear_cmd_error();
+
+      # Get command prompt
+      if(this.fresh_shell && !this.handle_fresh_ucos_shell(session:session, channel:channel))
+        return NULL;
+
+      var timeouts = this.TIMEOUTS.cmd;
+      super.set_inactivity_timeout(timeouts.inactivity);
+      super.set_recv_timeout(timeouts.recv);
+      super.set_cmd_timeout(timeouts.hard_limit);
+
+      return super.run_command(
+                     channel                : channel,
+                     command                : command,
+                     force_priv_escl        : force_priv_escl,
+                     cmd_timeout_min        : cmd_timeout_min,
+                     inactivity_timeout_min : inactivity_timeout_min
+                   );
+    }
+  }
+}

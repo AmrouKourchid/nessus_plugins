@@ -1,0 +1,651 @@
+#TRUSTED 52e5ccab0f33c84f477d1e5ce1bd11eb15f7cd093f7ff7d43d31724b23fc5d3648d3981177a34cb1d4d397a5b08ba215a5120fcc15403f9c62a016f45356f8ceb04cd9475ebe54733f8d922a8486c5483bd32e5dd4182fa3a1ce0a6814749e9aa1397b3302be77609191be774950fc83dfd073f9ede8bbab7cfd6fa9ac7eaa8d1dea67587aa7c8a6ae85a341d1684ded128da79f5216974df03ffa84cc06adbd75155f2f720e421b89cb5c3b3ba9a0d667fce3404a6fde7507abe6cabbe2d970dc59bb556d0ff0414a9803a451e20c924c205449228e79d15c823b6a70fb0eb3fcefea8f4054db41da96146d3aca430dc43b94e378fa596ae170183ccbdee7562e32f3645a094ba1b4efecc3786f854f3a80e79963aaed3957eb3f99c8cdd724c3cbeee2cc83eddb1bf05e0c360469bd1df2f5efb0cf0b7282edfd17d15ac6ccb346e3186acd07dbfd8fbcbfc20ec7e814ba8bd2567514e7c9523220c40c2e606bf40c6b97463365c56157fc92523a35ff373b346b0b05ef2320f7e592212487cbbb399db194e432d1e29436f2d747262b4e663dc4ddce150d09de8304ff473b6a8d10f70a58fe0f0af84ea5d04ffe604cb83b050ff220e72cc09d03c3e3911c5694d9a7f691bdc1dde2a56a6aac4b39fee3b2e46e285c31352d8def81fc4e50b781d4b6992db526bcc08f8d43b02e5ae15b109a701aebd9466236855759345e
+#TRUST-RSA-SHA256 65ab128bb59bd411dc87ff425c73277ecaf89b22d1c058d10f339a3f7c9870268b9e5967cac0bf710e90e39e281c380267bbf0ad19932dd8bd7bb8485d525a7459693b2d2483752cdad240e2c77f6cc03215e3ea8366ef4270ed0c54688d425f8366e788ab06c5667dc73de636e2a3ca009b8ab37c39fb827319cb0acbe2de46f0419ad4a1e89276298f31957ce1314a21436f4fd4e1dafcb3f40e84130792d8b99f28e07bd66b222f962a241480fc2bdf650a7f719b77caf8e4f2aef5fefe559196d89555a61da15af07190c6e9f921688a659a6154ee2aa7b271559e98c498d1acdf5292e14719c5f77fe572a1c10910a0804336e249324f6d1f6d175a0ea0a92bef574fd81187d9bbd3e433e2b7dd0f526592509bba217e0025e7ae97d55468dc4abbeed09b5dacfe930e5d54d8d19b366dac6559aa3e400a47d87ddf5135998bb72e9e8eccb8abbb6cd0adce4bfffa54c561b231970019e17ab2ae5cb04c803243c47a57d98d1b0254cad7d60d91b8a2ee570a0f525b112e0a0f4242b2d6032549f2bd5642e81339cceb5dfb2bcd70eaae88cdac72c5ba9245103ad2ccb10a0eebee8f6036ef0a8ffc51acfd89fc2cb9cdfb06e3c6f26119e0bdc7b2add10c3532211407969185260f884be3de3819aaedb74fbe90b805a4e2aae09d5e583d96a83ccec2ff1c3259e2a604b2c15a96492182acd82f992299cd6e00f20505
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+
+namespace sshlib
+{
+  #global key/value array callbacks can use to share information
+  host_info_key_val = make_array();
+
+  # all timeouts are controlled by a timer with 1s resolution
+  # for that reason keep the shell timeout sufficiently beyond
+  # the timer resolution (10s = 10x resolution)
+  global_var _ADEOS_DEFAULT_CMD_TIMEOUT = 60;
+  global_var _ADEOS_DEFAULT_INACTIVITY_TIMEOUT = 45;
+  global_var _ADEOS_INITIAL_INACTIVITY_TIMEOUT = 2;
+
+  # cmd_states
+  # _ADEOS_CMD_STATE_SEND_REQ: ready to send a command to device
+  # _ADEOS_CMD_STATE_RECV_RSP: ready to recv a response from device
+  # _ADEOS_CMD_STATE_AT_PROMPT: found command prompt in response
+  global_var _ADEOS_CMD_STATE_SEND_REQ = 0;
+  global_var _ADEOS_CMD_STATE_AT_PROMPT = 2;
+
+  _BANNER_PAGINATION_SPACES = FALSE;
+
+  global_var _ADEOS_SESSION_RECOVERY_PROMPT = "Enter session number to resume or press <Enter> to start a new one:";
+
+  function scrub_cisco_function_escapes()
+  {
+    local_var buf_str;
+
+    buf_str = _FCT_ANON_ARGS[0];
+
+    if ('\x1b' >!< buf_str)
+      return buf_str;
+
+    # We need to remove NULL bytes because string-handling functions don't like them
+    # the command prompt should never contain NULL bytes, we should be safe
+    if ('\0' >< buf_str)
+    {
+      buf_str = str_replace(find:'\0', replace: '', string: buf_str);
+      dbg::detailed_log(lvl:3, src: FUNCTION_NAME, msg:"Data after removing NULL bytes",
+          msg_details:{"Data":{"lvl":3, "value":buf_str}});
+    }
+
+    buf_str = ereg_replace(pattern:'\x1b\\[[A-J]', replace:'', string:buf_str);
+    buf_str = ereg_replace(pattern:'\x1b\x0d', replace:'', string:buf_str);
+
+    return buf_str;
+  }
+
+
+  ##
+  # callback function that checks for either a timeout or buffer update
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if timeout reached
+  # @category SSH
+  ##
+  function adeos_shell_handler_incoming_data_timeout_cb(session, channel)
+  {
+    var fn = 'adeos_shell_handler_incoming_data_timeout_cb';
+    var sh = channel.shell_handler;
+    var obj_ch_id = 'adeos_shell_handler [channel ' + channel.local_channel + ']: ';
+
+    if(isnull(channel))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Channel does not exist");
+      return TRUE;
+    }
+    if(channel.state == CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + "Channel is closed.");
+      return TRUE;
+    }
+
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "_ADEOS_STATE : " + sh.cmd_state);
+
+    return sh.check_inactivity_timeout(session: session, channel:channel);
+  }
+
+  ##
+  # callback function that checks for buffer update, timeout or shell prompt
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if found
+  # @category SSH
+  ##
+  function adeos_shell_handler_incoming_data_timeout_or_prompt_cb( session, channel )
+  {
+    var fn = 'adeos_shell_handler_incoming_data_timeout_or_prompt_cb';
+    var obj_ch_id = 'adeos_shell_handler [channel '+channel.local_channel+']: ';
+
+    # does a channel exist?
+    if ( isnull(channel) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Channel does not exist");
+      return TRUE;
+    }
+    if (channel.state == CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + "Channel is closed.");
+      return TRUE;
+    }
+    # does channel have a valid data buffer?
+    if ( isnull(channel.data_buf) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + "channel.data_buf does not exist");
+      return TRUE;
+    }
+    if ( isnull(channel.shell_handler ) )
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + "Shell handler does not exist");
+      return TRUE;
+    }
+    var sh = channel.shell_handler;
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "_ADEOS_STATE : " + sh.cmd_state);
+
+    return sh.at_prompt_or_timeout(session: session, channel:channel);
+
+  }
+
+  #shell handler for Cisco Application Deployment Engine OS
+  object cisco_adeos_shell_handler
+  {
+    var settings;
+    var cmd_state;
+    var cmd_last;
+    var cmd_prompt;
+    var cmd_timeout;
+    var inactivity_timeout;
+    var last_md5;
+    var last_buffer_update_ts;
+    var last_cmd_error = FALSE;
+    var fresh_shell = TRUE;
+    var timed_out = FALSE;
+    var previous_prompt;
+
+    ##
+    # Shell handler constructor
+    #
+    # @anonparam <first> Shell handler settings array
+    # @category SSH
+    ##
+    function cisco_adeos_shell_handler()
+    {
+      settings = _FCT_ANON_ARGS[0];
+      this.init(settings:settings);
+    }
+
+    ##
+    # Shell handler initialization
+    #
+    # @param settings Shell handler settings array
+    # @category SSH
+    ##
+    public function init(settings)
+    {
+      this.cmd_last = "";
+      this.cmd_prompt = "";
+      this.cmd_timeout = _ADEOS_DEFAULT_CMD_TIMEOUT;
+      this.inactivity_timeout = _ADEOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_state = _ADEOS_CMD_STATE_SEND_REQ;
+      this.last_cmd_error = FALSE;
+      this.last_buffer_update_ts = unixtime();
+      this.last_md5 = "";
+
+      host_info_key_val["showversion_unrecognized"] = NULL;
+
+      if (!isnull(settings))
+      {
+        this.settings = settings;
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.previous_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_timeout']) )
+          this.cmd_timeout = this.settings['cmd_timeout'];
+      }
+      else this.settings = make_array();
+    }
+
+    ##
+    # Dummy function. Required on all shell handlers,
+    # unused on adeos.
+    #
+    # @param [type:string]  Escalation type (i.e. su, cisco-enable)
+    # @param [extra:string] Escalation password
+    #
+    # @return NULL
+    ##
+    public function set_priv_escalation(type, extra)
+    {
+      return NULL;
+    }
+
+    ##
+    # Dummy function. Required on all shell handlers,
+    # unused on adeos.
+    #
+    # @param [type:string]  Escalation type (i.e. su, cisco-enable)
+    # @param [extra:string] Escalation password
+    #
+    # @return NULL
+    ##
+    public function unset_priv_escalation()
+    {
+      return NULL;
+    }
+
+    ##
+    # Returns terminal options
+    #
+    # @no53   If true don't populate flag 53 with any value - flag 53 (PTY_OPT_ECHO)
+    #         reputedly breaks Palo Alto's SSH implementation. (optional)
+    # @return Returns an array with a terminal carriage return Opcode
+    ##
+    public function get_pty_opts(no53)
+    {
+      if(isnull(no53))
+        no53 = FALSE;
+
+      return make_array(PTY_OPT_OCRNL, 0);
+    }
+
+    ##
+    # get default PTY size in characters
+    #
+    # @return default PTY size in characters
+    # @category SSH
+    ##
+    public function get_pty_size_chars()
+    {
+      # Make the default pty size large to avoid issues with truncation
+      return make_list(200, 200);
+    }
+
+    ##
+    # get default PTY size in pixels
+    #
+    # @return default PTY size in pixels
+    # @category SSH
+    ##
+    public function get_pty_size_pixels()
+    {
+      return DEFAULT_PTY_SIZE_PIXELS;
+    }
+
+    ##
+    # get PTY terminal
+    #
+    # @return default PTY terminal
+    # @category SSH
+    ##
+    public function get_pty_term()
+    {
+      return DEFAULT_PTY_TERM;
+    }
+
+
+    ##
+    # should we send / recv data to device without setting up a channel?
+    #
+    # @return FALSE
+    # @category SSH
+    ##
+    public function is_nosetup()
+    {
+      return FALSE;
+    }
+
+    ##
+    # do we want to request a PTY on this device?
+    #
+    # @return TRUE
+    # @category SSH
+    ##
+    public function send_pty_req()
+    {
+      return TRUE;
+    }
+
+    ##
+    # do we want to handle the "shell" channel request?
+    #
+    # @category SSH
+    ##
+    public function get_shell_channel_request_cb()
+    {
+      return NULL;
+    }
+
+    ##
+    # Sets the last command error.
+    #
+    # @anonparam <first> The last command error message.
+    # @return NULL
+    # @category SSH
+    ##
+    public function set_last_cmd_error()
+    {
+      this.last_cmd_error = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Sets the shell command prompt
+    #
+    # @anonparam <first> The prompt
+    # @return Returns NULL
+    # @category SSH
+    ##
+    public function set_cmd_prompt()
+    {
+      this.previous_prompt = this.cmd_prompt;
+      this.cmd_prompt = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Sets the shell command handling state
+    #
+    # @anonparam <first> Command state
+    # @return Returns NULL
+    # @category SSH
+    ##
+    public function set_cmd_state(new_cmd_state)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      if(!isnull(channel))
+      {
+        var obj_ch_id = 'cisco_adeos_shell_handler [channel ' + channel.local_channel + ']: ';
+        dbg::detailed_log(
+          lvl:3,
+          src:'cisco_adeos_shell_handler.set_cmd_state',
+          msg:obj_ch_id + ' updating from state ' + this.cmd_state + ' to state ' + new_cmd_state);
+      }
+
+      this.cmd_state = new_cmd_state;
+    }
+
+    ##
+    # run a command on target system using ade-os shell handler
+    #
+    # @param [channel:object] channel used for connection
+    # @param [command:string] the command to run against the target
+    # @param [force_priv_escl:bool] command should use escl if available
+    # @param [cmd_timeout_min:int] timeout for command to run
+    # @param [inactivity_timeout_min:int] timeout for inactivity
+    # 
+    # @return NULL on fail, response to command on success
+    ##
+    public function run_command(channel, command, force_priv_escl, cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = 'cisco_adeos_shell_handler.run_command';
+      # Local reference to session, channel's reference gets deleted
+      # if the channel gets closed
+      var session = channel.session;
+      var obj_ch_id = 'cisco_adeos_shell_handler [channel ' + channel.local_channel + ']: ';
+      var cmd_logger = new("sshlib::cmd_logger");
+      var lines;
+      var kb_base = SSH_LIB_KB_PREFIX + session.get_kb_connection_id();
+
+      if(isnull(force_priv_escl))
+        force_priv_escl = FALSE;
+
+      if(isnull(channel)) return NULL;
+      if(isnull(command)) return NULL;
+
+      dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "In run_command");
+
+      if( this.last_cmd_error )
+      {
+        session.set_error(obj_ch_id +
+          'ERROR - shell is in unknown state from last interaction, ' +
+          'no additional commands via this shell will be executed.');
+        return NULL;
+      }
+
+      # Reset default timeouts
+      this.inactivity_timeout = _ADEOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_timeout = _ADEOS_DEFAULT_CMD_TIMEOUT;
+
+      # If custom inactivity_timeout and cmd_timeout values are passed,
+      # ensure the values in use meet or exceed passed values
+      if (inactivity_timeout_min &&
+          this.inactivity_timeout < inactivity_timeout_min)
+        this.inactivity_timeout = inactivity_timeout_min;
+
+      if (cmd_timeout_min &&
+          this.cmd_timeout < cmd_timeout_min)
+        this.cmd_timeout = cmd_timeout_min;
+
+      if (this.fresh_shell)
+      {
+        var post_login_buffer = get_kb_blob(kb_base + "/post_login_buffer");
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id + "Getting prompt on fresh shell.");
+
+        var initial_recv_timeout = _ADEOS_INITIAL_INACTIVITY_TIMEOUT;
+
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id + "Using command prompt from previous login to find cmd prompt.");
+        session.sshrecv_until(
+          end_states     : make_list("SOC_CLOSED"),
+          check_callback : @adeos_shell_handler_incoming_data_timeout_or_prompt_cb,
+          channel        : channel,
+          timeout        : initial_recv_timeout
+        );
+
+        if(_ADEOS_SESSION_RECOVERY_PROMPT >< channel.data_buf)
+        {
+          dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "Selecting the first disconnected session by sending 1<CR>.");
+          this.cmd_prompt = "";
+          channel.clear_data_buf();
+          this.last_buffer_update_ts = unixtime();
+          channel.window_send_data(data:'1\n');
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @adeos_shell_handler_incoming_data_timeout_cb,
+            channel        : channel,
+            timeout        : initial_recv_timeout
+          );
+        }
+
+        if(empty_or_null(channel.data_buf))
+        {
+          if(this.timed_out)
+            return session.set_cmd_error(obj_ch_id +
+              "Timed out waiting for) data from server after opening shell.");
+
+          last_cmd_error = TRUE;
+          return session.set_cmd_error(obj_ch_id +
+            "No data received from server after opening shell.");
+        }
+
+        if (channel.state == CHANNEL_STATE_CLOSED)
+        {
+          dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + "Channel is closed.");
+          return TRUE;
+        }
+
+        post_login_buffer = scrub_cisco_function_escapes(channel.data_buf);
+        if(isnull(get_kb_item(kb_base + "/post_login_buffer")))
+          replace_kb_blob(name:kb_base + "/post_login_buffer", value:post_login_buffer);
+        channel.clear_data_buf();
+        this.fresh_shell = FALSE;
+        this.timed_out = FALSE;
+
+        # Cisco ISE prepends a <CR> to the prompt to keep the display
+        # clean if multiple prompts are issued, such as when output
+        # from a disconnected session is replayed in the output as it
+        # gets reconnected.  The easiest way to deal with this is to 
+        # convert <CR>s to <LF>s
+        post_login_buffer = str_replace(find:'\r', replace:'\n', string:post_login_buffer);
+
+        lines = split(post_login_buffer, sep:'\n', keep:FALSE);
+        this.cmd_prompt = lines[max_index(lines)-1];
+        if('\n' >< this.cmd_prompt)
+          this.cmd_prompt = str_replace(find:'\n', replace:'', string:this.cmd_prompt);
+
+        # There will be a bunch of spaces echoed from pagination in the banner, remove all but one.
+        if(_BANNER_PAGINATION_SPACES)
+          this.cmd_prompt = str_replace(find:'  ', replace:'', string:this.cmd_prompt);
+
+        if(isnull(get_kb_item(kb_base + "/cmd_prompt")))
+          replace_kb_blob(name:kb_base + "/cmd_prompt", value:cmd_prompt);
+
+        if(strlen(this.cmd_prompt) == 0)
+        {
+          session.set_cmd_error(obj_ch_id +
+            "Unable to detect command prompt on shell.");
+          last_cmd_error = TRUE;
+          return NULL;
+        }
+
+        dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + 'Detected command prompt  "' + this.cmd_prompt + '".');
+
+        this.settings['cmd_prompt'] = this.cmd_prompt;
+      }
+
+      this.cmd_last = command + '\n';
+      session.reset_cmd_interrupted();
+
+      dbg::detailed_log(lvl:1, src:fn, msg:"sending command: " + cmd_last);
+      channel.clear_data_buf();
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _ADEOS_CMD_STATE_SEND_REQ;
+      dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + "cmd_state:_ADEOS_CMD_STATE_SEND_REQ(" + this.cmd_state + ")");
+      channel.window_send_data(data:cmd_last);
+      session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @adeos_shell_handler_incoming_data_timeout_or_prompt_cb,
+        channel        : channel,
+        cmd_timeout    : this.cmd_timeout
+      );
+
+      var ret = NULL;
+
+      if(channel && channel.data_buf )
+      {
+        ret = scrub_cisco_function_escapes(channel.data_buf);
+
+        if ( this.cmd_state != _ADEOS_CMD_STATE_AT_PROMPT )
+        {
+          session.set_cmd_error(obj_ch_id +
+            "Unable to return to command prompt after last command.");
+          this.last_cmd_error = TRUE;
+          return NULL;
+        }
+        ret = str_replace(string:ret, find:command, replace:'');
+
+        ret = chomp(string_reverse(chomp(string_reverse(remove_cmd_prompt(cmd_res:ret)))));
+
+      }
+      cmd_logger.add(
+        cmd                : this.cmd_last,
+        response           : ret,
+        error              : session.cmd_error,
+        priv_escl_failed   : FALSE,                     # exit on failed privesc
+        user               : session.user
+      );
+
+      return ret;
+    }
+
+    ##
+    # Removed the command prompt from the output
+    #
+    # @param [cmd_res:string] command results
+    #
+    # @return the command output stripped of the prompt
+    ##
+    public function remove_cmd_prompt(cmd_res)
+    {
+      var idx = stridx(cmd_res, this.cmd_prompt);
+      if(idx < 1)
+        return cmd_res;
+
+      return substr(cmd_res, 0, idx-1);
+    }
+
+    ##
+    # Determines if the shell is back at the command prompt.
+    #
+    # @param [buf:data] the incoming data buffer
+    # @anonparam First the channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt, else implicitly returns NULL
+    ##
+    function at_cmd_prompt(buf)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      var lines = split(buf, sep:'\n', keep:FALSE);
+      var last_line = lines[max_index(lines)-1];
+      if(this.cmd_prompt && this.cmd_prompt >< last_line)
+      {
+        this.set_cmd_state(new_cmd_state: _ADEOS_CMD_STATE_AT_PROMPT, channel);
+
+        return TRUE;
+      }
+    }
+
+    ##
+    # Determines if the shell is back at the session recovery prompt.
+    #
+    # @param [buf:data] the incoming data buffer
+    # @anonparam First the channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt, else implicitly returns NULL
+    ##
+    function at_session_recovery_prompt(buf)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      var lines = split(buf, sep:'\n', keep:FALSE);
+      var last_line = lines[max_index(lines)-1];
+      if(_ADEOS_SESSION_RECOVERY_PROMPT >< last_line) return TRUE;
+    }
+
+    ##
+    # Determines if the shell is at the prompt or a timeout has occurred
+    #
+    # @param [channel:object] the channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt or timed out, FALSE if neither
+    ##
+    public function at_prompt_or_timeout(session, channel)
+    {
+      if(at_cmd_prompt(buf:channel.data_buf, channel)) return TRUE;
+      if(at_session_recovery_prompt(buf:channel.data_buf, channel)) return TRUE;
+      return check_inactivity_timeout(session: session, channel:channel);
+    }
+
+    ##
+    # Determines if there has been a timeout to inactivity
+    #
+    # @param [channel:object] the channel belonging to the shell handler
+    #
+    # @return TRUE if timeout reached, else FALSE
+    ##
+    public function check_inactivity_timeout(session, channel)
+    {
+      var fn = 'cisco_adeos_shell_handler.check_inactivity_timeout';
+      if ( isnull(session) )
+        session = channel.session;
+
+      if ( channel && channel.data_buf && strlen(channel.data_buf) > 0 )
+      {
+        var new_md5 = MD5( channel.data_buf );
+        if ( this.last_md5 != new_md5 )
+        {
+          if(!isnull(channel) && !isnull(session))
+          {
+            dbg::detailed_log(lvl:2, src:fn, msg:"New data found, updating last_buffer_update_ts");
+          }
+          this.last_md5 = new_md5;
+          this.last_buffer_update_ts = unixtime();
+          return FALSE;
+        }
+
+        #Cisco sends these when it is waiting for input
+        if(session.last_packet.type == PROTO_SSH2_MSG_CHANNEL_REQUEST &&
+           "keepalive@openssh.com" >< session.last_packet.payload)
+        {
+          dbg::detailed_log(lvl:3, src:fn, msg:"A keepalive@openssh.com channel request indicates the server is waiting for a response.");
+
+          return TRUE;
+        }
+      }
+      if (channel && (unixtime() - this.last_buffer_update_ts) >= this.inactivity_timeout)
+      {
+        if(session)
+        {
+          dbg::detailed_log(lvl:1, src:fn, msg:"Inactivity timeout.");
+        }
+        this.timed_out = TRUE;
+        return TRUE;
+      }
+      else if(isnull(channel))
+      {
+        return TRUE;
+      }
+
+      return FALSE;
+    }
+  }
+}

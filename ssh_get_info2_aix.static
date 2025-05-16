@@ -1,0 +1,353 @@
+#TRUSTED 5af1e15260c45241ad4fde390a39b448d8ecf5e4ddf68125238b6499b419f25ee2f86d84cd0f738767e6e9b79cdb296ec1e899907548e67af63096fb042753ddd97a4c91ebbdeecc4608cf2313132bb06953bda5e723ac7b36293974b7ade89e7235dfc19599b6394f433b09f2cf7a299de44f14e292e0c15ece9e3ca6e8276246da5aa88623de07086f0ab8f96a7f7dfe486ee56b6a6e1b234a7a09639abc75a0ce6ea252d3cd4d94ea0479f566683acd48440ce7afb541783bc981639125caad63f7b37a2978af7288a14375ef05ba2ceb5dac14c18dbad0cc605545b092cb3426a036f630689a12ac9259a728296f1ced37111f58c91b752c54c52ad3fad8e5ad509ddccb18bca306a9f695616fb64dcf7bd91f116691293c5c3669cefc679bb997dd2e99a53260dace7eec3cf4c3f8edc899c91c881470540acf3536d579972179fd2fdb4f8e908b620fab6379be3cc6817b5fedabdb6a80aa06d29f886abdb07606a01603df062a35fb380ee20639a7a85ff8538f1730b5320d2e547640340b8546b3c985cdf84956b7be2e2eec80a0eaf341ee08f44031b1e827b835912e2713d99b7b2e9dcd500984608921c3088396187c710bf5b6017fb6d470008148f1f39fa8c9e4b5c37bb02d1e8fab49da31410b7d161af7371693f29a13a878f71437a3cba6d41feec62183730be4137d5c6e5f581f606af84b79c3123f043b
+#TRUST-RSA-SHA256 54bae5251ca27d4eb60ba29d17335dc41a3ab38b5423c75354718426663f93ee2ba256a50c945f50922809e0571aae392f3db847ca62aaeea2bae0c32d5496989110d2326700dc6ef7bc1ff995a76bc7ca4dbe07ec41b67d674904302af5354310ef414e270119aa08e4f85b6dccf1089bc3eb25402eb9503634ca873910517d067b8b1e28ac647c2c40af9e02252aba64f6dd66a4546b5ff8918f443001208078ef9d7edc7e4ca3633b1129f178bfa92b195d5aed2be456e28055a186784174133593916f7d9e14990abef64ed8f61a5df46bb2558c6ae07925fe9e0bcf92089f2e7daa8224e806d7abc213419bdecb768e726bb3b599b0080d4913191effc29e742db3006fb20a425aea9bd071fc768511e9c30a556a05c99d7d8a912822b9a3c7de75c6ae70a6a55ae9ac5bad1954fb7245065a2060e465ec1aec6ea981886b82fff25c519395776582d7862d42cba1743abbc7171a0af94b14344c34f00b2e9156c38d56c061cb51caae99525b39c9147042bb2a4b74cfb927f91c461f5263375f94b5a12a582b7548f051e5b45dd9927fc569c3203ee80b53a9750b9710aeb6bdf1c7370784e172bb074ca851bf5719ddfc01345077a98d6ce0831a7860a17bdac0fb6aa9a011d7265cef9c947686e930a5387c309ed31deb82626d12a3a59f415ba7528ca3b583a1a4fa1df6a65045dfae9e9212663ccb522769c94be4
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.14
+
+function aix_pre_check_fail()
+{
+  # we've already checked that the host is not AIX previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_aix'])
+    return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not AIX if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:aix_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+# callback for systems with "AIX..." in uname
+function handle_aix(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var aix_version_pattern, hardware, items, os_name, oslevel_buf;
+  local_var oslevelsp_buf, match, error_buf;
+  local_var emgr_buf, emgr_err_reason;
+  local_var instfix_buf, instfix_err_reason, instfix, instfixes;
+  local_var ifix, ifix_count, ifix_pat, ifix_match, ifix_abs;
+  local_var ifix_key, patch_key, ifix_name, ifix_value;
+  if (empty_or_null(host_info_key_val['uname-a_reported'])) {
+    report += '\nThe output of "uname -a" is :\n' + cmd_res;
+    host_info_key_val['uname-a_reported'] = TRUE;
+  }
+
+  report += '\nLocal checks have been enabled for this host.';
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  aix_version_pattern = ".*AIX[ ]+.*[ ]+([0-9]+[ ]+[0-9]+)[ ]+.*";
+
+  release = ereg_replace(pattern:aix_version_pattern, replace:"\1", string:cmd_res);
+  items = split(release, sep:" ", keep:0);
+  release = "AIX-" + items[1] + "." + items[0];
+  replace_kb_item(name:"Host/AIX/version", value:release);
+
+  os_name = str_replace(find:"-", replace:" ", string:release);
+
+  # Determine whether or not we are running as root (uid=0).
+  var max_privs = 0;
+  var res = run_command(cmd:"id", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(res && res =~ "(^|\s)uid=0\(")
+    max_privs = 1;
+
+  if(!isnull(session))
+    replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+  oslevel_buf = run_command(
+        cmd:'/usr/bin/oslevel -r',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  if (oslevel_buf && strlen(oslevel_buf))
+  {
+    match = pregmatch(pattern:"^([0-9][0-9][0-9][0-9])-([0-9][0-9])$", string:oslevel_buf);
+    if (!isnull(match)) os_name += " TL " + int(match[2]);
+
+    replace_kb_item(name:"Host/AIX/oslevel", value:oslevel_buf);
+  }
+
+  oslevelsp_buf = run_command(
+        cmd:'/usr/bin/oslevel -s',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  if (oslevelsp_buf && strlen(oslevelsp_buf))
+  {
+    match = pregmatch(pattern:"^([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])-([0-9][0-9][0-9][0-9])$", string:oslevelsp_buf);
+    if (!isnull(match))
+    {
+      if (" TL " >!< os_name) os_name += " TL " + int(match[2]);
+      os_name += " SP " + int(match[3]);
+    }
+
+    replace_kb_item(name:"Host/AIX/oslevelsp", value:oslevelsp_buf);
+  }
+
+  report += '\n' + 'The remote AIX system is : ' + os_name +
+            '\n';
+
+  # Check for oslevel command errors
+  if ('oslevel' >< oslevel_buf || 'oslevel' >< oslevelsp_buf )
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because the command \'oslevel\' failed to produce useful results.';
+    failure_kb_msg = "'oslevel' failed";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  # Execute the emgr command, and capture the stderr as well as stdout
+  # Note that this data is collected, but no longer used
+  # AIX ifixes information collected by new 'instfix -it i -v' command just below
+  emgr_buf = run_command(
+        cmd:"/usr/sbin/emgr -l 2>&1",
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  emgr_err_reason = "";
+  if ( emgr_buf && strlen (emgr_buf) )
+  {
+    # verify that buf contains appropriate text
+    if ( ("There is no efix data on this system." >< emgr_buf) || ("INSTALL TIME" >< emgr_buf) )
+    {
+      replace_kb_item(name:"Host/AIX/ifixes", value:emgr_buf);
+    }
+    else
+    {
+      emgr_err_reason =
+'The emgr command experienced an error during execution. Verify that
+the current user has execute permissions for the emgr command.';
+      error_buf = emgr_buf;
+      if (strlen(error_buf) > 100) error_buf = substr(error_buf, 0, 99);
+      emgr_err_reason = emgr_err_reason + " Error message = [" + error_buf + "]";
+      replace_kb_item(name:'Host/AIX/emgr_failure', value:emgr_err_reason);
+    }
+  }
+  else
+  {
+    emgr_err_reason =
+'The emgr command experienced an error during execution. Verify that
+the current user has execute permissions for the emgr command.';
+    replace_kb_item(name:'Host/AIX/emgr_failure', value:emgr_err_reason);
+  }
+
+  # Execute the 'instfix -it i -v' command, and capture the stderr as well as stdout
+  instfix_buf = run_command(
+        cmd:"/usr/sbin/instfix -it i -v 2>&1",
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  instfix_err_reason = "";
+  if ( instfix_buf && strlen (instfix_buf) )
+  {
+    ifix_count = 0;
+
+    # verify that buf contains appropriate text
+    if ( ("Abstract" >< instfix_buf) && ("associated with" >< instfix_buf) )
+    {
+      ifix_pat = "Interim fix '(\S+)' associated with (\S+) is installed";
+
+      instfixes = split(instfix_buf);
+      foreach instfix (instfixes)
+      {
+	if ("Abstract" >< instfix)
+        {
+	  ifix_abs = instfix;
+	}
+	else
+	{
+          ifix_match = pregmatch(string:instfix, pattern:ifix_pat);
+          if (!empty_or_null(ifix_match))
+          {
+            ifix[ifix_match[1]][ifix_match[2]] = ifix_abs;
+	  }
+	}
+      }
+
+      foreach ifix_key (keys(ifix))
+      {
+        ifix_value = NULL;
+        ifix_name = strcat("Host/AIX/ifixes_list/", ifix_key);
+        foreach patch_key (keys(ifix[ifix_key]))
+	{
+          if (empty_or_null(ifix_value))
+            ifix_value = strcat(patch_key, " - ", ifix[ifix_key][patch_key]);
+          else
+            ifix_value = strcat(ifix_value, patch_key, " - ", ifix[ifix_key][patch_key]);
+        }
+
+        if (!empty_or_null(ifix_name) && !empty_or_null(ifix_value))
+        {
+          replace_kb_item(name:ifix_name, value:ifix_value);
+        }
+      }
+    }
+    else
+    {
+      instfix_err_reason =
+'The instfix command experienced an error during execution. Verify that
+the current user has execute permissions for the instfix command.';
+      error_buf = instfix_buf;
+      if (strlen(error_buf) > 100) error_buf = substr(error_buf, 0, 99);
+      instfix_err_reason = instfix_err_reason + " Error message = [" + error_buf + "]";
+      replace_kb_item(name:'Host/AIX/instfix_failure', value:instfix_err_reason);
+    }
+  }
+  else
+  {
+    instfix_err_reason =
+'The instfix command experienced an error during execution. Verify that
+the current user has execute permissions for the instfix command.';
+    replace_kb_item(name:'Host/AIX/instfix_failure', value:instfix_err_reason);
+  }
+
+  # Gather lslpp info
+  var lslpp_buf = run_command(
+        cmd:'lslpp -Lc',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+
+  if ( lslpp_buf && strlen(lslpp_buf) )
+  {
+    # Add appropriate error message if there was an issue with instfix command
+    if (get_kb_item("Host/AIX/instfix_failure"))
+      report += '
+
+iFix checks have been disabled because of the following error :
+' + instfix_err_reason;
+
+    replace_kb_item(name:"Host/AIX/lslpp", value:lslpp_buf);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_aix.static', value: 244);
+    if (! empty_or_null(host_info_key_val['uname-a_unrecognized'])) {
+      delete_element(idx:'uname-a_unrecognized', var:host_info_key_val);
+    }
+    report += '\nOS Security Patch Assessment is available for this host.';
+    return found_aix(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  var err_msg;
+  if (session.cmd_error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+  }
+
+  if (! lslpp_buf || !strlen(lslpp_buf) )
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because the command \'lslpp
+-Lc\' failed to produce any results.';
+    failure_kb_msg = "'lslpp -Lc' failed";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  return NULL;
+}
+
+function found_aix(session, use_shell_handler, &channel)
+{
+  # misc_calls_and_exit() commands
+  cmd_kb(channel:channel,
+         'Host/NSM/guiSvr/version_src',
+         '/etc/init.d/guiSvr version',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/NSM/devSvr/version_src',
+         '/etc/init.d/devSvr version',
+         session,
+         use_shell_handler);
+
+  var ifconfig_buf = run_command(
+        cmd:'/etc/ifconfig -a',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  if ( ifconfig_buf && "not found" >!< ifconfig_buf ) {
+    replace_kb_item(name:"Host/ifconfig", value:ifconfig_buf);
+  }
+
+  cmd_kb(channel:channel,
+         'Host/netstat-ian',
+         '/usr/bin/netstat -ian',
+         session,
+         use_shell_handler);
+
+  # Get processor type
+  var processor_buf = run_command(
+        cmd:"prtconf | grep -i 'Processor Type'",
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  if ( processor_buf && 'Processor Type' >< processor_buf ) {
+    replace_kb_item(name:"Host/AIX/processor", value:processor_buf);
+  }
+
+  if (agent())
+  {
+    var ip_addr = agent_get_ip();
+    if (!isnull(ip_addr))
+      report_xml_tag(tag:"host-ip", value:ip_addr);
+  }
+
+  cmd_kb(channel:channel,
+         'Host/hostname',
+         '/bin/hostname',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/last_reboot',
+         '/usr/bin/last reboot 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/uname-r',
+         'uname -r',
+         session,
+         use_shell_handler);
+
+  return NULL;
+}
+
+function handle_not_aix_os(session, use_shell_handler, &channel, cmd_res)
+{
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  if (use_shell_handler) store_shell_info();
+  host_info_key_val['host_not_aix'] = TRUE;
+}

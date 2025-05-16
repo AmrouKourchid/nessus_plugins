@@ -1,0 +1,289 @@
+##
+# (C) Tenable, Inc.
+#
+# The descriptive text and package checks in this plugin were
+# extracted from Amazon Linux 2 Security Advisory ALASKERNEL-5.10-2022-010.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(160428);
+  script_version("1.8");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2024/12/17");
+
+  script_cve_id(
+    "CVE-2021-47619",
+    "CVE-2022-0330",
+    "CVE-2022-0492",
+    "CVE-2022-48747",
+    "CVE-2022-48748",
+    "CVE-2022-48754",
+    "CVE-2022-48757",
+    "CVE-2022-48760",
+    "CVE-2022-48761",
+    "CVE-2022-48767",
+    "CVE-2022-48769",
+    "CVE-2022-48770"
+  );
+
+  script_name(english:"Amazon Linux 2 : kernel (ALASKERNEL-5.10-2022-010)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote Amazon Linux 2 host is missing a security update.");
+  script_set_attribute(attribute:"description", value:
+"The version of kernel installed on the remote host is prior to 5.10.96-90.460. It is, therefore, affected by multiple
+vulnerabilities as referenced in the ALAS2KERNEL-5.10-2022-010 advisory.
+
+    2024-12-05: CVE-2022-48757 was added to this advisory.
+
+    2024-08-01: CVE-2022-48760 was added to this advisory.
+
+    2024-08-01: CVE-2022-48761 was added to this advisory.
+
+    2024-08-01: CVE-2022-48748 was added to this advisory.
+
+    2024-08-01: CVE-2022-48770 was added to this advisory.
+
+    2024-08-01: CVE-2022-48754 was added to this advisory.
+
+    2024-08-01: CVE-2022-48767 was added to this advisory.
+
+    2024-08-01: CVE-2022-48769 was added to this advisory.
+
+    2024-08-01: CVE-2021-47619 was added to this advisory.
+
+    2024-08-01: CVE-2022-48747 was added to this advisory.
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    i40e: Fix queues reservation for XDP (CVE-2021-47619)
+
+    A random memory access flaw was found in the Linux kernel's GPU i915 kernel driver functionality in the
+    way a user may run malicious code on the GPU. This flaw allows a local user to crash the system or
+    escalate their privileges on the system. (CVE-2022-0330)
+
+    The cgroup release_agent is called with call_usermodehelper. The function call_usermodehelper starts the
+    release_agent with a full set of capabilities. Therefore require capabilities when setting the
+    release_agent. (CVE-2022-0492)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    block: Fix wrong offset in bio_truncate() (CVE-2022-48747)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    net: bridge: vlan: fix memory leak in __allowed_ingress (CVE-2022-48748)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    phylib: fix potential use-after-free (CVE-2022-48754)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    net: fix information leakage in /proc/net/ptype (CVE-2022-48757)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    USB: core: Fix hang in usb_kill_urb by adding memory barriers (CVE-2022-48760)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    usb: xhci-plat: fix crash when suspend if remote wake enable (CVE-2022-48761)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    ceph: properly put ceph_string reference after async create attempt (CVE-2022-48767)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    efi: runtime: avoid EFIv2 runtime services on Apple x86 machines (CVE-2022-48769)
+
+    In the Linux kernel, the following vulnerability has been resolved:
+
+    bpf: Guard against accessing NULL pt_regs in bpf_get_task_stack() (CVE-2022-48770)
+
+Tenable has extracted the preceding description block directly from the tested product security advisory.
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/AL2/ALASKERNEL-5.10-2022-010.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2021-47619.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-0330.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-0492.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48747.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48748.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48754.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48757.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48760.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48761.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48767.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48769.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/cve/html/CVE-2022-48770.html");
+  script_set_attribute(attribute:"see_also", value:"https://alas.aws.amazon.com/faqs.html");
+  script_set_attribute(attribute:"solution", value:
+"Run 'yum update kernel' to update your system.");
+  script_set_cvss_base_vector("CVSS2#AV:L/AC:M/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:F/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:F/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2022-0492");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+  script_set_attribute(attribute:"metasploit_name", value:'Docker cgroups Container Escape');
+  script_set_attribute(attribute:"exploit_framework_metasploit", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2022/02/04");
+  script_set_attribute(attribute:"patch_publication_date", value:"2022/02/05");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2022/05/02");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:bpftool");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:bpftool-debuginfo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-debuginfo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-debuginfo-common-aarch64");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-debuginfo-common-x86_64");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-headers");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-livepatch-5.10.96-90.460");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-tools");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-tools-debuginfo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:kernel-tools-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:perf");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:perf-debuginfo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:python-perf");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:amazon:linux:python-perf-debuginfo");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:amazon:linux:2");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Amazon Linux Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2022-2024 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("kpatch.nasl", "ssh_get_info.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/AmazonLinux/release", "Host/AmazonLinux/rpm-list");
+
+  exit(0);
+}
+
+include("rpm.inc");
+include("hotfixes.inc");
+
+if (!get_kb_item("Host/local_checks_enabled")) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+
+var alas_release = get_kb_item("Host/AmazonLinux/release");
+if (isnull(alas_release) || !strlen(alas_release)) audit(AUDIT_OS_NOT, "Amazon Linux");
+var os_ver = pregmatch(pattern: "^AL(A|\d+|-\d+)", string:alas_release);
+if (isnull(os_ver)) audit(AUDIT_UNKNOWN_APP_VER, "Amazon Linux");
+os_ver = os_ver[1];
+if (os_ver != "2")
+{
+  if (os_ver == 'A') os_ver = 'AMI';
+  audit(AUDIT_OS_NOT, "Amazon Linux 2", "Amazon Linux " + os_ver);
+}
+
+if (!get_kb_item("Host/AmazonLinux/rpm-list")) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+if (get_one_kb_item("Host/kpatch/kernel-cves"))
+{
+  set_hotfix_type("kpatch");
+  var cve_list = make_list("CVE-2021-47619", "CVE-2022-0330", "CVE-2022-0492", "CVE-2022-48747", "CVE-2022-48748", "CVE-2022-48754", "CVE-2022-48757", "CVE-2022-48760", "CVE-2022-48761", "CVE-2022-48767", "CVE-2022-48769", "CVE-2022-48770");
+  if (hotfix_cves_check(cve_list))
+  {
+    audit(AUDIT_PATCH_INSTALLED, "kpatch hotfix for ALASKERNEL-5.10-2022-010");
+  }
+  else
+  {
+    __rpm_report = hotfix_reporting_text();
+  }
+}
+
+var REPOS_FOUND = TRUE;
+var extras_list = get_kb_item("Host/AmazonLinux/extras_label_list");
+if (isnull(extras_list)) REPOS_FOUND = FALSE;
+var repository = '"amzn2extra-kernel-5.10"';
+if (REPOS_FOUND && (repository >!< extras_list)) exit(0, AFFECTED_REPO_NOT_ENABLED);
+
+var pkgs = [
+    {'reference':'bpftool-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'bpftool-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'bpftool-debuginfo-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'bpftool-debuginfo-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-debuginfo-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-debuginfo-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-debuginfo-common-aarch64-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-debuginfo-common-x86_64-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-devel-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-devel-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-headers-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-headers-5.10.96-90.460.amzn2', 'cpu':'i686', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-headers-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-livepatch-5.10.96-90.460-1.0-0.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-livepatch-5.10.96-90.460-1.0-0.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-tools-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-tools-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-tools-debuginfo-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-tools-debuginfo-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-tools-devel-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'kernel-tools-devel-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'perf-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'perf-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'perf-debuginfo-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'perf-debuginfo-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'python-perf-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'python-perf-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'python-perf-debuginfo-5.10.96-90.460.amzn2', 'cpu':'aarch64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'},
+    {'reference':'python-perf-debuginfo-5.10.96-90.460.amzn2', 'cpu':'x86_64', 'release':'AL2', 'rpm_spec_vers_cmp':TRUE, 'exists_check':'kernel-5.10'}
+];
+
+var flag = 0;
+foreach var package_array ( pkgs ) {
+  var reference = NULL;
+  var _release = NULL;
+  var sp = NULL;
+  var _cpu = NULL;
+  var el_string = NULL;
+  var rpm_spec_vers_cmp = NULL;
+  var epoch = NULL;
+  var allowmaj = NULL;
+  var exists_check = NULL;
+  var cves = NULL;
+  if (!empty_or_null(package_array['reference'])) reference = package_array['reference'];
+  if (!empty_or_null(package_array['release'])) _release = package_array['release'];
+  if (!empty_or_null(package_array['sp'])) sp = package_array['sp'];
+  if (!empty_or_null(package_array['cpu'])) _cpu = package_array['cpu'];
+  if (!empty_or_null(package_array['el_string'])) el_string = package_array['el_string'];
+  if (!empty_or_null(package_array['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = package_array['rpm_spec_vers_cmp'];
+  if (!empty_or_null(package_array['epoch'])) epoch = package_array['epoch'];
+  if (!empty_or_null(package_array['allowmaj'])) allowmaj = package_array['allowmaj'];
+  if (!empty_or_null(package_array['exists_check'])) exists_check = package_array['exists_check'];
+  if (!empty_or_null(package_array['cves'])) cves = package_array['cves'];
+  if (reference && _release && (!exists_check || rpm_exists(release:_release, rpm:exists_check))) {
+    if (rpm_check(release:_release, sp:sp, cpu:_cpu, reference:reference, epoch:epoch, el_string:el_string, rpm_spec_vers_cmp:rpm_spec_vers_cmp, allowmaj:allowmaj, cves:cves)) flag++;
+  }
+}
+
+if (flag)
+{
+  var extra = rpm_report_get();
+  if (!REPOS_FOUND) extra = rpm_report_get() + report_repo_caveat();
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_WARNING,
+      extra      : extra
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, "bpftool / bpftool-debuginfo / kernel / etc");
+}

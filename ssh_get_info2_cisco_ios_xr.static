@@ -1,0 +1,217 @@
+#TRUSTED 5710cbd1eecc1b49445b1cef3018b142d010659bbb453e636c35d5fcef017b33c614fa34176ee433372d6b1a24367f3f573a2351306e9a6ad91cf6e885168c9b837bc7a3e4c0405db2743f12e9fdb8a4adc6c9d184640db5f142fa94181aae4cc4c00df540d825da7307dd3e7e5d11fa269aae89d9712bd8bc96daf52b493fee6b82bbae7d42d223ca552b000ca6636a4dda9d650a40ad92b94d6d437af8393f0cf49f4f7f06fd1aaf227f25384577514d95266f9095f9b373f11b19fa67f1e954c6fec88b9f8619c03cc434b22685ae282e408f271c26d7258613efa5784b96dd4246eca36b0a7d68133e5144cbed3ea8cf2163f2bd27457d7aea22946949ab53f6ed0e3f071c8c70698b4d8c07f1f2ca2ba60cbbba9ded286b88f1ee98bec1cda7c84df894063485547e8d51029ae76f84755959ab4ad1054bad2d12952d924367390e42301adecaf8c59423d25ee1b9b4a59cabf2e993b434edae27856844745360a651a6b9a8d0376d07c373a50c1946404a0a1e55f700602f2dd03f7ab0cff3d92be07ad08f9291d832d3ec846781336bb6abeab8de8bd0ea67edaedfdae8be90a823e084da30eed6c4e678b7e17e417405a03d654104998e165bdf6b27411d79b9fc2041a865b9a4fda6ed08c4c9adfc00c463ffaba00b90d4e9584350886690cf795b73dc23735dc82157132e8785a7cd83c00ca3f35f14c33848f886
+#TRUST-RSA-SHA256 9d3626734fb2fc383065a9cb512359868ed336c82e480452f64edc334ea6a9dc7375b4902b06d81cfd0f41d07afb25eb6e671f45bc554baeb190259786eadc575fc9c7668f793fb57cb87bbe1d8098534a0f33d7bfe4a2de97ffc516665940abfe59aad108e724d22f7976eabb12a19e62eb470f1e80e22e8df29ec93c65d376d9362e610dfb46d3594b7b208ceb394ff5b53b543ee9df135fe1c09ee973aba373d00555893516252fdabbcff8ccbf539acd43b39e511996338ec1adc17315072940f7d8d013e747bac3a6350305882df4355cd2e79d01c46be946bde1c77356d3738076cfd103a3f7d9a743f0169a0834d8f90540c7a9d092ef1582ff1368e70c706fb0b7d73ddaba54ed793153a772387125551a252d1d55536d2dc0e38f501992ee51b023b81d9d5c2ac2f4d57d4578b78293edbbea6e35b68491b866d5094169a78d23096b5b7abd2b412068cca7a791d8f4d1377fc42330035096b9e4a28917ff2f9ccab28991b0ac338881a3741af216575baf769ba9d913de8197419f8ede644eb6e7a05a38bbaa846e0e799888e704c8f2c39b9bb26b30726396193ecb52081c54e036c191e9fd9bce837ebc2cadd88214ad6a7475c40e70cfa9fd2b29d65a8da7214d9f8bbcf4563a228b83947f7025b0b3aa1666797b19c773614bd83732fa8ebffd5a5f1515fb7b12eac711ddda968f1a30b82e36a1e8a5227304
+
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.18
+
+#
+# ios_xr_pre_check_fail
+# check if this is a ios_xr device based on information collected
+#
+function ios_xr_pre_check_fail()
+{
+  # have we already checked that the host is not ios_xr?
+  if(host_info_key_val['host_not_ios_xr'])
+  {
+    # already checked that host is not ios_xr, no need to check again
+    return TRUE;
+  }
+  if(host_info_key_val['showversion_brief_unrecognized'] &&
+     host_info_key_val['showversion_brief_unrecognized'] !~ "IOS XR")
+    return TRUE;
+
+  if(host_info_key_val['remote_ssh_banner'] && '-Cisco-2' >!< host_info_key_val['remote_ssh_banner'])
+  {
+    # IOS-XR devices with have -Cisco-2 in the banner
+    return TRUE;
+  }
+
+  # Not IOS-XR if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_nxos() ||
+      is_cisco_ucos() ||
+      is_timos_userauth() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "ios_xr..." in show version
+#
+function handle_ios_xr(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var version, cmd, show_running, i, cmd_prompt, cmd_output, priv;
+  version = pgrep(pattern:"^.*IOS XR.*Version [0-9.]+.*", string:cmd_res);
+
+  report += '\nLocal checks have been enabled for Cisco IOS-XR.' +
+            '\n';
+
+  if(!version)
+  {
+    failure_kb_msg =
+      'The device appears to be Cisco IOS-XR, however it was not possible\n'+
+      'to determine the installed version. OS Security Patch Assessment is not available.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  set_kb_item(name:"Host/Cisco/IOS-XR", value:version);
+  set_kb_item(name:"Host/Cisco/show_ver", value:cmd_res);
+
+  show_running = run_command(cmd:"show running", session:session,
+    use_shell_handler:use_shell_handler, channel:channel);
+  # This should catch most of the errors
+  if(
+    use_shell_handler && channel.shell_handler.last_cmd_error &&
+    session.cmd_error
+  )
+  {
+    report +=
+      '\n' + "Note that the user '" + get_kb_item("Secret/SSH/login") +
+      "' is not in a task group that allows running" +
+      '\n' + "the 'show running' command." + '\n';
+    set_kb_item(name:"Host/Cisco/show_running/errmsg",
+      value:cmd_prompt+'show running\r\n'+session.cmd_error);
+  }
+  # This will catch the remainder
+  else if (
+    show_running &&
+    !pgrep(pattern:"(^Building configuration|IOS XR Configuration)",
+      string:show_running) &&
+    ("ERROR: % " >< show_running) || '\n% ' >< show_running
+  )
+  {
+    i = stridx(show_running, '^\n% ');
+    if (i == -1) i = stridx(show_running, '^\nERROR: % ');
+
+    # nb: make sure the error marker appears either at the start or
+    #     after a series of spaces.
+    if (
+      i == 0 ||
+      ( i > 0 &&
+        preg(pattern:"^ +$", string:substr(show_running, 0, i-1)) )
+    )
+    {
+      if(use_shell_handler)
+        cmd_prompt = channel.shell_handler.cmd_prompt;
+      if (isnull(cmd_prompt)) cmd_prompt = "";
+      set_kb_item(name:"Host/Cisco/show_running/errmsg",
+        value:cmd_prompt+cmd+'\r\n'+show_running);
+    }
+    show_running = NULL;
+  }
+  if (show_running)
+    set_kb_item(name:"Secret/Host/Cisco/show_running", value:show_running);
+
+  var max_privs = 0;
+
+  cmd_output = run_command(
+                cmd:'show privilege',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output && "Current privilege level is" >< cmd_output)
+  {
+    priv = pregmatch(pattern:'Current privilege level is ([0-9]*)', string:cmd_output);
+    if(priv && priv[1])
+    {
+      priv = int(priv[1]);
+
+      if(priv == 15)
+        max_privs = 1;
+
+      set_kb_item(name:'Host/Cisco/show_privilege', value:priv);
+    }
+  }
+
+  if(!isnull(session))
+    replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+  cmd_output = run_command(
+                cmd:'show running-config',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output)
+    set_kb_item(name:"Secret/Host/Cisco/Config/show_running-config", value:cmd_output);
+  cmd_output = run_command(
+                cmd:'show running-config all',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output)
+    set_kb_item(name:"Secret/Host/Cisco/Config/show_running-config_all", value:cmd_output);
+
+  cmd_output = run_command(
+                cmd:'show install active',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output)
+    set_kb_item(name:"Secret/Host/Cisco/Config/show_install_active", value:cmd_output);
+
+  cmd_output = run_command(
+                cmd:'show platform',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output)
+    set_kb_item(name:"Host/Cisco/Config/show_platform", value:cmd_output);
+
+  cmd_output = run_command(
+                cmd:'show inventory',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output)
+    set_kb_item(name:"Host/Cisco/Config/show_inventory", value:cmd_output);
+
+  sshlib::enable_local_checks();
+  report += '\nOS Security Patch Assessment is available for Cisco IOS-XR.';
+
+}
+
+#
+# callback for systems without "ios_xr..." in show version
+#
+function handle_not_ios_xr(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion_brief", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_brief_unrecognized'] = cmd_res;
+  }
+  host_info_key_val['host_not_ios_xr'] = TRUE;
+}

@@ -1,0 +1,172 @@
+#TRUSTED 75ff530ec186d20d02a4038f0afe58e5247f8e8a67e6fc48123a682c039b189ef111d7a20b2e54a6a362925c27943edd628d4b77fe2be5ace84e1cb2e1097ba5a54dbe5150eb65b4c23f29f3f6903532519d6c170b7c9a4a883e55e7443b4e96ea00b504bc35fcf3cdeca2468b8ee4a310c067d3301f083840af0f877e3492570625e18b4f56e12a068ce5e6c8d1fd3b1af0765fc2180404d160d0563b0c6d67bd5c6d74fec663589a6e6ac864fc769a4f15c6bbc97b3601c6d3814282653a50692613a29ed86e16d42931afa93e620cf9ba971ca1a65b17bd6bb29493bd1ace0788341fef83a6174afe9380458d0326a11f9abea420ebb46d74689b7129ead6e5ed277e1b345347a2e8f4bfcd8fca5ac4618e1c7db16db86bed92a4ecd8816653fef0b7951da690601b6fddb496b1730166a8ec9472a71271f7159cb539deed65663e2da79858f6e0aebc01cb6ba531d65527f5c460389e151d7ee1094c833908b3193d187a97858d2cef9d0e0cce52529e42ba8176ad7bce76119da54fc795959eb4a1b278eb279cc24eb614eb03e4ece19422e1601da2ca15849d06ca76bd1f95e87ea749e6e248ecf78f9c25e625d81478349fc33f53ddd44ac31c8f5ad687c2f513515a30726834e652637ff6f08d7cd91fc706d37afbcf9ee7a8b2f9f94f8286ab286d065307bff6a09d155f8c66698f2493bebbfc98139293558e72c3
+#TRUST-RSA-SHA256 9b991bac1d406a78e36ae1cbfb442c777535749f08afefa09472b6143ae87b6eae2c0f18a0f95d8bd58a4843dca683211482541f614ad9a1d57ff7698c7ba118a3f2e9c0c58cf1552d4f3b0e4e1de7d5ad57dbaeb51c82b7a29ae53ba9856fc68b2e4f565ae643624477bc8b3b49187e1cee05464f2b099f8a2ba030975ba5824d1f255c05f7941b38378dbc84b7b4255bdaeb98d0a72446ae87759aa5730fac62036f9d1e7a3a5c18f6949d5bf1349610b8c268df658d0c031b015f5243de7e94f28ab38409c0b2f690fead70b9b6aa16b220aaec6897e137c103830be5ffd5d665ba6ea73f329801e8a1132702fcc0468c0a596149ffe79efdd876c0ba6a3019a254c9d0a6bbad1aae37a85f1edf1213759ecf4c8c3bf4fa6923577150e39a0341d19ce15861a117c3c74b28dfcee46a54623052f052d583b6aded56a82259c3721c999b2b29d2922b0574031fc58066de938a67dd220abff261738acba81782e6920a526113b9a446204cd1761c816b4651a308bd9efa912735d1933542e83386d2551bddf6ef438b6112127745e5d07f204a0afa26adac241c553c9766d777fba5e4d3a9704d1d3da9da1b9e39451618c7d14a9de86636b495ae7453984ac712750d02b8d28c16fc9e125b6b0873cd1da04bbdaa3cb2d6d1ee29f4424bf50dafb828284c98e7c33016e75e01aeeb106db06067649110fed4d23c2bff4992
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+#
+# @NOGPL@
+#
+# agent.inc
+# Revision: 1.9
+#
+
+#----------------------------------------------------------------#
+# Function    : _agent_get_unix_ip                               #
+# Description : Determine the IP address of the remote Unix host #
+# Inputs      : none                                             #
+# Return      : IP address of the Unix agent host or NULL        #
+# Notes       : Uses Host/ifconfig KB values to determine the IP #
+#               address.                                         #
+# Usage       : _agent_get_unix_ip();                            #
+#----------------------------------------------------------------#
+function _agent_get_unix_ip()
+{
+  local_var ifconfig, ip_address, extract, pat, patterns;
+  ip_address = NULL;
+
+  ifconfig = get_kb_item("Host/ifconfig");
+
+  if (!isnull(ifconfig))
+  {
+    patterns = make_list(# ifconfig
+                         "(?<!docker)\d\s+L[^\n]+\s+inet addr:(?!127\.)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
+                         # ip addr show
+                         "\d+:\s+.*: <.*,UP,.*>\s+mtu\s+\d+(?:.*)?\n(?:.*)?\n(?:\s+altname.*\n)*\s+inet\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\/\d{1,2}\s+(?:metric\s+\d+\s+)?(?:brd\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+)?scope\s+global",
+                         # OSX ifconfig
+                         "inet\s+((?!127.0.0.1)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+netmask",
+                         # alternate ip addr show output
+                         "\s+inet\s+(?!127\.)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+netmask",
+                         # broadcast representation support
+                         "\s+inet\s+(?!127\.)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\/\d{1,2}\s+brd"
+                        );
+
+    foreach pat (patterns)
+    {
+      extract = pregmatch(pattern:pat, string:ifconfig);
+      if (!isnull(extract))
+      {
+        ip_address = extract[1];
+        break;
+      }
+    }
+  }
+
+ return ip_address;
+}
+
+#----------------------------------------------------------------#
+# Function    : _agent_get_win_ip                                #
+# Description : Determine the IP address of the remote Windows   #
+#               host                                             #
+# Inputs      : none                                             #
+# Return      : IP address of the Windows agent host or NULL     #
+# Notes       : Uses Host/SMB/InterfaceList KB value to          #
+#               determine the IP address. This KB item is set by #
+#               a plugin that requires WMI.                      #
+# Usage       : _agent_get_win_ip();                             #
+#----------------------------------------------------------------#
+function _agent_get_win_ip()
+{
+
+ local_var ip_address, extract, kb;
+ ip_address = NULL;
+ kb = NULL;
+
+ kb = get_kb_item("Host/SMB/InterfaceList");
+ if (kb)
+ {
+    extract = pregmatch(pattern:"IPAddress/IPSubnet = (?!127\.|169\.254\.)([0-9.]+)/", string:kb);
+    if (!isnull(extract))
+        ip_address = extract[1];
+ }
+
+ return ip_address;
+}
+
+#----------------------------------------------------------------#
+# Function    : _agent_get_netstat_ip                            #
+# Description : Determine the IP address of the remote host      #
+# Inputs      : none                                             #
+# Return      : IP address of agent host or NULL                 #
+# Notes       : Uses several netstat related KB items to         #
+#               determine the IP address. We prefer listening    #
+#               services, then active connections.               #
+# Usage       : _agent_get_netstat_ip();                         #
+#----------------------------------------------------------------#
+function _agent_get_netstat_ip()
+{
+  local_var extract, found,ip_address, item, kb, kb_list, netstats, pat, pats;
+  item = NULL;
+  ip_address = NULL;
+  found = FALSE;
+  kb = NULL;
+
+  kb_list = get_kb_list("Netstat/listen-*/tcp4");
+
+  foreach item (kb_list)
+  {
+    extract = pregmatch(pattern:"([0-9.]+):", string:item);
+    if (!isnull(extract) &&
+        extract[1] !~ "^127\." &&
+        extract[1] !~ "^169\.254\." &&
+        extract[1] != "0.0.0.0")
+    {
+      ip_address = extract[1];
+      found = TRUE;
+      break;
+    }
+  }
+
+  if (!found)
+  kb_list = get_kb_list("Netstat/listen-*/udp4");
+
+  foreach item (kb_list)
+  {
+    extract = pregmatch(pattern:"([0-9.]+):", string:item);
+    if (!isnull(extract) &&
+        extract[1] !~ "^127\." &&
+        extract[1] !~ "^169\.254\." &&
+        extract[1] != "0.0.0.0")
+    {
+      ip_address = extract[1];
+      found = TRUE;
+      break;
+    }
+  }
+
+ # This is a last ditch effort to find ESTABLISHED or TIME_WAIT sessions.
+  if (!found)
+  {
+    netstats = make_list("Host/netstat",
+                         "Host/Windows/netstat_an",
+                         "Host/Windows/netstat_ano"
+                        );
+
+    pats = make_list("(?:TCP|UDP|tcp|udp) +(?!0\.0\.0\.0|127\.|169\.254\.)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d{1,5}",
+                     "(?:TCP|tcp|UDP|udp)\s+\d+\s+\d+\s+(?!0\.0\.0\.0|127\.|169\.254\.)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d{1,5}");
+    foreach item (netstats)
+    {
+      kb = get_kb_item(item);
+      foreach pat (pats)
+      {
+        extract = pregmatch(pattern:pat, string:kb);
+        if (!isnull(extract))
+        {
+          ip_address = extract[1];
+          found = TRUE;
+          # breaks the inner loop
+          break;
+        }
+        if (found)
+          #breaks the outer loop
+          break;
+      }
+    }
+  }
+
+  return ip_address;
+}

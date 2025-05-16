@@ -1,0 +1,144 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(211512);
+  script_version("1.8");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/01/24");
+
+  script_cve_id("CVE-2024-0012", "CVE-2024-9474");
+  script_xref(name:"IAVA", value:"2024-A-0750");
+  script_xref(name:"CISA-KNOWN-EXPLOITED", value:"2024/12/09");
+
+  script_name(english:"Palo Alto Networks PAN-OS 10.2.x < 10.2.0-h4 / 10.2.x < 10.2.1-h3 / 10.2.x < 10.2.2-h6 / 10.2.x < 10.2.3-h14 / 10.2.x < 10.2.4-h32 / 10.2.x < 10.2.5-h9 / 10.2.x < 10.2.6-h6 / 10.2.x < 10.2.7-h18 / 10.2.x < 10.2.8-h15 / 10.2.x < 10.2.9-h16 / 10.2.x < 10.2.10-h9 / 10.2.x < 10.2.11-h6 / 10.2.x < 10.2.12-h2 / 11.0.x < 11.0.0-h4 / 11.0.x < 11.0.1-h5 / 11.0.x < 11.0.2-h5 / 11.0.x < 11.0.3-h13 / 11.0.x < 11.0.4-h6 / 11.0.x < 11.0.5-h2 / 11.0.x < 11.0.6-h1 / 11.1.x < 11.1.0-h4 / 11.1.x < 11.1.1-h2 / 11.1.x < 11.1.2-h15 / 11.1.x < 11.1.3-h11 / 11.1.x < 11.1.4-h7 / 11.1.x < 11.1.5-h1 / 11.2.x < 11.2.1-h1 / 11.2.x < 11.2.2-h2 / 11.2.x < 11.2.3-h3 / 11.2.x < 11.2.4-h1 Multiple Vulnerabilities");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote PAN-OS host is affected by multiple vulnerabilities");
+  script_set_attribute(attribute:"description", value:
+"The version of Palo Alto Networks PAN-OS running on the remote host is 10.2.x prior to 10.2.0-h4 or 10.2.x prior to
+10.2.1-h3 or 10.2.x prior to 10.2.2-h6 or 10.2.x prior to 10.2.3-h14 or 10.2.x prior to 10.2.4-h32 or 10.2.x prior to
+10.2.5-h9 or 10.2.x prior to 10.2.6-h6 or 10.2.x prior to 10.2.7-h18 or 10.2.x prior to 10.2.8-h15 or 10.2.x prior to
+10.2.9-h16 or 10.2.x prior to 10.2.10-h9 or 10.2.x prior to 10.2.11-h6 or 10.2.x prior to 10.2.12-h2 or 11.0.x prior to
+11.0.0-h4 or 11.0.x prior to 11.0.1-h5 or 11.0.x prior to 11.0.2-h5 or 11.0.x prior to 11.0.3-h13 or 11.0.x prior to
+11.0.4-h6 or 11.0.x prior to 11.0.5-h2 or 11.0.x prior to 11.0.6-h1 or 11.1.x prior to 11.1.0-h4 or 11.1.x prior to
+11.1.1-h2 or 11.1.x prior to 11.1.2-h15 or 11.1.x prior to 11.1.3-h11 or 11.1.x prior to 11.1.4-h7 or 11.1.x prior to
+11.1.5-h1 or 11.2.x prior to 11.2.1-h1 or 11.2.x prior to 11.2.2-h2 or 11.2.x prior to 11.2.3-h3 or 11.2.x prior to
+11.2.4-h1. It is, therefore, affected by multiple vulnerabilities.
+
+    An authentication bypass in Palo Alto Networks PAN-OS software enables an unauthenticated attacker with
+    network access to the management web interface to gain PAN-OS administrator privileges to perform
+    administrative actions, tamper with the configuration, or exploit other authenticated privilege escalation
+    vulnerabilities like [CVE-2024-9474](https://security.paloaltonetworks.com/CVE-2024-9474).
+
+    The risk of this issue is greatly reduced if you secure access to the management web interface by
+    restricting access to only trusted internal IP addresses according to our recommended[best practice
+    deployment guidelines](https://live.paloaltonetworks.com/t5/community-blogs/tips-amp-tricks-how-to-secure-
+    the-management-access-of-your-palo/ba-p/464431).
+
+    This issue is applicable only to PAN-OS 10.2, PAN-OS 11.0, PAN-OS 11.1, and PAN-OS 11.2 software on PA-
+    Series, VM-Series, and CN-Series firewalls and on Panorama (virtual and M-Series).
+
+    Cloud NGFW and Prisma Access are not impacted by this vulnerability.
+
+Tenable has extracted the preceding description block directly from the PAN-OS security advisory.
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://security.paloaltonetworks.com/CVE-2024-0012");
+  script_set_attribute(attribute:"solution", value:
+"Upgrade to PAN-OS 10.2.0-h4 / 10.2.1-h3 / 10.2.2-h6 / 10.2.3-h14 / 10.2.4-h32 / 10.2.5-h9 / 10.2.6-h6 / 10.2.7-h18 /
+10.2.8-h15 / 10.2.9-h16 / 10.2.10-h9 / 10.2.11-h6 / 10.2.12-h2 / 11.0.0-h4 / 11.0.1-h5 / 11.0.2-h5 / 11.0.3-h13 /
+11.0.4-h6 / 11.0.5-h2 / 11.0.6-h1 / 11.1.0-h4 / 11.1.1-h2 / 11.1.2-h15 / 11.1.3-h11 / 11.1.4-h7 / 11.1.5-h1 / 11.2.1-h1
+/ 11.2.2-h2 / 11.2.3-h3 / 11.2.4-h1 or later");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:F/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:F/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss4_vector", value:"CVSS:4.0/AV:N/AC:L/AT:P/PR:H/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N");
+  script_set_attribute(attribute:"cvss4_supplemental", value:"CVSS:4.0/AU:N/R:U/V:C/RE:H/U:Red");
+  script_set_attribute(attribute:"cvss4_threat_vector", value:"CVSS:4.0/E:A");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2024-0012");
+  script_set_attribute(attribute:"cvss4_score_source", value:"CVE-2024-9474");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+  script_set_attribute(attribute:"metasploit_name", value:'Palo Alto Networks PAN-OS Management Interface Unauthenticated Remote Code Execution');
+  script_set_attribute(attribute:"exploit_framework_metasploit", value:"true");
+  script_cwe_id(306);
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2024/11/18");
+  script_set_attribute(attribute:"patch_publication_date", value:"2024/11/18");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2024/11/18");
+
+  script_set_attribute(attribute:"potential_vulnerability", value:"true");
+  script_set_attribute(attribute:"plugin_type", value:"combined");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:paloaltonetworks:pan-os");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Palo Alto Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2024-2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("palo_alto_version.nbin");
+  script_require_keys("Host/Palo_Alto/Firewall/Version", "Host/Palo_Alto/Firewall/Full_Version", "Host/Palo_Alto/Firewall/Source", "Settings/ParanoidReport");
+
+  exit(0);
+}
+
+include('vcf.inc');
+include('vcf_extras.inc');
+
+vcf::palo_alto::initialize();
+
+var app_name = 'Palo Alto Networks PAN-OS';
+
+var app_info = vcf::get_app_info(app:app_name, kb_ver:'Host/Palo_Alto/Firewall/Full_Version', kb_source:'Host/Palo_Alto/Firewall/Source');
+
+if (report_paranoia < 2) audit(AUDIT_PARANOID);
+
+var constraints = [
+  { 'min_version' : '10.2.0', 'max_version' : '10.2.0-h3', 'fixed_version' : '10.2.0-h4' },
+  { 'min_version' : '10.2.1', 'max_version' : '10.2.1-h2', 'fixed_version' : '10.2.1-h3' },
+  { 'min_version' : '10.2.2', 'max_version' : '10.2.2-h5', 'fixed_version' : '10.2.2-h6' },
+  { 'min_version' : '10.2.3', 'max_version' : '10.2.3-h13', 'fixed_version' : '10.2.3-h14' },
+  { 'min_version' : '10.2.4', 'max_version' : '10.2.4-h31', 'fixed_version' : '10.2.4-h32' },
+  { 'min_version' : '10.2.5', 'max_version' : '10.2.5-h8', 'fixed_version' : '10.2.5-h9' },
+  { 'min_version' : '10.2.6', 'max_version' : '10.2.6-h5', 'fixed_version' : '10.2.6-h6' },
+  { 'min_version' : '10.2.7', 'max_version' : '10.2.7-h17', 'fixed_version' : '10.2.7-h18' },
+  { 'min_version' : '10.2.8', 'max_version' : '10.2.8-h14', 'fixed_version' : '10.2.8-h15' },
+  { 'min_version' : '10.2.9', 'max_version' : '10.2.9-h15', 'fixed_version' : '10.2.9-h16' },
+  { 'min_version' : '10.2.10', 'max_version' : '10.2.10-h8', 'fixed_version' : '10.2.10-h9' },
+  { 'min_version' : '10.2.11', 'max_version' : '10.2.11-h5', 'fixed_version' : '10.2.11-h6' },
+  { 'min_version' : '10.2.12', 'max_version' : '10.2.12-h1', 'fixed_version' : '10.2.12-h2' },
+  { 'min_version' : '11.0.0', 'max_version' : '11.0.0-h3', 'fixed_version' : '11.0.0-h4' },
+  { 'min_version' : '11.0.1', 'max_version' : '11.0.1-h4', 'fixed_version' : '11.0.1-h5' },
+  { 'min_version' : '11.0.2', 'max_version' : '11.0.2-h4', 'fixed_version' : '11.0.2-h5' },
+  { 'min_version' : '11.0.3', 'max_version' : '11.0.3-h12', 'fixed_version' : '11.0.3-h13' },
+  { 'min_version' : '11.0.4', 'max_version' : '11.0.4-h5', 'fixed_version' : '11.0.4-h6' },
+  { 'min_version' : '11.0.5', 'max_version' : '11.0.5-h1', 'fixed_version' : '11.0.5-h2' },
+  { 'min_version' : '11.0.6', 'max_version' : '11.0.6-h0', 'fixed_version' : '11.0.6-h1' },
+  { 'min_version' : '11.1.0', 'max_version' : '11.1.0-h3', 'fixed_version' : '11.1.0-h4' },
+  { 'min_version' : '11.1.1', 'max_version' : '11.1.1-h1', 'fixed_version' : '11.1.1-h2' },
+  { 'min_version' : '11.1.2', 'max_version' : '11.1.2-h14', 'fixed_version' : '11.1.2-h15' },
+  { 'min_version' : '11.1.3', 'max_version' : '11.1.3-h10', 'fixed_version' : '11.1.3-h11' },
+  { 'min_version' : '11.1.4', 'max_version' : '11.1.4-h6', 'fixed_version' : '11.1.4-h7' },
+  { 'min_version' : '11.1.5', 'max_version' : '11.1.5-h0', 'fixed_version' : '11.1.5-h1' },
+  { 'min_version' : '11.2.1', 'max_version' : '11.2.1-h0', 'fixed_version' : '11.2.1-h1' },
+  { 'min_version' : '11.2.2', 'max_version' : '11.2.2-h1', 'fixed_version' : '11.2.2-h2' },
+  { 'min_version' : '11.2.3', 'max_version' : '11.2.3-h2', 'fixed_version' : '11.2.3-h3' },
+  { 'min_version' : '11.2.4', 'max_version' : '11.2.4-h0', 'fixed_version' : '11.2.4-h1' }
+];
+
+vcf::check_version_and_report(
+    app_info:app_info,
+    constraints:constraints,
+    severity:SECURITY_HOLE
+);

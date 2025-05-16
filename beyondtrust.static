@@ -1,0 +1,780 @@
+#TRUSTED 6ee9079e8d8fa25c6975339a0dbe912bdd6278970d195e05e69ce7a852953b2852d6f1296625d331a13481e9a4ba4c9358b2b5ce5c5ca0f109fe8f4b7645e81549d4a1d0286f8566219eff14d0454a4eaa6f4d2c6f90169c3a5ac08b343af659c30515e5192d0f6477a195bfacf1b8eff10c8d256ccd0086af426bab2a252200748c46b7f51350feb6d354e794fe641071748aef7179c37c4c4bfbad114e8d81844c0d1227ab2757f04533ec21bc458dae89ebd57e8d32320da5f36149ea9f355f56c07c3809894a0ffe6eea177938b461ad17314a0713aa1e687a33696056a15f79e519972bc6b7585e755fc96c2b7dc32d9594774196d0a3df379dfb55a1bb0284e9cadc8f00998335ff6d1b11dec4adedd22b7a5cff7a9bfa527d7622761150021187e3c284680c2a31acaad3deb777664d1aa0e2f4b03157c0df7698314c682f3e137a002fb0769ad9c833d6e024191e1ef3b4035c23c6442ebd99c4cc38236c173e55c6fa13bcbf59b95cec6b0925568f2d57ebf01cd447bb28765bfce920d75899f66da764e4cc0b5486f32fdae7cd2f510eb911916e81255b1a790ae1f9194b259304993fa81c80ede7777b2395d6eb6147cc708540486bd82bc1c4256eace2c7c22af1765a168e7c496d045c72be072697d5b3b9a66d0b070ab19936e5a3d8a9283d02259868557c84751eb8dc9aef94e12664a98d75c7e7afb35410
+#TRUST-RSA-SHA256 24f0c014c82e613acc08648caaf16ba5fd89464e7d8b74d0f72a7a3da5f2ba46bd8bc45b831578ef6961310f7f8f48920b74f1ec98da9732863ef41afb3f3799fa295b315b4d4daba11f515a8bfbc2509217e570e56eb587e3e6c15ac74f46c24a8049b58f4b422d61a91040179a3a7087c3a75c5f2b80012ff7d5b6bf5c87a187c654b6448da45cf9fa2c4792cc4fe0815979ac21afac9c3045303806d3e9560a001c4595c2eb17d86c837fd6fcd6d14a11a4b8202d205f5c64e50245467d1d5a8cc6f7f82e9de1eb76f8062447433c1a8f494813519311020ceb00fa6a2e739c70303cf3897be605ae6ccfc1e9ac6bdd949b74f70f962db496078bd89a09dbc7e8d000595b0a19e227d977f2a655ef5f6020bf2668e21ea9a8897f058466463ebf914bcd65da522a5ff17d3f9ad693b71e41302ec2c89706b17427f78693ab94b6b3ca172dca44c01a886db3c61a580b3beaf972c01a567916f13ded1febd47fe4d8318f0b84ed4646962c6e4f01caa551c09b1029839b92989bdb186bf498e023a37bc931d46836f7027efb85283c0ad2d2e74e3c93aaf5c275061a7312d489f2468fb2eee07819489d676e05d0accecc7dd16058192121c4a579bfa15a0e37e00131089e8dbcae07711af8840c023e3eca43f08e40387e9736f6b1eb8bf2986fbc18893a8cec3622c4bb2274660614be6790858f1094e6520cbe5bbb8508
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.15
+###
+
+namespace beyondtrust
+{
+  object BeyondTrustConfig : integrations::IntegrationConfig
+  {
+    var api_user;
+    var api_key;
+    # NOTE: 'account_name' and 'username' are very similar - username is the original
+    # value of the 'login' parameter passed to beyondtrust::get_password, while account_name
+    # is the login with the domain value prepended (i.e., domain\login) if a
+    # domain was specified.
+    var account_name;
+    var domain;
+    var username;
+    var checkin;
+    var checkout_duration_minutes;
+    var try_private_key;
+    var try_escalation;
+    var target_ip;
+    var platform;
+    var windows_domain; # Domain for windows host
+    var ssh_domain; # Domain for ssh host
+    var use_kerb; # boolean use Kerberos host
+    var kerb_domain; # Kerberos Domain
+    var realm; # Kerberos realm
+    var realm_prefix;
+    var original_prefix;
+    var kdc_prefix; # kerberos prefix
+    
+    var error_map = {
+      '401': 'Unauthorized, possibly because of an invalid API Key. Check the API Registration configuration in BeyondInsight.',
+      '403': 'Access forbidden. Returned if the Password Safe license is not valid.',
+      '410': 'API version has been disabled.'
+    };
+
+    var command_prefix = '/BeyondTrust/api/public/v3/';
+
+    ##
+    # Initialize the BeyondTrustConfig object
+    #
+    # @param [prefix:string] The preference prefix
+    # @param [postfix:string] The preference postfix
+    # @param [login:string] The username for BeyondTrust
+    # @param [platform:string] The platform name for BeyondTrust, default:'system'
+    #
+    # @return TRUE always
+    ##
+    public function init(prefix, postfix, login, platform)
+    {
+      int_name = "BeyondTrust";
+      username = login;
+      original_prefix = prefix;
+      realm_prefix = prefix;
+      if(realm_prefix == "SSH " )
+      {
+        realm_prefix = str_replace(string:realm_prefix, find: "SSH ", replace:"");
+      }
+      kdc_prefix = original_prefix + "PAM ";
+      prefix = prefix + "BeyondTrust ";
+      host = script_get_preference(prefix+"Host"+postfix);
+      port = script_get_preference(prefix+"Port"+postfix);
+      api_key = script_get_preference(prefix+"API Key"+postfix);
+      checkout_duration_minutes = int(script_get_preference(prefix+"Checkout Duration"+postfix));
+      ssl = integrations::boolean(script_get_preference(prefix+"SSL"+postfix));
+      ssl_verify = integrations::boolean(script_get_preference(prefix+"Verify SSL Certificate"+postfix));
+      try_private_key = integrations::boolean(script_get_preference(prefix+"Use Private Key"+postfix));
+      try_escalation = integrations::boolean(script_get_preference(prefix+"Use Privilege Escalation"+postfix));
+      api_user = script_get_preference(prefix+"API User"+postfix);
+      windows_domain = script_get_preference(original_prefix+"domain (optional)"+postfix);
+      ssh_domain = script_get_preference(original_prefix+"PAM Domain"+postfix);
+      use_kerb = integrations::boolean(script_get_preference(kdc_prefix+"Use Kerberos KDC"+postfix));
+      kerb_domain = script_get_preference(kdc_prefix+"KDC Domain"+postfix);
+      realm = script_get_preference(realm_prefix+"Kerberos Realm"+postfix);
+      this._config_domain();
+      if (!platform)
+      {
+        this.platform = 'system';
+      }
+      else
+      {
+        this.platform = platform;
+      }
+      if (empty_or_null(api_user))
+      {
+        api_user = 'APIUser';
+      }
+      target_ip = get_host_ip();
+
+      # Clean the host string for additional potential forward
+      # slashes at the end of the host variable.
+      host = ereg_replace(string:host, pattern:"/+$", replace:"");
+
+      if (!empty_or_null(this.domain))
+      {
+        login = this.domain + "\" + login;
+      }
+      account_name = login;
+
+      if (checkout_duration_minutes == 0)
+      {
+        checkout_duration_minutes = 1;
+        checkin = true;
+      }
+      else
+      {
+        checkin = false;
+      }
+      integrations::logger(
+        msg:'BeyondTrust Settings ~\n' +
+            'Host: ' + host + '\n' +
+            'Port: ' + port + '\n' +
+            'Checkout Duration Minutes: ' + checkout_duration_minutes + '\n' +
+            'SSL: ' + ssl + '\n' +
+            'Verify SSL: ' + ssl_verify + '\n' +
+            'Use Private Key: ' + try_private_key + '\n' +
+            'Use Escalation: ' + try_escalation + '\n' +
+            'API User: ' + api_user + '\n' +
+            'Username: ' + username + '\n' +
+            'Account Name: ' + account_name + '\n' +
+            'Domain: ' + this.domain + '\n' +
+            'Target IP: ' + target_ip + '\n' +
+            'Checkin: ' + checkin,
+        config:this, lvl:3
+      );
+
+      return TRUE;
+    }
+
+    ##
+    # Removes sensitive data from logs
+    # @param [msg:string] msg to remove sensitive data from
+    # @return string cleaned msg
+    ##
+    public function scrubber(msg)
+    {
+      # The BeyondTrust integration can't use the normal scrubbing method,
+      # because the normal scrub function relies on matching regular expressions
+      # to determine sensitive data. In the case of credential requests to BeyondTrust,
+      # the entire response body is the sensitive credential, so there is no way to
+      # use pattern matching to determine what is or is not sensitive. Instead, we must
+      # use the hide_response_body parameter whenever we issue a request to a '/Credentials'
+      # endpoint. This function is still required for the integrations::logger method to work,
+      # so we simply return the message unaltered.
+      return msg;
+    }
+
+    ##
+    #
+    # Assign config domain value. This value is passed to logins.nasl, rather than
+    # going directly through login.nasl plugin to avoid issues we have with Kerberos Domain.
+    #
+    # @return boolean boolean if domain was assigned to config
+    ##
+    function _config_domain()
+    {
+      if(this.use_kerb)
+      {
+        if (!empty_or_null(this.kerb_domain))
+        {
+          this.domain = this.kerb_domain;
+          integrations::logger(msg:'Domain name provided from Kerberos Domain entry: ' + this.domain, lvl:2, config:this);
+          return true;
+        }
+        else if (!empty_or_null(this.realm))
+        {
+          this.domain = this.realm;
+          integrations::logger(msg:'Domain name provided from Kerberos Realm entry: ' + this.domain, lvl:2, config:this);
+          return true;
+        }
+        else
+        {
+          return false;
+        }
+      }
+      else if (!empty_or_null(this.windows_domain)) 
+      {
+        this.domain = this.windows_domain;
+        integrations::logger(msg:'Domain name provided from Windows integration entry: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else if (!empty_or_null(this.ssh_domain)) 
+      {
+        this.domain = this.ssh_domain;
+        integrations::logger(msg:'Domain name provided from SSH integration entry: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    ##
+    # Check out credentials
+    #
+    # @return the result of the most recent api call
+    ##
+    public function get_password()
+    {
+      # note the structure of the following
+      # each api call will return a dictionary with a success flag
+      # if `success` is falsy, then it will have already logged an
+      # error message. We're basically emulating exceptions/
+      # sum types by returning the error and giving up
+      # if any fail.
+      # otherwise the useful bit of the api call is in the
+      # `body` field on the returned dictionary
+
+      var password, account, linked_accounts, managed_accounts, managed_system, privatekey, checkin_result, request, sign_result, system_id, account_id, elevation_command;
+      var data_to_cache, cache_result, cache_key, need_to_request_creds;
+
+      # Determine if we need to make a request or if everything we need is already in the cache.
+      cache_result = this._check_credentials_from_cache();
+      # This is true if
+      #   (a) We found the account in the cache
+      #   (b) The cached account contained the creds we need,
+      #       e.g. password when using password (or escalation) or ssh key when using key auth
+      need_to_request_creds = !(cache_result.success);
+      if (!need_to_request_creds)
+      {
+        integrations::logger(msg:"Required credentials found in the cache.", lvl:2, config:this);
+        password = {};
+        if (this.try_private_key)
+        {
+          password.body = cache_result.kv.passphrase;
+          password.privatekey = cache_result.kv.privatekey;
+          if (this.try_escalation)
+          {
+            password.password = {'body': cache_result.kv.password};
+          }
+        }
+        else
+        {
+          password.body = cache_result.kv.password;
+        }
+        # If we are using privilege escalation, we will still need to make a request to the API
+        # in order to obtain the escalation command, which is an attribute of the managed system.
+        # If not, we have everything we need and can return the credentials here.
+        if (!this.try_escalation)
+        {
+          integrations::logger(msg:"No need to request escalation command, returning credentials without contacting API.", lvl:2, config:this);
+          password.success = true;
+          return password;
+        }
+      }
+
+      sign_result = this._sign_in();
+      if (!sign_result.success)
+      {
+        return sign_result;
+      }
+
+      # Get accounts in the following order:
+      # * If we can query by DOMAIN\Username, try this first. This requires domain
+      #   to be specified, and we also can't be using escalation. In BeyondTrust the
+      #   escalation command is an attribute of a system, so domain accounts must
+      #   be linked to a system when using escalation.
+      # * If we can't query this way, try managed accounts associated with the
+      #   target IP address. This will include system as well as database accounts.
+      # * If one of these two methods did not return an account, then query for domainlinked
+      #   accounts using target IP address. This last method is only needed if we're
+      #   looking for a domainlinked account but domain was not specified.
+      if (!this.try_escalation && this.domain)
+      {
+        integrations::logger(
+          msg:"Checking for domain-linked accounts using domain.",
+          lvl:3, config:this
+        );
+        linked_accounts = this._get_linked_accounts();
+        if (!linked_accounts.success)
+        {
+          return linked_accounts;
+        }
+        account = linked_accounts.body[0];
+      }
+      else
+      {
+        integrations::logger(
+          msg:"Checking for managed accounts of type "+this.platform+" using target IP address.",
+          lvl:3, config:this
+        );
+        managed_accounts = this._get_managed_accounts(target_ip:this.target_ip);
+        if (!managed_accounts.success)
+        {
+          return managed_accounts;
+        }
+        account = managed_accounts.body[0];
+      }
+      if (!account && !this.domain)
+      {
+        integrations::logger(
+          msg:"Checking for domain-linked accounts linked to target IP address.",
+          lvl:3, config:this
+        );
+        linked_accounts = this._get_linked_accounts(target_ip:this.target_ip);
+        if (!linked_accounts.success)
+        {
+          return linked_accounts;
+        }
+        account = linked_accounts.body[0];
+      }
+
+      if (empty_or_null(account))
+      {
+        integrations::logger(msg:"Unable to find matching account for target IP: " + this.target_ip, lvl:1, config:this);
+        return {'success': FALSE};
+      }
+
+      # Note: in the cases of querying domain-linked accounts without specifying target IP, the
+      # system ID is not necessarily the ID of the target system. This is why we must query with the
+      # target IP when using privilege escalation, so that we have the correct system ID
+      # when looking up the escalation command for that system. In other cases, it is the system ID
+      # of *any* system linked to the desired account.
+      system_id = string(account['SystemId']);
+      account_id = string(account['AccountId']);
+      integrations::logger(msg:"Found Managed Account For IP Address: " + this.target_ip +
+                               ". SystemID: " + system_id + ". AccountID: " + account_id,
+                     config:this, lvl:2);
+
+      if (this.try_escalation)
+      {
+        managed_system = this._get_managed_system(system_id:system_id);
+        if (!managed_system.success)
+        {
+          return managed_system;
+        }
+        elevation_command = managed_system.body['ElevationCommand'];
+        integrations::logger(msg:"Setting elevation command to: "+elevation_command, lvl:2, config:this);
+        if (empty_or_null(elevation_command))
+        {
+          integrations::logger(msg:"Warning: No elevation command found for system ID: " + system_id, lvl:1, config:this);
+        }
+      }
+
+      if (need_to_request_creds)
+      {
+        request = this._create_request(access_type:"View",
+                                       system_id:system_id,
+                                       account_id:account_id,
+                                       checkout_duration_minutes:this.checkout_duration_minutes,
+                                       reason:"Nessus Scan");
+        if (!request.success)
+        {
+          return request;
+        }
+
+        if (this.try_private_key)
+        {
+          # this will log a failure if they check the use private key box, and no private key is avaiable
+          # but will press on and try a regular password.
+          privatekey = this._get_credentials(request_id:request.body, type:"dsskey");
+          if (!privatekey.success)
+          {
+            integrations::logger(msg:"Failed to get SSH key, using password instead.", lvl:1, config:this);
+            password = this._get_credentials(request_id:request.body);
+          }
+          else
+          {
+            password = this._get_credentials(request_id:request.body, type:"passphrase");
+            if (!password.success)
+            {
+              password = {
+                'success': true,
+                'body': '',
+              };
+            }
+            password.privatekey = privatekey.body;
+            # if there's an elevation command, then we might want the actual password for that
+            if (elevation_command)
+            {
+              password.password = this._get_credentials(request_id:request.body);
+            }
+          }
+        }
+        else
+        {
+          password = this._get_credentials(request_id:request.body);
+        }
+
+        if (!password.success)
+        {
+          return password;
+        }
+        if (this.checkin)
+        {
+          checkin_result = this._checkin_credentials(request_id:request.body, reason:"Nessus scan finished logging in");
+          if (!checkin_result.success)
+          {
+            integrations::logger(msg:"[WARN] Checkin error encountered, proceeding.", lvl:2, config:this);
+          }
+        }
+        if (account['DomainName'] && account['AccountName'])
+        {
+          cache_key = account['DomainName'] + "\" + account['AccountName'];
+          integrations::logger(msg:"Caching domain-linked account " + cache_key, lvl:2, config:this);
+          data_to_cache = {};
+          if (privatekey.body)
+          {
+            data_to_cache['privatekey'] = privatekey.body;
+          }
+          if (password.password)
+          {
+            data_to_cache['password'] = password.password.body;
+            data_to_cache['passphrase'] = password.body;
+          }
+          else
+          {
+            data_to_cache['password'] = password.body;
+          }
+          integrations::set_cache(secret:cache_key, kv:data_to_cache);
+        }
+      }
+      if (this.try_escalation)
+      {
+        password.elevation_command = elevation_command;
+      }
+      sign_result = this._sign_out();
+      if (this.domain)
+      {
+        password.domain = this.domain;
+      }
+      else
+      {
+        integrations::logger(msg:"No Domain Provided In Config Domain", lvl:3, config:this);
+      }
+      return password;
+    }
+
+    ##
+    # Check credentials in cache.
+    
+    #
+    # This function checks for domain-linked accounts in the cache,
+    # as well as checking if the cached values are sufficient to
+    # authenticate to the target (i.e., contains SSH key if we
+    # wanted to use SSH key.)
+    #
+    # @return A dictionary containing:
+    #     'success': TRUE|FALSE
+    #   any of:
+    #     'passphrase', 'password', 'privatekey' (if success = TRUE)
+    ##
+    function _check_credentials_from_cache()
+    {
+      var cache_result, cached_password, cached_ssh_key;
+      integrations::logger(msg:"Checking cache for account", lvl:2, config:this);
+      if (!this.domain || !this.account_name)
+      {
+        integrations::logger(msg:"Only domain-linked accounts with domain specified may use cache.", lvl:1, config:this);
+        return {'success': FALSE};
+      }
+      cache_result = integrations::get_cache(secret:this.account_name);
+      if (cache_result.success)
+      {
+        integrations::logger(msg:"Cache hit for " + this.account_name, lvl:2, config:this);
+        cached_password = cache_result.kv.password;
+        cached_ssh_key = cache_result.kv.privatekey;
+        if (this.try_private_key)
+        {
+          if (!cached_ssh_key)
+          {
+            integrations::logger(msg:"SSH key authentication requested, but cache did not contain SSH key.", lvl:1, config:this);
+            return {'success': FALSE};
+          }
+          if (this.try_escalation && !cached_password)
+          {
+            integrations::logger(msg:"Escalation requested, but cache did not contain password.", lvl:1, config:this);
+            return {'success': FALSE};
+          }
+        }
+        else if (!cached_password)
+        {
+          integrations::logger(msg:"Password authentication requested, but cache did not contain password.", lvl:1, config:this);
+          return {'success': FALSE};
+        }
+      }
+      else
+      {
+        integrations::logger(msg:"Cache miss for " + this.account_name, lvl:2, config:this);
+      }
+
+      return cache_result;
+    }
+
+    ##
+    # BEGIN BeyondTrust API Wrappers
+    # Each of the following methods corresponds to a BeyondTrust PasswordSafe API call.
+    # The all take their various parameters as arguments and return a mapping where
+    #  * `return_value.body` is the HTTP response.
+    #  * `return_value.success` is a boolean corresponding to whether the request succeeded.
+    #  * if `return_value.success` then `return_value.message` is the error message.
+    #
+    ##
+
+    ##
+    # Signout of the BT session
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers
+    ##
+    function _sign_out()
+    {
+      var headers, result;
+
+      headers = {
+        "Content-Type": "application/json",
+        "Content-Length": "0"
+      };
+      integrations::logger(msg:"Signing out", lvl:2, config:this);
+      result = integrations::post(command: "Auth/Signout", headers:headers, config:this);
+      return result;
+    }
+
+    ##
+    # Create a new BT session
+    # @param [api_key:string] the api key to login with
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers
+    ##
+    function _sign_in()
+    {
+      var api_key, headers, result;
+
+      api_key = chomp(this.api_key);
+
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": "PS-Auth key=" + api_key + "; runas=" + this.api_user + ";",
+        "Content-Length": "0"
+      };
+
+      integrations::logger(msg:"Signing in", lvl:2, config:this);
+      result = integrations::post(command: "Auth/SignAppin", headers:headers, config:this);
+      return result;
+    }
+
+    ##
+    # Get the domainlinked account with the given parameters.
+    # @param [target_ip:string] the IP address of the target system.
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers.
+    ##
+    function _get_linked_accounts(target_ip)
+    {
+      var result, command, log_message;
+      log_message = "Getting linked accounts. Account Name: " + this.account_name;
+      command = "ManagedAccounts?type=domainlinked&accountName=" + urlencode(str:this.account_name);
+      if (target_ip)
+      {
+        log_message += ". Target IP: " + target_ip;
+        command += "&ipAddress=" + target_ip;
+      }
+      integrations::logger(msg:log_message, lvl:2, config:this);
+      result = integrations::get(command:command, config:this);
+      return result;
+    }
+
+    ##
+    # Get the system-type account with the given parameters.
+    # @param [target_ip:string] the IP address of the target system.
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers.
+    ##
+    function _get_managed_accounts(target_ip)
+    {
+      var result, command, log_message;
+      log_message = "Getting managed accounts. Account Name: " + this.account_name + ". Target IP: " + target_ip;
+      command = "ManagedAccounts?type="+this.platform+"&accountName=" + urlencode(str:this.account_name) + "&ipAddress=" + target_ip;
+      integrations::logger(msg:log_message, lvl:2, config:this);
+      result = integrations::get(command:command, config:this);
+      return result;
+    }
+
+    ##
+    # Get the managed system by system ID.
+    #
+    # @param [system_id:string] the id of the system to perform API requests
+    #
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers.
+    ##
+    function _get_managed_system(system_id)
+    {
+      var result;
+      integrations::logger(
+        msg:"Getting managed system with ID: " + system_id,
+        config:this, lvl:2
+      );
+      result = integrations::get(command:"ManagedSystems/" + system_id, config:this);
+      return result;
+    }
+
+    ##
+    # Create a credential request
+    # @param [access_type:string] the type of the request we are going to perform. So far only using "view"
+    #                             (can be "view", "rdp", "ssh", or "app")
+    # @param [system_id:string] the id of the system associated with the request
+    # @param [account_id:string] the id of the account associated with the request
+    # @param [application_id:string] the id of the application associated with the request (can be NULL)
+    # @param [checkout_duration_minutes:string] how long before the request gets automatically checked back in
+    # @param [reason:string] why is this request being created
+    #
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers
+    ##
+    function _create_request(access_type, system_id, account_id, application_id, checkout_duration_minutes, reason)
+    {
+      var result, attempt, sleep_interval_ms;
+      var headers = {'Content-Type': 'application/json'};
+      var max_attempts = 3;
+
+      integrations::logger(msg:"Creating request", lvl:2, config:this);
+      # Loop to mitigate unexpected 409 Conflict and 500 Internal errors.
+      # The use of "ConflictOption:reuse" normally addresses the 409 errors, but
+      # occasionally they occur anyway. Retry with an increasing sleep interval on each request.
+      for (attempt=1; attempt<=max_attempts; attempt++)
+      {
+        result = integrations::post(command: "Requests", json:TRUE, headers:headers, config:this, data:{
+          "AccessType": access_type,
+          "SystemID": system_id,
+          "AccountID": account_id,
+          "ApplicationID": application_id,
+          "DurationMinutes" : checkout_duration_minutes,
+          "ConflictOption" : "reuse",
+          "Reason" : reason,
+          "AccessPolicyScheduleID" : NULL
+        });
+        if ('500' >< result.response_code || '409' >< result.response_code)
+        {
+          if (attempt < max_attempts)
+          {
+            # Sleep for 250 then 500 ms between attempts, plus a random amount between 0-100ms
+            # to keep requests from happening too close together.
+            sleep_interval_ms = (250 * attempt) + (rand() % 100);
+            integrations::logger(msg:"Attempt " + attempt + " failed. Retrying after " + sleep_interval_ms + " milliseconds", lvl:1, config:this);
+            usleep(sleep_interval_ms * 1000);
+          }
+          else
+          {
+            integrations::logger(msg:"Attempt " + attempt + " failed.", lvl:1, config:this);
+          }
+        }
+        else
+        {
+          break;
+        }
+      }
+      return result;
+    }
+
+    ##
+    # Lookup the credentials associated with a credential request
+    #
+    # @param [request_id:int] request_id created with _create_request
+    # @param [type:string] "dsskey" or "password"
+    #
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers
+    ##
+    function _get_credentials(request_id, type)
+    {
+      var result, type_arg = "";
+      var attempt, sleep_interval_ms;
+      var max_attempts = 3;
+
+      if (type)
+      {
+        type_arg = "?type=" + urlencode(str:type);
+      }
+      integrations::logger(msg:"Getting credentials", lvl:2, config:this);
+      # Loop to mitigate unexpected 409 Conflict and 500 Internal errors.
+      # The use of "ConflictOption:reuse" normally addresses the 409 errors, but
+      # occasionally they occur anyway. Retry with an increasing sleep interval on each request.
+      for (attempt=1; attempt<=max_attempts; attempt++)
+      {
+        result = integrations::get(command: "Credentials/" + urlencode(str:string(request_id)) + type_arg, config:this, hide_response_body:TRUE);
+        if ('500' >< result.response_code || '409' >< result.response_code)
+        {
+          # Sleep for 250 then 500 ms between attempts, plus a random amount between 0-100ms
+          # to keep requests from happening too close together.
+          sleep_interval_ms = (250 * attempt) + (rand() % 100);
+          integrations::logger(msg:"Attempt " + attempt + " failed. Retrying after " + sleep_interval_ms + " milliseconds", lvl:1, config:this);
+          usleep(sleep_interval_ms * 1000);
+        }
+        else
+        {
+          break;
+        }
+      }
+      return result;
+    }
+
+    ##
+    # Finish a credential request
+    # @param [request_id:int] request_id created with _create_request
+    # @param [reason:string] why is this request being checked in
+    # @return the result of the api call, as described in BEGIN BeyondTrust API Wrappers
+    ##
+    function _checkin_credentials(request_id, reason)
+    {
+      var result;
+      var headers = {'Content-Type': 'application/json'};
+      integrations::logger(msg:"Checking in credentials", lvl:2, config:this);
+      result = integrations::put(command: "Requests/"+urlencode(str:string(request_id))+"/Checkin", json:TRUE, config:this, headers:headers, data:
+        {
+          "Reason" : reason
+        }
+      );
+
+      return result;
+    }
+  }
+
+  ##
+  # Get the password for a given login/domain by looking up all the other params from `script_get_preference`
+  # @param [login:string] the username
+  # @param [prefix:string] the prefix for `script_get_preference`
+  # @param [postfix:string] the postfix for `script_get_preference`
+  # @return array Return a result object of the following form:
+  #         {
+  #             success (boolean): did we successfully get a password?
+  #             message (optional string): if success is false, why did it fail
+  #             body (string): the requested password for the host or the passphrase for
+  #                            the private key if we're doing publickey auth
+  #             privatekey (optional string): the privatekey, if requested and found
+  #             header (array): the http header associated with the password request
+  #                             (useful for debugging)
+  #         }
+  ##
+  function get_password(login, prefix, postfix, platform)
+  {
+    var config, password, error_message;
+
+    # Boost the timeout from the default of 5 seconds. This is to mitigate
+    # issues found in testing RES-144187.
+    http_set_read_timeout(30);
+    # Disabling keepalives prevents the client from doing extra HTTP requests.
+    # When keepalive is enabled (which is also default behavior), the server
+    # first does a GET request to /, checking if the server supports keepalives.
+    # Note that you can use keepalive and skip this request if you call
+    # http_force_keep_alive(). This is to mitigate issues found in testing RES-144187.
+    http_disable_keep_alive();
+
+    config = new beyondtrust::BeyondTrustConfig();
+    config.init(prefix:prefix, postfix:postfix, login:login, platform:platform);
+
+    # This will force serialize the calls to get_password. The purpose of this
+    # is to ensure that the first iteration will have the chance to cache credentials
+    # before subsequent calls. It also should help cases in which the server is overwhelmed.
+    integrations::logger(msg:"Waiting to obtain lock to contact BeyondTrust.", lvl:3, config:config);
+    mutex_lock(SCRIPT_NAME);
+    integrations::logger(msg:"Obtained lock, getting credentials from BeyondTrust.", lvl:3, config:config);
+    password = config.get_password();
+    mutex_unlock(SCRIPT_NAME);
+
+    if (!password.success)
+    {
+      if (password.header && password.header.code)
+      {
+        error_message = "HTTP Error " + password.header.code + ".";
+        if (config.error_map[password.header.code])
+        {
+          error_message += " " + config.error_map[password.header.code];
+        }
+        integrations::logger(msg:error_message, lvl:1, config:config);
+      }
+      else if (password.message)
+      {
+        integrations::logger(msg:"Error: " + password.message, lvl:1, config:config);
+      }
+      return {};
+    }
+    return password;
+  }
+}

@@ -1,0 +1,113 @@
+#TRUSTED 5f6470acb675f85a3c610696df5c6d5c69d013d15cc8d27e71b0a70b7828e74033e9f3771f9fd6838526806361a6fdadd44d933a4ff4bef65bad785d6678574dc94d820535478ed5d92aba44b8956f35628e483c7d386971f0361c0403756d7165184f99af8ce88d8c4e9a95a40a30181d3627f258b85d9acffaff9082f69354c55a41ee3adb9453e1d1793f167d6b4a2d2b995876eae782dfbe13d88bad2d0df133adfad40848f688ffc8faa2857ab8f90e3b726b136ef56d364d836ecb2b1cb9b5aae18abff9b587627403cff97c69a7a9eb43254cc544b3b1590c2f359792edf051ffe168c1991c13082433841f5835afe4a33086135f639e77dd96be2c5df62c13db09b4f917e22bad09efd4e35abaa87cfcd25d35daf82a04a0df351b3e221c4de7cd98c8f4be936f4d796bbcd4c9c60fe0980b20e17a728d30fadfa9cf3ae92f09156c0696aacbb0ea672bb4777e18c43ee7396f67ccaef5beddd3c642b1a57cca75d28d102228e0e07cbb7372e0f17a8a31b2777514fd869b986eda19682c9337a5c4c7cdc791bf6d800269223c4111c69335fb5df59f41fc1243ca4c3f6f3a9c87b6b04d3746c119116e4bcd84fac171babd8353d0f9822ba40dc810cc0c2260f2d749417cf28ba607673eda757c4cf85ca9478e7c251c4fc0a1f52716939b1a2ef36e85cd4884d94d6fa73a345e56a773fde0748417927f92dd770a
+
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.2
+
+#Container Linux helper functions
+
+function handle_container_linux_os(session, use_shell_handler, &channel, file, cmd_res)
+{
+  local_var args, arg, props, release, version, coreos_type;
+  var fn = "handle_container_linux_os: ";
+
+  # Simple argument checker
+  #  'channel' argument is optional
+  args = {};
+  args["session"]           = session;
+  args["use_shell_handler"] = use_shell_handler;
+  args["file"]              = file;
+  args["cmd_res"]           = cmd_res;
+
+  foreach arg (keys(args))
+  {
+    if (isnull(args[arg]))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'" + arg + "' argument is null");
+      return FALSE;
+    }
+  }
+
+  if (empty(args["file"]) || empty(args["cmd_res"]))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'file' or 'cmd_res' argument is empty");
+    return FALSE;
+  }
+
+  set_kb_item(name:"Host"+file, value:cmd_res);
+
+  props = parse_properties(str:cmd_res, sep:"=");
+
+  if (file == "/etc/os-release")
+  {
+    release = props["PRETTY_NAME"];
+    if (empty_or_null(release))
+      release = props["NAME"];
+
+    version = props["VERSION"];
+    if (empty_or_null(version))
+      version = props["VERSION_ID"];
+  }
+  else if (file == "/etc/lsb-release")
+  {
+    release = props["DISTRIB_DESCRIPTION"];
+    version = props["DISTRIB_RELEASE"];
+    if (empty_or_null(release))
+      release = props["DISTRIB_ID"];
+  }
+  else if (file == "/usr/share/coreos/release")
+  {
+    version = props["COREOS_RELEASE_VERSION"];
+    if (version =~ "^[0-9]+\.[0-9.]+$" &&
+        ver_compare(ver:version, fix:"1235.4.0", strict:FALSE) < 0)
+      release = "CoreOS";
+    else
+      release = "Container Linux by CoreOS";
+  }
+
+  if (empty_or_null(release))
+    return FALSE;
+
+  release = str_replace(string:release, find:'"', replace:'');
+  release = str_replace(string:release, find:"'", replace:'');
+
+  if (release !~ "^(Container Linux|CoreOS)")
+    return FALSE;
+
+  if (!empty_or_null(version) && release !~ " [0-9]+\.[0-9.]+")
+    release = release + " " + version;
+
+  if ("container linux" >< tolower(release))
+    coreos_type = "Container Linux by CoreOS";
+  else
+    coreos_type = "CoreOS";
+
+  report += '\nThe remote ' + coreos_type + ' system is :\n' +
+    release + '\n';
+
+  set_kb_item(name:"Host/Container Linux by CoreOS", value:TRUE);
+  set_kb_item(name:"Host/Container Linux by CoreOS/release", value:release);
+  if (!isnull(version))
+    set_kb_item(name:"Host/Container Linux by CoreOS/version", value:version);
+
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  failure_kb_msg = 'OS Security Patch Assessment is not supported for ' +
+    coreos_type + '.\n';
+  failure_kb_type = lcx::ISSUES_INFO;
+  report += '\n' + failure_kb_msg + '\n';
+
+  cmd_kb(
+    channel:channel,
+    'Host/etc/issue',
+    'cat /etc/issue',
+    session,
+    use_shell_handler
+  );
+
+  return TRUE;
+}

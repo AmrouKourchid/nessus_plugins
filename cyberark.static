@@ -1,0 +1,867 @@
+#TRUSTED 378063f1ab966af0c8c331b511256b3496fa0af62af116c0133343fc3df849ef34538e7792799755d113203627aea27b72dd6eeefa363181b033f9c93dcd31f7e1e54d5f02992dea562f37f4c08635548fcea87c8ce206c8d38a8298ab11fe537d2ee659c60bf38234870c545504f37378feea30448aa543e20218f49b61cb711b995fe8f862b4c9b12a0dab30a83106aad809abbca258b8ab3c0e7d42911f0fe6527eeb3c27e909a89c5e65ce508f3422ab8ed907a1da3d7f127c9e98b3eaa1a46f7809a36b6408f541947b3aeb7dd00f7c3f92b047300df4cf3c5b838973b5f3703463f01b8a1eed075db9c12f036dd1417daf5671136365bf664134f8c4f26d8318ea4a09afd255413944b567f8224e126147c52d299251dd8fede433a666ce6828d43be2bcf6391c6b1c76024bd90fbc759217edfe0f669c71582fcbfa7888d0bef36431bed650c68dc08f33e0db61d21e1d2008bd2dcf094db3845506d87367a7f4355c6634ce0d3c10979c068d4a3f9bd6f33e0bbc2844552745ba252d433866577f1d8952da1f0f9fa5f4445d0d1c2efbff35dff02f678d3fff5b69bde600ab98507ebefd1983d66068177cd34fa88665133e0c682af3942d01466a0990a25684491c5a301bff7106758cd7e7fc33842e6acbcad8c310889b3bdc45f14710fad33734c9c6365326d2ddd1c20d753b4a4440bdba87a4282629beacf2c1
+#TRUST-RSA-SHA256 25fec03153935fa2c5017eac138b4f899560f78aae82dfde68bd3920b1c7c861233533940407fb80aad0fba75645ac1d01beab55dcfb84802c01a3cccaa90d0fb6899e4858c8ad0a983bb96b27165c379c79bd5a118ae9a194b88abd638d31ed7b58c7149dcc45102d60b69195b1079886b2572c12023549d1ae6cb0889db359f5f0a99d1721970736685aea4c718457a775ec9d158918ed40487213ca17b50123038aa303ae2a7f89b4ba9574e18ab40cfc761e2626c5fa021203c9470a63bd36d75fd8676b992b4270c5dffaaaf8cd86963d897faf9f06383f58d2ca8b255a95bbe024a2e2cba5be584d587d9da0df9dee7a6bc096df08ca95b51b3c7862463567ea804a858a231378b062a0d1ec7c92145244630faa964125678c053aac8dca6a96220f0fb1df3b11d7a128937cbcd4109c5dcc911bac5fced3390155a54369b0fbec127d55c6be84ce2ee96a24073da5b13433a09e88d5edece916c90484452de7c7c51707fff496a796a7072845b180924741a873c4f2ffde1827ddc020c983225d41e73f909a332c7e189bccf61eb7a7838d29cb6ed7e07e01d5a06c58513a8122189ca89ede7c5421ee08510747978d2b387767f7080760abba4a430f8ad34b442bcb005dfb7d760b67f696d21cb49cb46ad5540e66422faddd7f0fd6eecc930691dba619deed4de8dc973d5bf756db2dacceee0512b5cc7651e0bc2d
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.13
+###
+global_var CARK_TRANSPORT, CARK_USERNAME, CARK_PASSWORD, CARK_TARGET, CARK_PORT, CARK_SSL, CARK_URL;
+global_var CARK_CLIENT_CERT, CARK_PRIVATE_KEY, CARK_PRIVATE_KEY_PASSWORD;
+global_var CARK_LAST_ERROR; # contains the last error sent to cark_error
+global_var ERROR_EXIT; # Create an audit trail message when calling cark_error()
+global_var ERROR_LOG; # Log errors to the stack without an exit call in cark_error()
+
+ERROR_EXIT = 1;
+ERROR_LOG = 2;
+
+##
+# Initialize the cyberark communication information
+#
+# @param [debug:bool] enable debugging output
+# @param [target:string] the target IP or DNS
+# @param [domain:string] the domain for the target
+# @param [port:int] the port cyberark is running on
+# @param [ssl:bool] if the server is using ssl
+# @param [ssl_verify:bool] verify ssl cert
+# @param [username:string] username if the server has one
+# @param [passwod:string] password if the server has one
+# @param [cark_url:string] cyberark custom url if the server has one
+# @param [object_id:string] object id if the server has one
+# @param [client_cert:string] path to client cert
+# @param [client_private_key:string] path to client private_key
+# @param [client_private_key_password:string] password to client private key
+#
+# @return list of possible address values for the target
+##
+function cark_init(debug, target, domain, port, ssl, ssl_verify, username, password, cark_url, object_id, client_cert, client_private_key, client_private_key_password)
+{
+  local_var account_type, system_name, host_ip;
+
+  if (empty_or_null(cark_url))
+  {
+    cark_url = "/AIMWebservice/v1.1/AIM.asmx";
+  }
+
+  CARK_USERNAME = username;
+  CARK_PASSWORD = password;
+  CARK_TARGET = target;
+  CARK_PORT = port;
+  CARK_TRANSPORT = ssl_transport(ssl:ssl, verify:ssl_verify);
+  CARK_URL = cark_url;
+  CARK_CLIENT_CERT = client_cert;
+  CARK_PRIVATE_KEY = client_private_key;
+  CARK_PRIVATE_KEY_PASSWORD = client_private_key_password;
+
+  http_set_read_timeout(30);
+
+  if (object_id)
+  {
+    account_type = NULL;
+  }
+  else
+  {
+    system_name = cark_get_system_name(); #0. name supplied in UI
+    host_ip = get_host_ip();
+
+    account_type = make_list();
+    if (!empty_or_null(system_name)) account_type = make_list(account_type, system_name);
+    if (!empty_or_null(domain)) account_type = make_list(account_type, domain);
+    if (!empty_or_null(host_ip) && system_name != host_ip) account_type = make_list(account_type, host_ip);
+  }
+
+  dbg::detailed_log(name:SCRIPT_NAME+"~Cyberark", lvl:2, src:FUNCTION_NAME, msg:'Cyberark Settings ~' +
+      '\nCARK_USERNAME : ' + CARK_USERNAME +
+      '\nCARK_TARGET : ' + CARK_TARGET +
+      '\nCARK_PORT : ' + CARK_PORT +
+      '\nCARK_TRANSPORT : ' + CARK_TRANSPORT +
+      '\nCARK_URL : ' + CARK_URL +
+      '\nCARK_CLIENT_CERT : ' + CARK_CLIENT_CERT +
+      '\nCARK_PRIVATE_KEY : ' + CARK_PRIVATE_KEY +
+      '\nsystem_name : ' + system_name +
+      '\ndomain : ' + domain +
+      '\nhost_ip : ' + host_ip +
+      '\nobject_id : ' + object_id +
+      '\nssl: ' + ssl +
+      '\nssl_verify: ' + ssl_verify + '\n'
+  );
+
+  if (!empty_or_null(CARK_PRIVATE_KEY_PASSWORD))
+  {
+    dbg::detailed_log(name:SCRIPT_NAME+"~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"Using a private key password");
+  }
+  else
+  {
+    dbg::detailed_log(name:SCRIPT_NAME+"~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"Not using a private key password");
+  }
+
+  return account_type;
+}
+
+##
+# Obtain the system name as it is reported in the UI
+#
+# @return A string containing the system name
+##
+function cark_get_system_name()
+{
+  local_var Host, myHostName;
+
+  myHostName = get_kb_item("myHostName");
+  if ( !isnull(myHostName) ) return myHostName;
+
+  Host = get_host_report_name();
+
+  if (!isnull(Host))
+  {
+    replace_kb_item(name:"myHostName", value:Host);
+  }
+
+  return Host;
+}
+
+##
+# Return the last error
+#
+# @return string last error
+##
+function cark_get_last_error()
+{
+  return CARK_LAST_ERROR;
+}
+
+##
+# Cyberark error logging
+#
+# @anonparam [1st:int] exit code 0 or 1
+# @anonparam [2nd:string] exit message
+# @param [report_error_title:string] report_error title
+# @param [report_error_severity:string] report_error severity
+# @param [severity:const] ERROR_EXIT or ERROR_LOG depending on what is required
+#
+# @return NULL
+##
+function cark_error(report_error_title, report_error_severity, severity)
+{
+  # Log any bad error messages
+  if (_FCT_ANON_ARGS[0] != 0 && _FCT_ANON_ARGS[0] != 1)
+  {
+    cark_error(1, "Bad error code in cark_error.", severity:severity);
+    return NULL;
+  }
+
+  if (isnull(_FCT_ANON_ARGS[1]))
+  {
+    cark_error(1, "No message supplied for cark_error.", severity:severity);
+    return NULL;
+  }
+
+  CARK_LAST_ERROR = _FCT_ANON_ARGS[1];
+  dbg::detailed_log(
+    name: SCRIPT_NAME + "~Cyberark",
+    lvl: 1,
+    src: FUNCTION_NAME,
+    msg: "Adding Cyberark error",
+    msg_details: {
+      "Error": {"lvl": 1, "value": CARK_LAST_ERROR}});
+  if (report_error_title && report_error_severity)
+    report_error(title:SCRIPT_NAME + ": " + report_error_title, message:_FCT_ANON_ARGS[1], severity:report_error_severity);
+
+  if (severity == ERROR_EXIT) exit(_FCT_ANON_ARGS[0], _FCT_ANON_ARGS[1]);
+
+  return NULL;
+}
+
+##
+# Validate the HTTP status
+#
+# @param [status_line:string] the HTTP status line
+#
+# @return int status code or NULL if error or status_line does not
+#             contain an HTTP status of 20x, 40x, or 50x
+##
+function cark_ValidateResp(status_line)
+{
+  local_var errorMsg;
+
+  if (status_line =~ '^HTTP/1\\.[01] +200')
+  {
+    return 200;
+  }
+  else if (status_line =~ '^HTTP/1\\.[01] +40[0-9]')
+  {
+    cark_error(1,
+               chomp(status_line) + " returned",
+               severity:ERROR_LOG);
+
+    return 400;
+  }
+  else if (status_line =~ '^HTTP/1\\.[01] +50[0-9]')
+  {
+    errorMsg = chomp(status_line) + " returned";
+
+    cark_error(1, errorMsg, severity:ERROR_LOG);
+
+    return 500;
+  }
+  else
+  {
+    cark_error(1, chomp(status_line) + " returned", severity:ERROR_LOG);
+  }
+
+  return NULL;
+}
+
+##
+# Check for 'faultstring' XML element in return value to determine proper
+# error message
+#
+# @param [xml:string] result body
+#
+# @return NULL
+##
+function cark_check_500_return(xml)
+{
+  local_var match;
+
+  match = pregmatch(pattern:"<faultstring>(.+)<\/faultstring>", string:xml, icase:FALSE);
+
+  if (!isnull(match) && !isnull(match[1]))
+  {
+    cark_error(0,"HTTP 500 : " + match[1], severity:ERROR_LOG);
+  }
+  else
+  {
+    cark_error(0,"HTTP 500 : " + xml, severity:ERROR_LOG);
+  }
+
+  return NULL;
+}
+
+##
+# Parse the response from cyberark
+#
+# @param [xml:string] request body
+#
+# @return array containing Username and Password or NULL if errors
+##
+function cark_parse_results(xml)
+{
+  local_var val_table, creds, xml_stack, i, obj;
+  
+  creds = make_array(); # setup credential storage unit
+
+  # parse XML
+  # val_table = deserialize(options:SERIALIZE_XML, xml);
+  val_table = xmlparse(xml);
+
+  if (isnull(val_table))
+  {
+    cark_error(0, "Invalid XML response, failed to parse soap response.", severity:ERROR_LOG);
+    return NULL;
+  }
+
+  # This list is used to validate the XML tree.
+  xml_stack = make_list("soap:Envelope","soap:Body","GetPasswordResponse");
+  i = 0; # index counter into xml_stack
+  while (TRUE)
+  {
+    # This loop will recurse over the data structure returned from
+    # deserialize validating the XML stack, if it any point the stack
+    # does not match it will log the error and return
+    # we should only ever have to worry about 1 tree structure because
+    # cyberark only will ever return 1 item at a time even when multiple
+    # objects on the server match the parameters
+
+    if (val_table["name"] == xml_stack[i])
+    {
+      val_table = val_table["children"][0]; # change the table pointer to the child unit
+      if (val_table)
+      {
+        i++;
+        continue;
+      }
+      else
+      {
+        cark_error(0, "Invalid XML response : missing " + xml_stack[i], severity:ERROR_LOG);
+        return NULL;
+      }
+    }
+    else
+    {
+      # Once the chain is validated one final validation is done here before parsing out
+      # the creds from the containing tags
+      if (val_table["name"] == "GetPasswordResult")
+      {
+        foreach obj (val_table["children"])
+        {
+          if (obj["name"] == "Content") creds["Password"] = obj["value"];
+          else if (obj["name"] == "UserName") creds["Username"] = obj["value"];
+        }
+        break;
+      }
+      else
+      {
+        cark_error(0, "Invalid XML response : invalid tag = " + val_table["name"], severity:ERROR_LOG);
+        return NULL;
+      }
+    }
+  }
+
+  # If no credentials where supplied from the server we log the error and return null
+  if (isnull(creds["Username"]))
+  {
+    cark_error(0, "Invalid XML response : Username field not found.", severity:ERROR_LOG);
+    return NULL;
+  }
+
+  if (isnull(creds["Password"]))
+  {
+    cark_error(0, "Invalid XML response : Password field not found (likely blank password).", severity:ERROR_LOG);
+    return NULL;
+  }
+
+  return creds;
+}
+
+##
+# Assemble the request based on the parameters supplied
+#
+# @param [uri:string] optional parameter to change the uri in the request
+# @param [parameters:array] an array of parameters supplied to cark_get_password_http_req
+#
+# @return string xml request
+##
+function cark_build_request(uri, parameters)
+{
+  local_var xml, kv;
+
+  # This is not required at this time so we use tempuri.org as supplied from their docs
+  if (isnull(uri)) uri = "https://tempuri.org/";
+
+  xml = '<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Body><GetPassword xmlns="https://tempuri.org/"><passwordWSRequest>';
+
+  if (parameters["AppID"]) xml += '<AppID>'+parameters["AppID"]+'</AppID>';
+  if (parameters["Safe"]) xml += '<Safe>'+parameters["Safe"]+'</Safe>';
+  if (parameters["Folder"]) xml += '<Folder>'+parameters["Folder"]+'</Folder>';
+  if (parameters["Object"]) xml += '<Object>'+parameters["Object"]+'</Object>';
+  if (parameters["Username"]) xml += '<UserName>'+parameters["Username"]+'</UserName>';
+  if (parameters["Address"]) xml += '<Address>'+parameters["Address"]+'</Address>';
+  if (parameters["Database"]) xml += '<Database>'+parameters["Database"]+'</Database>';
+  if (parameters["PolicyID"]) xml += '<PolicyID>'+parameters["PolicyID"]+'</PolicyID>';
+
+  # This is a log on the cyberark server explaining the purpose for the request.
+  # This is defaulted to Nessus but can be controlled.
+  if (parameters["Reason"]) xml += '<Reason>'+parameters["Reason"]+'</Reason>';
+  else xml += '<Reason>NESSUS</Reason>';
+
+  # Default to 30 second but can be controlled through parameters
+  if (parameters["ConnectionTimeout"]) xml += '<ConnectionTimeout>'+parameters["ConnectionTimeout"]+'</ConnectionTimeout>';
+  else xml += '<ConnectionTimeout>30</ConnectionTimeout>';
+
+  # This could potentially be set to Exact or Regex but for our purposes we will normally
+  # just use Exact and it will default to this value. This tag is required.
+  if (parameters["Query"]) xml += '<Query>'+parameters["Query"]+'</Query>';
+  xml += '<QueryFormat>Exact</QueryFormat>';
+
+  if (parameters["Attributes"])
+  {
+    xml += '<Attributes>';
+    foreach kv (parameters["Attributes"])
+    {
+      xml += '<KeyAndValue><key>'+kv["key"]+'</key><value>'+kv["value"]+'</value></KeyAndValue>';
+    }
+    xml += '</Attributes>';
+
+  }
+
+  xml += '</passwordWSRequest></GetPassword></soap:Body></soap:Envelope>';
+
+  return xml;
+}
+
+##
+# Wrapper around cark_get_password_http_req to call it in a loop
+#
+# @param [parameters:list] cyberark query parameters
+# @remark list of available parameters
+#   AppID:string
+#   Safe:string
+#   Folder:string
+#   Object:string
+#   Username:string
+#   Address:string
+#   Database:string
+#   PolicyID:string
+#   Reason:string
+#   ConnectionTimeout:int
+#   Query:string
+#   Attributes:list
+#   key:string
+#   value:string
+#
+# @return array containing Username and Password or NULL if max retries exceeded
+##
+function retry_cark_get_password_http_req(parameters)
+{
+  var result;
+  var max_attempts = 3;
+  for (var attempt=1; attempt<=max_attempts; attempt++)
+  {
+    dbg::detailed_log(
+      name: SCRIPT_NAME+"~Cyberark",
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "Getting password from CyberArk",
+      msg_details: {
+        "attempt": {"lvl": 3, "value": attempt},
+        "max_attempts": {"lvl": 3, "value": max_attempts}});
+    result = cark_get_password_http_req(parameters:parameters);
+    if (!isnull(result))
+    {
+      return result;
+    }
+    if (attempt<max_attempts)
+    {
+      dbg::detailed_log(name:SCRIPT_NAME+"~Cyberark", lvl:3, src:FUNCTION_NAME, msg:"Retrying in 3 seconds...");
+      sleep(3);
+    }
+  }
+  dbg::detailed_log(name:SCRIPT_NAME+"~Cyberark",lvl:1, src:FUNCTION_NAME, msg:"Cyberark Error : Max retries exceeded");
+  return result;
+}
+
+##
+# Main call to get password information from cyberark
+#
+# @param [parameters:list] cyberark query parameters
+# @remark list of available parameters
+#   AppID:string
+#   Safe:string
+#   Folder:string
+#   Object:string
+#   Username:string
+#   Address:string
+#   Database:string
+#   PolicyID:string
+#   Reason:string
+#   ConnectionTimeout:int
+#   Query:string
+#   Attributes:list
+#   key:string
+#   value:string
+#
+# @return array containing Username and Password or NULL if errors
+##
+function cark_get_password_http_req(parameters)
+{
+  local_var res, data, http_status, ret, http_headers, clean_ret;
+
+  data = cark_build_request(parameters:parameters);
+
+  # username and password is optional for this product. It can be setup through IIS but their main form of security is IP whitelisting
+  # this allows for the option to use username and password basic auth
+  if (CARK_USERNAME && CARK_PASSWORD)
+    http_headers = make_array("Content-Type","text/xml; charset=utf-8", "SOAPAction","https://tempuri.org/GetPassword",'Authorization','Basic '+base64(str:CARK_USERNAME +':'+ CARK_PASSWORD));
+  else
+    http_headers = make_array("Content-Type","text/xml; charset=utf-8", "SOAPAction","https://tempuri.org/GetPassword");
+
+  dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"HTTP_Request Body ~ " + data);
+
+  if (!isnull(CARK_CLIENT_CERT) || !isnull(CARK_PRIVATE_KEY))
+  {
+    var read_file = fread(CARK_CLIENT_CERT);
+    var md5_cert = hexstr(MD5(read_file));
+    read_file = fread(CARK_PRIVATE_KEY);
+    var md5_pk = hexstr(MD5(read_file));
+
+    dbg::detailed_log(
+      name:SCRIPT_NAME + "~Cyberark",
+      src:FUNCTION_NAME,
+      lvl:3,
+      msg:"CyberArk: Sending client certificate login request",
+      msg_details:{
+        "Cert MD5": {"lvl": 3, "value": md5_cert},
+        "Key MD5": {"lvl": 3, "value": md5_pk}});
+
+    res =  http_send_recv3(
+      target       : CARK_TARGET,
+      method       : "POST",
+      item         : CARK_URL,
+      port         : CARK_PORT,
+      data         : data,
+      add_headers  : http_headers,
+      transport    : CARK_TRANSPORT,
+      client_cert  : CARK_CLIENT_CERT,
+      client_private_key : CARK_PRIVATE_KEY,
+      client_private_key_password : CARK_PRIVATE_KEY_PASSWORD,
+      exit_on_fail : FALSE
+    );
+  }
+  else
+  {
+    dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"CyberArk: Sending standard login request");
+    res =  http_send_recv3(
+      target       : CARK_TARGET,
+      method       : "POST",
+      item         : CARK_URL,
+      port         : CARK_PORT,
+      data         : data,
+      add_headers  : http_headers,
+      transport    : CARK_TRANSPORT,
+      exit_on_fail : FALSE
+    );
+  }
+
+  http_disable_keep_alive();
+
+  if (isnull(res))
+  {
+    cark_error(1,
+               "Cyberark did not respond to request.",
+               report_error_title:"Cyberark No Response",
+               report_error_severity:1,
+               severity:ERROR_LOG);
+    return NULL;
+  }
+
+  http_status = cark_ValidateResp(status_line:res[0]);
+
+  if(http_status == 200)
+  {
+    ret = cark_parse_results(xml:res[2]);
+    # Remove the plain text password from the debug output and replace it with a *
+
+    clean_ret = ereg_replace(icase: TRUE, pattern: '(<key>Content</key><value>)(?:[^<])*</value>', replace: '\\1***REMOVED***</value>', string: res[2]);
+    clean_ret = ereg_replace(icase: TRUE, pattern: '(<Content>)(?:[^<])*</Content>', replace: '\\1***REMOVED***</Content>', string: clean_ret);
+    dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"HTTP RESPONSE STATUS ~ " + res[0]);
+    dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"HTTP RESPONSE HEADERS ~ " + res[1]);
+    dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"HTTP RESPONSE BODY~ " + clean_ret);
+
+  }
+  else if (http_status == 500)
+  {
+    ret = cark_check_500_return(xml:res[2]);
+
+    cark_error(0, "HTTP RESPONSE STATUS ~ " + res[0] );
+    cark_error(0, "HTTP RESPONSE HEADERS ~ " + res[1] );
+    cark_error(0, "HTTP RESPONSE BODY ~ " + ret);
+  }
+  else
+  {
+    return NULL;
+  }
+
+  return ret;
+}
+
+##
+# Cyberark Get Password
+#
+# @param [login:string] The login to access CyberArk
+# @param [domain:string] The domain of the target on which Cyberark is running
+# @param [object_id:string] The object ID to use to get the password
+# @param [source:string] The method on how to get the password if object_id is empty or NULL
+# @param [prefix:string] The Cyberark preference prefix
+# @param [postfix:string] The Cyberark preference postfix
+#
+# @return A string containing the Cyberark password, NULL if an error occurred
+##
+function cark_get_password(login, domain, object_id, source, prefix, postfix)
+{
+  local_var cyberark_host,cyberark_port,cyberark_username,cyberark_password,
+  cyberark_ssl,cyberark_safe,cyberark_appid,cyberark_folder,cyberark_policyid,
+  cyberark_ssl_verify,host_ip,parameters,cyberark_creds,password,error_stack,
+  account_type,act,cyberark_all,cyberark_global_md5,password_global_success,
+  cyberark_enable_object_id, cyberark_object_id, cyberark_url, cyberark_address,
+  cyberark_client_cert, cyberark_private_key, cyberark_private_key_password, tmp_file;
+
+  cyberark_host = script_get_preference(prefix+"CyberArk Host"+postfix);
+  cyberark_port = script_get_preference(prefix+"CyberArk Port"+postfix);
+  cyberark_username = script_get_preference(prefix+"CyberArk Username"+postfix);
+  cyberark_password = script_get_preference(prefix+"CyberArk Password"+postfix);
+  cyberark_ssl = script_get_preference(prefix+"CyberArk SSL"+postfix);
+  cyberark_ssl_verify = script_get_preference(prefix+"CyberArk Verify SSL Certificate"+postfix);
+  cyberark_safe = script_get_preference(prefix+"CyberArk Safe"+postfix);
+  cyberark_appid = script_get_preference(prefix+"CyberArk AppId"+postfix);
+  cyberark_folder = script_get_preference(prefix+"CyberArk Folder"+postfix);
+  cyberark_policyid = script_get_preference(prefix+"CyberArk PolicyId"+postfix);
+  cyberark_url        =  script_get_preference(prefix+"CyberArk URL"+postfix);
+  cyberark_object_id =  script_get_preference(prefix+"CyberArk Account Details Name"+postfix);
+  cyberark_address =  script_get_preference(prefix+"CyberArk Address"+postfix);
+  if(!empty_or_null(script_get_preference(prefix+"CyberArk client certificate to use"+postfix)))
+  {
+    cyberark_client_cert = script_get_preference_file_location(prefix+"CyberArk client certificate to use"+postfix);
+    cyberark_private_key = script_get_preference_file_location(prefix+"CyberArk private key to use"+postfix);
+
+    # Special cases for cyberark_private_key_password due to UI inconsistencies (see:CS-55463).
+    # First try to get this field as we usually would.
+    cyberark_private_key_password = script_get_preference(prefix+"CyberArk Passphrase for private key"+postfix);
+    if(isnull(cyberark_private_key_password))
+    {
+      if ("Database" >< prefix || "SMB" >< prefix)
+      {
+        # SMB and Database settings read " Database Cyberark Passphrase ... " (i.e. with a leading space.)
+        cyberark_private_key_password = script_get_preference(" " + prefix+"CyberArk Passphrase for private key"+postfix);
+      }
+      else
+      {
+        # SSH setting for passphrase is missing "SSH" prefix entirely.
+        cyberark_private_key_password = script_get_preference("CyberArk Passphrase for private key"+postfix);
+      }
+    }
+    if(isnull(cyberark_private_key_password))
+    {
+      # If none of the above worked, then there is no private key passphrase.
+      cyberark_private_key_password = "";
+    }
+
+  # The Raw cert uploads need to be processed. ref: global_settings.nasl
+    if (file_stat(cyberark_client_cert))
+    {
+      tmp_file = fread(cyberark_client_cert);
+      unlink(cyberark_client_cert);
+      fwrite(data:tmp_file, file:cyberark_client_cert);
+    }
+
+    if (file_stat(cyberark_private_key))
+    {
+      tmp_file = fread(cyberark_private_key);
+      unlink(cyberark_private_key);
+      fwrite(data:tmp_file, file:cyberark_private_key);
+    }
+  }
+
+  # If the domain is empty and this is a SSH cred set address to the domain. RPI-197
+  if (empty_or_null(domain) && "SSH" >< prefix && !empty_or_null(cyberark_address))
+  {
+    domain = cyberark_address;
+  }
+
+  # Prefer the specified object ID parameter over the preference value 
+  if (!empty_or_null(object_id))
+    cyberark_object_id = object_id;
+  # If no object ID, attempt to retrieve password by address and username
+  else if (!empty_or_null(source) && source == 'import')
+    cyberark_object_id = NULL;    
+
+  if (!empty_or_null(cyberark_object_id))
+  {
+    cyberark_enable_object_id = TRUE;
+  }
+  else
+  {
+    cyberark_enable_object_id = FALSE;
+  }
+
+  if (strlen(ereg_replace(pattern:"([^ ]*) *$", string:cyberark_username, replace:"\1")) == 0)
+  {
+    cyberark_username  = NULL;
+  }
+
+  if (strlen(ereg_replace(pattern:"([^ ]*) *$", string:cyberark_password, replace:"\1")) == 0)
+  {
+    cyberark_password = NULL;
+  }
+
+  if (cyberark_ssl == "yes")
+  {
+    cyberark_ssl = TRUE;
+  }
+  else
+  {
+    cyberark_ssl = FALSE;
+  }
+
+  if (cyberark_ssl_verify == "yes")
+  {
+    cyberark_ssl_verify = TRUE;
+  }
+  else
+  {
+    cyberark_ssl_verify = FALSE;
+  }
+
+  account_type = cark_init(debug:FALSE, # debugging output option
+            target:cyberark_host,
+            domain:domain,
+            port:cyberark_port,
+            ssl:cyberark_ssl,
+            ssl_verify:cyberark_ssl_verify,
+            username:cyberark_username,
+            password:cyberark_password,
+            cark_url:cyberark_url,
+            object_id:cyberark_object_id,
+            client_cert:cyberark_client_cert,
+            client_private_key:cyberark_private_key,
+            client_private_key_password:cyberark_private_key_password
+            );
+
+  if (cyberark_enable_object_id)
+  {
+    mutex_lock("Cyberark_Global_Credentials");
+    dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"CyberArk: Using Object ID");
+    # check if stored password already exists
+    password_global_success = get_global_kb_item("cyberark/global/"+cyberark_object_id+"/status");
+
+    if (!isnull(password_global_success))
+    {
+      mutex_unlock("Cyberark_Global_Credentials");
+      dbg::detailed_log(
+        name: SCRIPT_NAME + "~Cyberark",
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "CyberArk: Global Credentials status : ",
+        msg_details: {
+          "password_global_success": {"lvl": 1, "value": password_global_success}});
+      if (password_global_success == 'success')
+      {
+        password = get_global_kb_item("Secret/cyberark/global/"+cyberark_object_id);
+        return password;
+      }
+      else if (password_global_success == 'failed')
+      {
+        return NULL;
+      }
+    }
+        dbg::detailed_log(
+          name: SCRIPT_NAME + "~Cyberark",
+          lvl: 2,
+          src: FUNCTION_NAME,
+          msg: "Getting password for object",
+          msg_details: {
+            "Object ID": {"lvl": 2, "value": cyberark_object_id}});
+    parameters = make_array(
+      "Username",login,
+      "PolicyID",cyberark_policyid,
+      "Safe",cyberark_safe,
+      "AppID",cyberark_appid,
+      "Folder",cyberark_folder,
+      "Object", cyberark_object_id,
+      "Reason","NESSUS"
+      );
+
+    cyberark_creds = retry_cark_get_password_http_req(parameters:parameters);
+
+    if (isnull(cyberark_creds))
+    {
+      cark_error(0, 'Cyberark Error : unable to obtain creds using Cyberark Account Details Name :  "' +cyberark_object_id+ '".', severity:ERROR_LOG);
+    }
+  }
+  else
+  {
+    foreach act (account_type)
+    {
+      dbg::detailed_log(
+        name: SCRIPT_NAME + "~Cyberark",
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "Getting password for user",
+        msg_details: {
+          "User": {"lvl": 2, "value": login},
+          "Address": {"lvl": 2, "value": act}});
+      parameters = make_array(
+        "Username",login,
+        "PolicyID",cyberark_policyid,
+        "Safe",cyberark_safe,
+        "AppID",cyberark_appid,
+        "Folder",cyberark_folder,
+        "Address",act,
+        "Reason","NESSUS"
+        );
+
+      cyberark_creds = retry_cark_get_password_http_req(parameters:parameters);
+
+      if (!isnull(cyberark_creds)) break;
+      else cark_error(0, 'Cyberark Error : unable to obtain creds using the address  "' +act+ '".', severity:ERROR_LOG);
+    }
+  }
+
+  if (!isnull(cyberark_creds))
+  {
+    if (!isnull(cyberark_creds["Password"]))
+    {
+      password = cyberark_creds["Password"];
+    }
+    else
+    {
+      cark_error(0, 'Cyberark Error : The password field returned a NULL value.', severity:ERROR_LOG);
+    }
+  }
+
+  if (cyberark_enable_object_id)
+  {
+    if (password)
+    {
+      dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:2, src:FUNCTION_NAME, msg:"CyberArk: Global Credentials status : success");
+      set_global_kb_item(name:"cyberark/global/"+cyberark_object_id+"/status", value:'success');
+      set_global_kb_item(name:"Secret/cyberark/global/"+cyberark_object_id, value:password);
+    }
+    else
+    {
+      dbg::detailed_log(name:SCRIPT_NAME + "~Cyberark", lvl:1, src:FUNCTION_NAME, msg:"CyberArk: Global Credentials status : failed");
+      set_global_kb_item(name:"cyberark/global/"+cyberark_object_id+"/status", value:'failed');
+    }
+    mutex_unlock("Cyberark_Global_Credentials");
+  }
+
+  return password;
+}
+
+##
+# Quick and dirty function to bring thycotic more in line with the other PAMs.
+# Moving logic from ssh_settings and massaging it into a standard format.
+#
+# @param [username:string] The login to retrieve the password
+# @param [prefix:string] The Cyberark preference prefix
+# @param [postfix:string] The Cyberark preference postfix
+#
+# @return An array containing the credentials and success status, NULL if an error occurred
+##
+function cyberark_get_credential(username,prefix,postfix)
+{
+  local_var cyberark_result, cyberark_creds, object_id;
+  cyberark_creds = cark_get_password(login: username, prefix: prefix + "SSH ", postfix: postfix);
+
+  if (isnull(cyberark_creds))
+  {
+    return NULL;
+  }
+  else if (cyberark_creds  =~ "BEGIN (RSA|DSA) PRIVATE KEY")
+  {
+    cyberark_result['private_key'] = cyberark_creds;
+  }
+  else
+  {
+    cyberark_result['password'] = cyberark_creds;
+  }
+
+  cyberark_result['sudo'] = script_get_preference(prefix+"CyberArk elevate privileges with"+postfix);
+  cyberark_result['root'] = script_get_preference(prefix+"Escalation account"+postfix);
+  cyberark_result['su_login'] = script_get_preference(prefix+"su login"+postfix);
+  cyberark_result['sudo_path'] = script_get_preference(prefix+"Privilege elevation binary path (directory)"+postfix);
+
+  if(!isnull(cyberark_result['root']))
+  {
+    object_id = script_get_preference(prefix+"CyberArk Escalation Account Details Name"+postfix);
+    if ("Cisco" >< cyberark_result['sudo'] || "pbrun" >< cyberark_result['sudo'] || ".k5login" >< cyberark_result['sudo'])
+    {
+      cyberark_result['sudo_password'] = cark_get_password(object_id:object_id, prefix: prefix + "SSH ", postfix: postfix);
+    }
+    else
+    {
+      object_id = script_get_preference(prefix+"CyberArk Escalation Account Details Name"+postfix);
+      cyberark_result['sudo_password'] = cark_get_password(login: cyberark_result['root'],object_id:object_id, prefix: prefix + "SSH ", postfix: postfix);
+    }
+  }
+
+  cyberark_result['success'] = TRUE;
+  return cyberark_result;
+}

@@ -1,0 +1,1602 @@
+#TRUSTED 42cea11c70d89bcf228b9f4b40b40a6127d9f32ff204cf1d85352cb8589991186a19ab7cfb25337393dd7f259bafa16f98e49faecf94ca6778dcea37d9e56b70f7e0fc2611de2fcf2b6553e8eaa6a21ff66b19a97b37c408d55033e22334f45588321c3e9d0a33b456616c1f3812a3e261cffc2f064cbac3423f9dcef7799f41086617294fe87016ad36158ab6f2949351efbbd87f0f797b4118fa46b3c05c518aa909c186a1150b8aab9db67e2f3aef9c38fccce30671c3c28464c7c9ba5251d58a096d8127d981e7c1555d64ceec1803a8634de585e8cb9aaaf2537f72263c527ff6b0d6943df13182cf7046dd0545f9125c1af464a241149ae005ccce4f0cb9fe7238675c72d9383d5d23fd01efd80d4347beb0421253531dd3fa0ade7968ae254a56f7e2378f28a938a4a9139eb99a29ad2e00b8dcba365321c8e492e22e023fc98349da4a31bb68552a3a7d89c17c80a68fc4fc1803580d3a21842b6f1ed8c387a70f1968cda084771d15ea04ecae4a6206e878e36749e9fed5a0ad4700b008a339f92862a0a868f16bc8a0a964ee57a4ea5160ba129db2e962676b37c11926cc333117eb523e7ef2229477ddf1560612aa994d241242caacdbee7c98931496f85cf173431cab77ab74e29ce29dd8bda4fc7a602e6ea980bd8d34c284003dc9d4caf2b9c33b72ae3a9afbaca839e0701c21edf8d11e834096dc6f20da38
+#TRUST-RSA-SHA256 afe72459ff1d06c1ba3af13f1e3182243006f067b1833b0211e4373db996fb13393d06e306e5230257dccbb0f7ea221e0665aa8744cc00e5108f0ce76400adbaad1f44a4605a2304ae0b3200da96016ac792d142c3970469446cf0fdc3361fd457d08c8aa27111651073d00bc9a4ee5ce5173e56c6b8276468e58be9ad7911da0670b44f43a1dd08a3be7df4e080a225ae8b4a15a4aa8cc93b00fe584318ce358c2670f0f22a437a4dd6bce705da144bc7140f78489c9e2b2276250cbf0d5a47e9e2f9c656c5e8fc399736d28c8970884a6e59ec55c0d601438b8eefc7b894064c4afeb7ef2fb12b96c1ba9d3d84708bf644f0ed7ab9a1177920dc10cb611dd0f7d09db4f6e7e93397090dd92bcf8ea569d1312044b2bef901899b93f7df901baac8469a75c5e419d56592183f04d50f4e01951c71f7f3dc05851719a14bea736bbb9d978f6fea39a55a3a40d9e44f2bdbdec90894b8b1cd910dde1eb2d46dd9c7872efdcd6019ffa9dc75ac12bc1ddbb1b9d178a3aa27476f2ed1883a62ee013e3000f785631cea64d5dedf77904a0b8486a6ca135c915e7f3883852522d2701c6038d53d0d7c60868c757853c091f6b1f01be4f6de742a645e7bd5c16cbc43fb1bce0efe0fc25056fc55e51e3474afa7edddbef39366d8446cd47e19b980f804605e9e797eb2dd35d021d1bfcc124215709108e449c8e8d2cd401653a379c4
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1
+###
+
+
+namespace cyberark
+{
+  object CyberArkConfig : integrations::IntegrationConfig
+  {
+    var credential_id;
+    var escalation_id;
+    var escalation_username;
+    var app_id;
+    var get_credential_by;
+    var get_escalation_credential_by;
+    var escalate_with;
+    var address;
+    var escalation_address;
+    var safe;
+    var escalation_safe;
+    var url;
+    var cred_domain; # Username optional domain
+    var use_kerb; # boolean use Kerberos
+    var kerb_domain; # Kerberos Domain
+    var api_domain; # Domain gathered from API
+    var domain; # Domain name passed to logins.nasl
+
+    # Fields only supported when "Get Credential By" is "parameters"
+    var login_username;
+    var folder;
+    var database;
+    var query;
+    var query_format;
+    var append_target_to_query;
+    var escalation_folder;
+    var escalation_database;
+    var escalation_query;
+    var escalation_query_format;
+    var escalation_append_target_to_query;
+
+    ##
+    # Scrub sensitive data from logs
+    # @param [msg:string] msg to remove sensitive data from
+    #
+    # @return scrubbed string
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(msg:msg,'"Content":"(.+?)"');
+
+      return msg;
+    }
+
+    ##
+    #
+    # Initialize CyberArk and get config from UI
+    #
+    # @param [prefix:string] The prefix for the configuration elements
+    # @param [postfix:string] The postfix for the configuration elements
+    #
+    # @return full configuration
+    ##
+    public function init(prefix, postfix)
+    {
+
+      var tmp_file, parsed_host;
+
+      int_name = "CyberArk";
+      host = script_get_preference(prefix + "Host" + postfix);
+      port = script_get_preference(prefix + "Port" + postfix);
+      ssl = integrations::boolean(script_get_preference(prefix + "SSL" + postfix));
+      ssl_verify = integrations::boolean(script_get_preference(prefix + "Verify SSL Certificate" + postfix));
+      get_credential_by = script_get_preference(prefix+"Get Credential By"+postfix);
+      get_escalation_credential_by = script_get_preference(prefix+"Get Escalation Credential By"+postfix);
+      credential_id = script_get_preference(prefix + "Credential ID" + postfix);
+      escalation_id = script_get_preference(prefix + "Escalation Credential ID" + postfix);
+      escalation_username = script_get_preference(prefix + "Escalation Username" + postfix);
+      safe = script_get_preference(prefix + "Safe" + postfix);
+      escalation_safe = script_get_preference(prefix + "Escalation Safe" + postfix);
+      app_id = script_get_preference(prefix + "App ID" + postfix);
+      cert = script_get_preference_file_location(prefix + "Client Certificate To Use" + postfix);
+      key = script_get_preference_file_location(prefix + "Private Key To Use" + postfix);
+      passphrase = script_get_preference(prefix + "Passphrase For Private Key" + postfix);
+      escalate_with = script_get_preference("Elevate privileges with" + postfix);
+      address = script_get_preference(prefix + "Address" + postfix);
+      escalation_address = script_get_preference(prefix + "Escalation Address" + postfix);
+      use_kerb = integrations::boolean(script_get_preference(prefix + "Authentication Method" + postfix));
+      cred_domain = script_get_preference(prefix + "domain (optional)" + postfix);			
+      kerb_domain = script_get_preference(prefix + "KDC Domain" + postfix);
+
+      # Fields only supported when "Get Credential By" is "parameters"
+      folder = script_get_preference(prefix+"Folder"+postfix);
+      database = script_get_preference(prefix+"Database"+postfix);
+      query = script_get_preference(prefix+"Query"+postfix);
+      query_format = script_get_preference(prefix+"Query Format"+postfix);
+      append_target_to_query = integrations::boolean(script_get_preference(prefix + "Use Target IP Address" + postfix));
+      escalation_folder = script_get_preference(prefix+"Escalation Folder"+postfix);
+      escalation_database = script_get_preference(prefix+"Escalation Database"+postfix);
+      escalation_query = script_get_preference(prefix+"Escalation Query"+postfix);
+      escalation_query_format = script_get_preference(prefix+"Escalation Query Format");
+      escalation_append_target_to_query = integrations::boolean(script_get_preference(prefix + "Escalation Use Target IP Address" + postfix));
+
+      # In this integration the "username" is passed as a function parameter to
+      # cyberark_rest_get_credential. With SSH, the value there is the generic 'ssh settings' username,
+      # which always defaults to 'root'. This value is gathered using script_get_preference in
+      # ssh_settings.nasl.
+      # There are cases when we don't want username to have this implicit default, specifically when
+      # getting "by parameters", we don't want to specify any username in the query unless one was
+      # explicitly set in the UI.
+      # Therefore, we define "login_username" here which is a separate setting from "username".
+      # But because we can't break the UI, we can only use this login_username attribute when
+      # "get credential by" is set to "parameters", and we can't remove the "other" username
+      login_username = script_get_preference(prefix+"User"+postfix);
+
+      # If running in cli without ssh_settings, logins, or database_settings
+      if (get_preference("run_cyberark_cli"))
+      {
+        debug = TRUE;
+        cert = prompt("Full Client Cert File Path");
+        key = prompt("Full Client Key File Path");
+      }
+
+      # Adding logic for custom url if customer uses one.
+      parsed_host = integrations::parse_url(url: host);
+      host = parsed_host.target;
+      url = parsed_host.directory;
+      if(empty_or_null(passphrase)) 
+      {
+        passphrase = "";
+      }
+
+      # The Raw cert upload needs to be processed. ref: global_settings.nasl
+      if (cert)
+      {
+        read_cert_and_key();
+      }
+
+      integrations::logger(msg:
+        'CyberArk Settings ~' +
+        '\nHOST : ' + host +
+        '\nCUSTOM_URL : ' + url +
+        '\nPORT : ' + port +
+        '\nFORCE_SSL : ' + ssl +
+        '\nSSL_VERIFY : ' + ssl_verify +
+        '\nAppID : ' + app_id +
+        '\nCERT Path: ' + cert +
+        '\nPrivate Key Path: ' + key +
+        '\nCert md5 Contents: ' + md5_cert +
+        '\nPrivate md5 Contents: ' + md5_key +
+        '\nPrivate Key Passphrase Length: ' + strlen(passphrase) +
+        '\nGet Credential By: ' + get_credential_by +
+        '\nGet Escalation Credential By: ' + get_escalation_credential_by +
+        '\nAddress: |' + address + '|' +
+        '\nFolder: ' + '|' + folder + '|' +
+        '\nDatabase: ' + '|' + database + '|' +
+        '\nQuery: ' + '|' + query + '|' +
+        '\nQuery Format: ' + '|' + query_format + '|' +
+        '\nEscalate With : |' + escalate_with + '|' +
+        '\nEscalation Username : |' + escalation_username + '|' +
+        '\nEscalation Address : |' + escalation_address + '|' +
+        '\nCredential ID : |' + credential_id + '|' +
+        '\nEscalation ID : |' + escalation_id + '|' +
+        '\nEscalation Folder: ' + '|' + escalation_folder + '|' +
+        '\nEscalation Database: ' + '|' + escalation_database + '|' +
+        '\nEscalation Query: ' + '|' + escalation_query + '|' +
+        '\nEscalation Query Format: ' + '|' + escalation_query_format + '|'
+        , config:this, lvl:3
+      );
+
+      return true;
+    }
+
+    ##
+    # This function creates the path/&parameters for the request to CyberArk AIM Web Service
+    # when using the extended parameter format.
+    #
+    # The parameters to this function are added in the format "?Param=Value&Param2=Value2" to
+    # create URL parameters that are passed to the CyberArk CCP REST API.
+    #
+    # This function is also used to generate unique cache keys for the secrets.
+    #
+    # @param [username:string] username for account
+    # @param [target:string] IP/name of the target account
+    # @param [identifier:string] The credential ID, either the escalation or login credential ID.
+    # @param [account_address:string] The address of the credential, if getting "by address".
+    # @param [safe:string] The safe from which to get the credential.
+    # @param [folder:string] The value of the "folder" query parameter.
+    # @param [database:string] The value of the "database" query parameter.
+    # @param [query:string] The value of the "query" query parameter.
+    # @param [query_format:string] The value of the "query format" query parameter.
+    # @param [append_target_to_query:boolean] Whether to append target IP address to the query.
+    #
+    # @return [command:string] contains path/&parameters for AIM request
+    ##
+    public function get_url_query_extended_params(username, target, identifier, account_address, safe, folder, database, query, query_format, append_target_to_query)
+    {
+      # new parameters:
+      # folder, database, query, query_format
+      var command, static_url;
+
+      # The initial values of command and static url are
+      # the same logic as the old path_and_params function.
+      static_url = "/AIMWebService/api/";
+      if (this.url == "/")
+      {
+        command = static_url;
+      }
+      else
+      {
+        command = this.url;
+      }
+
+      command += "Accounts?AppID=";
+      command += urlencode(str:this.app_id);
+
+      if (safe)
+      {
+        command += "&Safe=" + urlencode(str:this.safe);
+      }
+      if (username)
+      {
+        command += '&UserName=' + urlencode(str:username);
+      }
+      if (account_address)
+      {
+        command += '&Address=' + urlencode(str:account_address);
+      }
+      else if (append_target_to_query)
+      {
+        command += '&Address=' + urlencode(str:target);
+      }
+      if (identifier)
+      {
+        command += '&Object=' + urlencode(str:identifier);
+      }
+      if (folder)
+      {
+        command += '&Folder=' + urlencode(str:folder);
+      }
+      if (database)
+      {
+        command += '&Database=' + urlencode(str:database);
+      }
+      if (query)
+      {
+        command += '&Query=' + urlencode(str:query);
+        if (query_format)
+        {
+          command += '&QueryFormat=' + urlencode(str:query_format);
+        }
+      }
+      # Default case when no params were specified is to get by target address.
+      # Note: not checking safe here - you can specify safe and nothing else and the
+      # default behavior will be to lookup by target address. We are also not checking query
+      # format here because it is ignored unless query was given.
+      if (!username && !account_address && !identifier && !folder && !database && !query)
+      {
+        command += '&Address=' + urlencode(str:target);
+      }
+
+      return command;
+    }
+
+    ##
+    # This function creates the path/&parameters for the request to CyberArk AIM Web Service.
+    # We need to support a new credential for VMware support, which is an improvement for CyberArk credential.
+    # This will be used until we can add this and/or deprecate the existing CyberArk credential.
+    #
+    # @param [username:string] username for account
+    # @param [target:string] IP/name of the target account
+    # @param [vmware:boolean] Are we using this for VMware?
+    # @param [identifier:string] The credential ID, either the escalation or login credential ID.
+    # @param [account_address:string] The address of the credential, if getting "by address".
+    # @param [safe:string] The safe from which to get the credential.
+    #
+    # @return [command:string] contains path/&parameters for AIM request
+    ##
+    function _path_and_params(username, target, vmware, identifier, account_address, safe)
+    {
+      var static_url, command;
+
+      # Adding logic to handle custom url if needed
+      static_url = "/AIMWebService/api/";
+      if (this.url == "/")
+      {
+        command = static_url;
+      }
+      else
+      {
+        command = this.url;
+      }
+
+      command += "Accounts?AppID=";
+      command += urlencode(str:this.app_id);
+      
+      # Checking if the user has specified a safe to use
+      if (!empty_or_null(safe))
+      {
+        command += "&Safe=";
+        command += urlencode(str:safe);
+      }
+
+      if (vmware)
+      {
+        if (!empty_or_null(username))
+        {
+          command += "&UserName=" + urlencode(str:username);
+        }
+
+        if (!empty_or_null(account_address))
+        {
+          command += "&Address=" + urlencode(str:account_address);
+        }
+        if (!empty_or_null(identifier))
+        {
+          command += "&Object=" + urlencode(str:identifier);
+        }
+        if (!empty_or_null(this.folder))
+        {
+          command += "&Folder=" + urlencode(str:this.folder);
+        }
+        if (!empty_or_null(this.database))
+        {
+          command += "&Database=" + urlencode(str:this.database);
+        }
+        if (!empty_or_null(this.query))
+        {
+          command += "&Query=" + urlencode(str:this.query);
+        }
+        if (!empty_or_null(this.query_format));
+        {
+          command += "&QueryFormat=" + urlencode(str:this.query_format);
+        }
+        return command;
+      }
+
+      # Checking for the various uses of Get Credential By field in UI.
+      if (empty_or_null(identifier))
+      {
+        if (empty_or_null(account_address))
+        {
+          # Due to the default value of "root" set in ssh_settings for username, username will only be NULL if the user does not
+          # choose to Get Credential By Identifier, Username, or Address because the default option in that dropdown is username
+          # and results in username = NULL. Otherwise, username = "root" leaks through when choosing the Address option.
+          if (empty_or_null(username))
+          {
+            #Default to Get Credential By Target for the possibility that the user does not choose to Get Credential by Username, Address, or Identifier.
+            command += "&Address=";
+            command += target;
+          }
+          else
+          {
+            command += "&UserName=";
+            command += urlencode(str:username);
+
+            # For when multiple targets have the same username, this will isolate by adding the Address=Target to the uri.
+            if (!empty_or_null(target))
+            {
+              command += "&Address=";
+              command += target;
+            }
+          }
+        }
+        else
+        {
+          command += "&Address=";
+          command += urlencode(str:account_address);
+        }
+      }
+      else
+      {
+        command += "&Object=";
+        command += urlencode(str:identifier);
+      }
+      return command;
+    }
+
+    ##
+    # Get a credential from CyberArk - AIM Service
+    #
+    # @param [username:string] The username to retrieve
+    # @param [target:string] The address associated with the account
+    # @param [vmware:boolean] Are we using this for VMware?
+    # @param [identifier:string] The credential ID, either the escalation or login credential ID.
+    # @param [account_address:string] The address of the credential, if getting "by address".
+    # @param [safe:string] The safe from which to get the credential.
+    # @param [append_target_to_query:boolean] Whether to append target IP address/name to the query.
+    #
+    # @return full credential information
+    ##
+    public function aim_request(username, target, vmware, identifier, account_address, safe, folder, database, query, query_format, get_credential_by, append_target_to_query)
+    {
+      var result, command, kv;
+      if (!identifier)
+      {
+        identifier = this.credential_id;
+      }
+
+      if (get_credential_by == 'Parameters')
+      {
+        command = get_url_query_extended_params(
+          username:username,
+          target:target,
+          identifier:identifier,
+          account_address:account_address,
+          safe:safe,
+          folder:folder,
+          database:database,
+          query:query,
+          query_format:query_format,
+          append_target_to_query:append_target_to_query
+        );
+      }
+      else
+      {
+        command = _path_and_params(username:username, target:target, vmware:vmware, identifier:identifier, account_address:account_address, safe:safe);
+      }
+      
+      
+      integrations::logger(msg:"Requesting password.", lvl:2, config:this);
+      
+      http_disable_keep_alive();
+      result = integrations::get(config:this, command:command);
+
+      if(!result.success)
+      {
+        return result;
+      }
+      
+      if (result.body.UserName)
+      {
+        # CyberArk below v14
+        kv['username'] = result.body.UserName;
+      }
+      else
+      {
+        # CyberArk v14 and above
+        kv['username'] = result.body.username;
+      }
+      
+      #Logic for *NIX Account with SSH Key vs SSH Password
+      if ("PRIVATE KEY" >< result.body.Content)
+      {
+        kv["ssh_key"] = result.body.Content;
+      }
+      else
+      {
+        kv['password'] = result.body.Content;
+      }
+      
+      if(!empty_or_null(result.body.LogonDomain))
+      {
+        # CyberArk below v14
+        this.api_domain = result.body.LogonDomain;
+      }
+      else if (!empty_or_null(result.body.logondomain))
+      {
+        # CyberArk v14 and above.
+        this.api_domain = result.body.logondomain;
+      }
+
+      return { success: TRUE, cached:FALSE, kv:kv };
+    }
+
+    ##
+    #
+    # Assign config domain value. This value is passed to logins.nasl, rather than
+    # going directly through login.nasl plugin to avoid issues we have with Kerberos Domain.
+    #
+    # @return boolean boolean if domain was assigned to config
+    ##
+    public function config_domain()
+    {
+      if(this.use_kerb)
+      {
+        this.domain = this.kerb_domain;
+        integrations::logger(msg:'Domain name provided from Kerberos Domain entry: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else if (!empty_or_null(this.cred_domain))
+      {
+        this.domain = this.cred_domain;
+        integrations::logger(msg:'Domain name provided from Username Domain entry: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else if (!empty_or_null(this.api_domain))
+      {
+        this.domain = this.api_domain;
+        integrations::logger(msg:'Domain name provided from API data collection: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    ##
+    # Set default parameters for the escalation request.
+    #
+    # @param [username:string] The login username.
+    #
+    # @return NULL
+    ##
+    public function set_default_escalation_params(username)
+    {
+      # When we are using escalation but no particular escalation params
+      # (i.e. address, account identifier, or username) were specified,
+      # use a default of whatever was specified as the login account.
+      #
+      # There is a minor edge case where the user is using 'su' (or another escalation
+      # method other than sudo) and has chosen:
+      # "escalation account": 'superuser' (this value means 'account to escalate to' and is not
+      #                                    visible to the integration)
+      # "escalation username": <empty>
+      # "escalation identifier": <empty>
+      # "escalation address": <empty>
+      # "<other escalation params>": <all empty>
+      #
+      # The user would likely expect us to look up the escalation account of 'superuser' but it
+      # would actually look up whatever login username was used.
+      #
+      # The fix would be to just enter 'superuser' in the "escalation username" field,
+      # matching what was entered in the "escalation account" field.
+      #
+      # This is discussed in detail in RES-175575 as it will be documented.
+      #
+      # Note: username needs to be a parameter here because it is not an attribute of
+      # the CyberArk config object.
+      if (
+        !this.escalation_username &&
+        !this.escalation_id &&
+        !this.escalation_address &&
+        !this.escalation_folder &&
+        !this.escalation_database &&
+        !this.escalation_query &&
+        !this.escalation_query_format &&
+        !this.escalation_safe
+      )
+      {
+        if (this.get_credential_by == 'Parameters')
+        {
+          # use this.login_username and NOT username parameter, so that
+          # there is no default value of 'root'.
+          this.escalation_username = this.login_username;
+          this.escalation_id = this.credential_id;
+          this.escalation_address = this.address;
+          this.escalation_safe = this.safe;
+          this.escalation_folder= this.folder;
+          this.escalation_database = this.database;
+          this.escalation_query = this.query;
+          this.escalation_query_format = this.query_format;
+          this.escalation_append_target_to_query = this.append_target_to_query;
+        }
+        else
+        {
+          # use username PARAMETER, which comes from ssh_settings.nasl
+          this.escalation_username = username;
+          this.escalation_id = this.credential_id;
+          this.escalation_address = this.address;
+          this.escalation_safe = this.safe;
+        }
+      }
+      return NULL;
+    }
+  }
+
+  ##
+  # Report error from a Cyberark result. Helper for cyberark_rest_get_credential.
+  #
+  # @param [result:array] An array result from aim_request function.
+  # @param [config:CyberarkConfig] The Cyberark config object.
+  #
+  # @return TRUE
+  ##
+  function _log_error_result(result, config)
+  {
+    # debug reporting for specific CyberArk Vault server errors
+    if (typeof(result.message) == 'array' && !empty_or_null(result.message.ErrorCode))
+    {
+      integrations::logger(msg:"CyberArk Server Error: " + result.message.ErrorCode + ": " + result.message.ErrorMsg, lvl:1, config:config);
+    }
+    else
+    {
+      integrations::logger(msg:"Failed to retrieve credential. Error: " + result.message, lvl:1, config:config);
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Get cache key based on specified secret identifier(s).
+  #
+  # @param [username:str] The username of the account.
+  # @param [target:str] The IP address/name of the account.
+  # @param [identifier:string] The account's object identifier.
+  # @param [account_address:string] The address of the credential, if getting "by address".
+  # @param [safe:string] The safe from which to get the credential.
+  #
+  # @return [cache_key:str] A cache key.
+  #
+  ##
+  function _get_cache_key(username, target, identifier, account_address, safe)
+  {
+    var cache_key;
+    if (empty_or_null(identifier))
+    {
+      if(!empty_or_null(account_address))
+      {
+        cache_key = account_address;
+      }
+      else
+      {
+        cache_key = username + " " + target;
+      }
+    }
+    else
+    {
+      cache_key = identifier;
+    }
+
+    return cache_key;
+  }
+
+  ##
+  # Get the specified account from CyberArk.
+  #
+  # @param [config:CyberarkConfig] The Cyberark config object.
+  # @param [username:str] The username of the account.
+  # @param [vmware:boolean] Is this account for VMware?
+  # @param [identifier:string] The account's object identifier.
+  # @param [account_address:string] The address of the credential, if getting "by address".
+  # @param [safe:string] The safe from which to get the credential.
+  # @param [folder:string] The value of the "folder" query parameter.
+  # @param [database:string] The value of the "database" query parameter.
+  # @param [query:string] The value of the "query" query parameter.
+  # @param [query_format:string] The value of the "query format" query parameter.
+  # @param [get_credential_by:string] The value of the "get credential by" preference
+  # @param [target:str] The IP address/name of the account address.
+  # @param [append_target_to_query:boolean] Whether to append target IP address to the query.
+  #
+  # @return [cred_result:array] The result of the AIM request or cache lookup.
+  ##
+  function get_target_secret_with_cache(config, username, vmware, identifier, account_address, safe, folder, database, query, query_format, get_credential_by, target, append_target_to_query)
+  {
+    var cache_key, cred_result;
+    if (get_credential_by == 'Parameters')
+    {
+      # Use a checksum of the unique fields that specify the
+      # secret as the cache key. This generates unique keys
+      # but avoids any issues with special characters as KB keys.
+      cache_key = hexstr(MD5(config.get_url_query_extended_params(
+        username:username,
+        target:target,
+        identifier:identifier,
+        account_address:account_address,
+        safe:safe,
+        folder:folder,
+        database:database,
+        query:query,
+        query_format:query_format,
+        append_target_to_query:append_target_to_query
+      )));
+    }
+    else
+    {
+      cache_key = _get_cache_key(username:username, target:target, identifier:identifier, account_address:account_address, safe:safe);
+    }
+
+    integrations::logger(msg:'Cache key: ' + cache_key, lvl:3, config:config);
+
+    # Check Cache for Credential
+    cred_result = integrations::get_cache(secret:cache_key);
+    
+    # If we dont have a cached copy, fetch from remote.
+    if(empty_or_null(cred_result) || empty_or_null(cred_result.kv.username))
+    {
+      cred_result = config.aim_request(
+        username:username,
+        target:target,
+        vmware:vmware,
+        identifier:identifier,
+        account_address:account_address,
+        safe:safe,
+        folder:folder,
+        database:database,
+        query:query,
+        query_format:query_format,
+        get_credential_by:get_credential_by,
+        append_target_to_query:append_target_to_query
+      );
+    }
+    else
+    {
+      integrations::logger(msg:'Cache hit for credential: ' + cache_key, lvl:2, config:config);
+    }
+
+    if (!cred_result.success)
+    {
+      _log_error_result(result:cred_result, config:config);
+      return { success:FALSE };
+    }
+
+    if(!cred_result.cached)
+    {
+      integrations::set_cache(secret:cache_key,kv:cred_result.kv);
+    }
+    if(empty_or_null(cred_result.kv.password) && empty_or_null(cred_result.kv.ssh_key))
+    {
+      integrations::logger(msg:"Failed to retrieve credentials for '" + cache_key + "'", lvl:1, config:config);
+      return { success:FALSE };
+    }
+
+    return cred_result;
+  }
+
+  ##
+  # Get the specified account from CyberArk.
+  #
+  # @param [config:CyberarkConfig] The Cyberark config object.
+  # @param [username:str] The username of the account.
+  # @param [vmware:boolean] Is this account for VMware?
+  # @param [identifier:string] The account's object identifier.
+  # @param [account_address:string] The address of the credential, if getting "by address".
+  # @param [safe:string] The safe from which to get the credential.
+  # @param [folder:string] The value of the "folder" query parameter.
+  # @param [database:string] The value of the "database" query parameter.
+  # @param [query:string] The value of the "query" query parameter.
+  # @param [query_format:string] The value of the "query format" query parameter.
+  # @param [get_credential_by:string] The value of the "get credential by" preference
+  # @param [append_target_to_query:boolean] Whether to append target IP address/name to the query.
+  #
+  # @return [cred_result:array] The result of the AIM request or cache lookup.
+  ##
+  function get_secret_for_targets(config, username, vmware, identifier, account_address, safe, folder, database, query, query_format, get_credential_by, append_target_to_query)
+  {
+    var target_list, target_ip, target_name, target_result;
+
+    target_ip = get_host_ip();
+    target_name = get_host_report_name();
+    if (target_name && target_name != target_ip)
+    {
+      target_list = [target_name, target_ip];
+    }
+    else
+    {
+      target_list = [target_ip];
+    }
+
+    integrations::logger(msg:'Trying targets: ' + obj_rep(target_list), config:config, lvl:3);
+
+    foreach (var target in target_list)
+    {
+      target_result = get_target_secret_with_cache(
+        config:config,
+        username:username,
+        vmware:vmware,
+        identifier:identifier,
+        account_address:account_address,
+        safe:safe,
+        folder:folder,
+        database:database,
+        query:query,
+        query_format:query_format,
+        get_credential_by:get_credential_by,
+        target:target,
+        append_target_to_query:append_target_to_query
+      );
+      if (target_result.success)
+      {
+        return target_result;
+      }
+    }
+    return target_result;
+  }
+
+  ##
+  #
+  # Get a credential from CyberArk - public
+  #
+  # @param [prefix:string] The prefix for the configuration elements
+  # @param [postfix:string] The postfix for the configuration elements
+  # @param [username:string] Username to fetch credential for
+  # @param [domain:string] Windows domain
+  # @param [vmware:boolean] Are we using this for VMware?
+  #
+  # @return full credential information.
+  ##
+  function _cyberark_rest_get_credential(username, domain, prefix, postfix, vmware)
+  {
+    var config, login_cred_result, esc_cred_result;
+
+    config = new cyberark::CyberArkConfig();
+    config.init(prefix:prefix, postfix:postfix);
+
+    if (config.get_credential_by == 'Parameters')
+    {
+      username = config.login_username;
+    }
+
+    login_cred_result = get_secret_for_targets(
+      config:config,
+      username:username,
+      identifier:config.credential_id,
+      account_address:config.address,
+      safe:config.safe,
+      vmware:vmware,
+      folder:config.folder,
+      database:config.database,
+      query:config.query,
+      query_format:config.query_format,
+      get_credential_by:config.get_credential_by,
+      append_target_to_query:config.append_target_to_query
+    );
+
+    if (!login_cred_result.success)
+    {
+      integrations::logger(msg:"Login account failed.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    if (config.escalate_with && config.escalate_with != 'Nothing')
+    {
+      integrations::logger(msg:"Getting escalation account.", lvl:2, config:config);
+      config.set_default_escalation_params(username:username);
+
+      esc_cred_result = get_secret_for_targets(
+        config:config,
+        username:config.escalation_username,
+        identifier:config.escalation_id,
+        account_address:config.escalation_address,
+        safe:config.escalation_safe,
+        folder:config.escalation_folder,
+        database:config.escalation_database,
+        query:config.escalation_query,
+        query_format:config.escalation_query_format,
+        get_credential_by:config.get_escalation_credential_by,
+        append_target_to_query:config.escalation_append_target_to_query
+      );
+
+      if (!esc_cred_result.success)
+      {
+        integrations::logger(msg:"Escalation account failed.", lvl:1, config:config);
+        return {success:FALSE};
+      }
+
+      if (!esc_cred_result.kv.password)
+      {
+        # This case can be reached if using an escalation credential that only contains an SSH key.
+        integrations::logger(
+          msg:"Warning: escalation credential did not contain a password. Assuming passwordless escalation.",
+          lvl:1, config:config
+        );
+        # It might still work to use password-less escalation (e.g. NOPASSWD for sudo),
+        # so this case just ends up as a warning.
+        esc_cred_result.kv.password = '';
+      }
+    }
+
+    # If username is empty or one of password/ssh_key are empty, don't return success, because
+    # logging in will never work.
+    if (!login_cred_result.kv.username || !(login_cred_result.kv.password || login_cred_result.kv.ssh_key))
+    {
+      integrations::logger(msg:"Error: Username or Password/Key were not present in response.", lvl:1, config:config);
+      return { success:FALSE };
+    }
+
+    integrations::logger(msg:"Credentials found and returned successfully.", lvl:2, config:config);
+
+    if(config.config_domain())
+    {
+      domain = config.domain;
+    }
+
+    return 
+    {
+      success: TRUE,
+      password: login_cred_result.kv.password,
+      username: login_cred_result.kv.username,
+      sudo_password: esc_cred_result.kv.password,
+      ssh_key: login_cred_result.kv.ssh_key,
+      domain: domain
+    };
+  }
+
+  ##
+  #
+  # Get a credential from CyberArk - serialized.
+  #
+  # Serialize the requests so that caching works better. In parallel, when
+  # multiple hosts are accessing the same credential by the time any of them
+  # has set the cache all the others will have already checked and missed.
+  # Serializing the requests makes it so that you have to use the cache from
+  # a previous requests if available.
+  #
+  # @param [prefix:string] The prefix for the configuration elements
+  # @param [postfix:string] The postfix for the configuration elements
+  # @param [username:string] Username to fetch credential for
+  # @param [domain:string] Windows domain
+  # @param [vmware:boolean] Are we using this for VMware?
+  #
+  # @return full credential information.
+  ##
+  function cyberark_rest_get_credential(username, domain, prefix, postfix, vmware)
+  {
+    mutex_lock(SCRIPT_NAME);
+    var result = _cyberark_rest_get_credential(username:username, domain:domain, prefix:prefix, postfix:postfix, vmware:vmware);
+    mutex_unlock(SCRIPT_NAME);
+    return result;
+  }
+
+  ##
+  # Command Line Execution
+  ##
+  function run_cyberark_cli()
+  {
+    display('Starting Cyberark cli\n');
+
+    var username = prompt('\nPlease enter the username of the target. ');
+
+    var hosts = cyberark_rest_get_credential(username:username);
+
+    return true;
+  }
+}
+
+###
+# This section of the integration implements auto collection of hosts and secret retrieval
+# where the customer does not have to specify targets and target account details. 
+# We collect data from CyberArk PVWA REST API and retrieve secrets from AIM Webservice needed
+# for database, SSH, and Windows integration through CyberArk support.
+###
+
+namespace cyberark_auto_collect
+{
+  var pam = "CyberArk";
+
+  object CyberArkAutoConfig : integrations::IntegrationConfig
+  {
+    var pvwa_user;
+    var pvwa_password;
+    var username;
+    var password;
+    var safe;
+    var aim_auth;
+    var search;
+    var app_id;
+    var url;
+    var pvwa_search;
+    var token;
+    var escalate;
+    var ccp_host;
+    var ccp_port;
+    var static_url = "/AIMWebService/api/";
+    var pvwa_host;
+    var pvwa_port;
+
+    ##
+    # Scrub sensitive data from logs
+    # @param [msg:string] msg to remove sensitive data from
+    #
+    # @return scrubbed string
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(msg:msg, '"Content":"(.+?)"', '"token":"(.+?)"');
+
+      return msg;
+    }
+  
+    ##
+    # Build configuration array from UI settings
+    #
+    # @param [settings:string] preference settings passed in get_preference(). Ex. Database settings, SSH settings, etc...
+    # @param [prefix:string] preference prefix
+    # @param [postfix:string] preference postfix
+    # 
+    # @return config array.
+    ##
+    public function init(settings, prefix, postfix)
+    {
+      postfix = str_replace(string:postfix, find: " : ", replace:" :");
+      
+      int_name = "CyberArk";
+      pvwa_host = get_preference(settings + "[entry]:" + prefix + "PAM Host" + postfix);
+      pvwa_port = get_preference(settings + "[entry]:" + prefix + "PAM Port" + postfix);
+      ssl = integrations::boolean(get_preference(settings + "[checkbox]:" + prefix + "PAM SSL" + postfix));
+      ssl_verify = integrations::boolean(get_preference(settings + "[checkbox]:" + prefix + "PAM Verify SSL Certificate" + postfix));
+      pvwa_user = get_preference(settings + "[entry]:" + prefix + "CyberArk Username" + postfix);
+      pvwa_password = get_preference(settings + "[password]:" + prefix + "CyberArk Password" + postfix);
+      username = get_preference(settings + "[entry]:" + prefix + "PAM User" + postfix);
+      password = get_preference(settings + "[entry]:" + prefix + "PAM Password" + postfix);
+      safe = get_preference(settings + "[password]:" + prefix + "PAM Safe" + postfix);
+      aim_auth = get_preference(settings + "[entry]:" + prefix + "PAM Authentication Method" + postfix);
+      search = get_preference(settings + "[entry]:" + prefix + "PAM Address" + postfix);
+      app_id = get_preference(settings + "[password]:" + prefix + "PAM App ID" + postfix);
+      cert = script_get_preference_file_location(prefix + "PAM Client Certificate To Use" + postfix);
+      key =  script_get_preference_file_location(prefix + "PAM Private Key To Use" + postfix);
+      passphrase = get_preference(settings + "[password]:" + prefix + "PAM Passphrase For Private Key" + postfix);
+      escalate = get_preference(settings + "[radio]:Elevate privileges with" + postfix);
+      ccp_host = get_preference(settings + "[entry]:" + prefix + "PAM Alternate Host" + postfix);
+      ccp_port = get_preference(settings + "[entry]:" + prefix + "PAM Alternate Port" + postfix);
+      
+      this._handle_host_and_url();
+      this._pvwa_search();
+      this._handle_cert_and_key();
+
+      return true;
+    }
+
+    ##
+    # Parse Host and URL
+    #
+    # @return always true
+    ##
+    function _handle_host_and_url()
+    {
+      var parsed_host;
+      if (this.ccp_host)
+      {
+        parsed_host = integrations::parse_url(url:this.ccp_host);
+        this.ccp_host = parsed_host.target;
+        this.url = parsed_host.directory;
+      }
+      else
+      {
+        parsed_host = integrations::parse_url(url:this.host);
+        this.host = parsed_host.target;
+        this.url = parsed_host.directory;
+      }
+
+      if (this.url == "/")
+      {
+        this.url = this.static_url;
+      }
+
+      return true;
+    }
+
+    ##
+    # Handle search parameters for PVWA API
+    #
+    # @return always true
+    ##
+    function _pvwa_search()
+    {
+      if (this.safe)
+      {
+        this.pvwa_search = urlencode(str:this.search + ' ' + this.safe);
+      }
+      else
+      {
+        this.pvwa_search = urlencode(str:this.search);
+      }
+
+      return true;
+    }
+
+    ##
+    # Set Bearer Token to Config object
+    #
+    # @param [token:string] bearer token
+    #
+    # @return [boolean] true if token, false is not
+    ##
+    public function set_token(token)
+    {
+      if (!token)
+      {
+        return false;
+      }
+
+      this.token = token;
+      return true;
+    }
+
+    ##
+    # Reassign ccp_port and ccp_host member vars to port and host for AIM web Service
+    #
+    # @return always true
+    ##
+    public function host_and_port_ccp()
+    {
+      if (this.ccp_port)
+      {
+        this.port = this.ccp_port;
+      }
+
+      if (this.ccp_host)
+      {
+        this.host = this.ccp_host;
+      }
+      else
+      {
+        this.host_and_port_pvwa();
+      }
+
+      return true;
+    }
+
+    ##
+    # Reassign pvwa_port and pvwa_host member vars to port and host for PVWA REST API
+    #
+    # @return always true
+    ##
+    public function host_and_port_pvwa()
+    {
+        this.host = this.pvwa_host;
+        this.port = this.pvwa_port;
+
+      return true;
+    }
+
+    ##
+    # Handle cert and key
+    #
+    # @return always true
+    ##
+    function _handle_cert_and_key()
+    {
+      if (!this.passphrase)
+      {
+        this.passphrase = "";
+      }
+
+      if (this.cert)
+      {
+        this.read_cert_and_key();
+      }
+
+      return true;
+    }
+  }
+
+  ##
+  # Login request to PVWA REST API and sets token to config object
+  # 
+  # @param [config:array] configuration
+  # @return [boolean] true if token, false if not
+  ##
+  function _pvwa_login(config)
+  {
+    var command = "/PasswordVault/API/auth/Cyberark/Logon";
+    var headers = {
+      "Content-Type": "application/json"
+    };
+
+    var login_creds = _pvwa_creds(config:config);
+    if (!login_creds)
+    {
+      integrations::logger(msg:"[ERROR] Failed to gather PVWA REST API cred from CCP.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    var data = {
+      "username" : login_creds.pvwa_user,
+      "password" : login_creds.pvwa_password
+    };
+
+    # Set member var host and port to PVWA
+    config.host_and_port_pvwa();
+    integrations::logger(
+      msg:'[INFO] CyberArk Host Auto-Collection Settings ~' +
+          '\nHOST : ' + config.host +
+          '\nPORT : ' + config.port +
+          '\nFORCE_SSL : ' + config.ssl +
+          '\nSSL_VERIFY : ' + config.ssl_verify +
+          '\nCYBERARK PVWA Username : |' + config.pvwa_user,
+      config:config,
+      lvl:1
+    );
+    var auth = integrations::post(config:config, command:command, data:data, headers:headers, json:TRUE);
+    if (auth.success)
+    {
+      config.set_token(token:auth.body);
+    }
+
+    return auth;
+  }
+  
+  ##
+  # Logoff request to PVWA REST API
+  # 
+  # @param [config:array] configuration
+  #
+  # @return result of logoff.
+  ##
+  function _pvwa_logoff(config)
+  {
+    var command = "/PasswordVault/API/Auth/Logoff";
+    var headers = {
+      "Content-Type" : "application/json",
+      "Content-Length" : 0,
+      "Authorization" : config.token
+    };
+
+    config.host_and_port_pvwa();
+    var logoff = integrations::post(config:config, command: command, headers: headers, json: TRUE);
+
+    return logoff;
+  }
+
+  ##
+  # Single PVWA REST API request to collect all host account data necessary for authentication and to request password from AIM Webservice API
+  #
+  # @param [config:array] configuration
+  # @return success or failure. If successful, all host account data.
+  #
+  ##
+  function _get_pvwa_data(config)
+  {
+    var command = "/PasswordVault/api/Accounts?search=" + config.pvwa_search;
+    var headers = {
+      "Content-Type" : "application/json",
+      "Authorization" : config.token
+    };
+
+    config.host_and_port_pvwa();
+    var result = integrations::get(config:config, command:command, headers:headers, json:TRUE);
+
+    return result;
+  }
+
+  ##
+  # Public function to execute in collect file that combines building config, PVWA REST API logon, data collection, and logoff
+  #
+  # @param [settings:string] preference settings passed in _auto_collect_config. Ex. Database settings, SSH settings, etc...
+  # @param [prefix:string] preference prefix
+  # @param [postfix:string] preference postfix
+  # 
+  # @return If successful, returns number of host accounts and all host account data.
+  ##
+  function cyberark_auto_collect(settings, prefix, postfix)
+  {
+    var config = new cyberark_auto_collect::CyberArkAutoConfig();
+    config.init(settings:settings, prefix:prefix, postfix:postfix);
+    if (empty_or_null(config))
+    {
+      integrations::logger(msg:"[ERROR] Failed to build config.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    integrations::logger(msg:"[INFO] Requesting to log in to CyberArk PVWA REST API.", lvl:2, config:config);
+    var login = _pvwa_login(config:config);
+    if (!login.success)
+    {
+      integrations::logger(msg: "[ERROR] Failed to log in to PVWA REST API.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    integrations::logger(
+      msg:"[INFO] Requesting account data from PVWA REST API for " + config.pvwa_search + " search criteria.",
+      lvl:2,
+      config:config
+    );
+    var pvwa_data = _get_pvwa_data(config:config);
+    if (!pvwa_data.success)
+    {
+      integrations::logger(msg:"[INFO] Logging off CyberArk PVWA REST API.", lvl:2, config:config);
+      _pvwa_logoff(config:config);
+      integrations::logger(msg:"[ERROR] Failed to collect account data.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    integrations::logger(msg:"[INFO] Logging off CyberArk PVWA REST API.", lvl:2, config:config);
+    _pvwa_logoff(config:config);
+
+    return
+    {
+      success:TRUE,
+      accounts:pvwa_data.body.value,
+      num_of_accts:pvwa_data.body.count
+    };
+  }
+
+  ##
+  # Public function to execute in database_settings.nasl to request password from AIM Webservice API for each injected CyberArk host
+  #
+  # @param [safe:string] CyberArk safe where password is stored for host account
+  # @param [object:string] CyberArk object/Account Name for host account
+  # @param [username:string] CyberArk username for host account
+  # @param [address:string] CyberArk address for host account
+  # @param [settings:string] preference settings passed in _auto_collect_config. Ex. Database settings, SSH settings, etc...
+  # @param [prefix:string] preference prefix
+  # @param [postfix:string] preference postfix
+  #
+  # @return If successful, returns number of host accounts and all host account data.
+  ##
+  function get_AIM_secret(safe, object, username, address, settings, prefix, postfix)
+  {
+    var config = new cyberark_auto_collect::CyberArkAutoConfig();
+    config.init(settings:settings, prefix:prefix, postfix:postfix);
+    if (empty_or_null(config))
+    {
+      integrations::logger(msg:"[ERROR] Failed to build config.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    # check caching
+    var cache = integrations::get_cache(secret:urlencode(str:safe) + username + address + urlencode(str:object));
+    if (cache.success)
+    {
+      integrations::logger(msg:"[INFO] Credentials found in cache.", lvl:2, config:config);
+      return
+      {
+        success:TRUE,
+        password:cache.kv.password,
+        sudo:cache.kv.sudo,
+        sudo_password:cache.kv.sudo_password,
+        private_key:cache.kv.ssh_key
+      };
+    }
+
+    config.host_and_port_ccp();
+    var command = config.url +
+                  "Accounts?AppID=" + urlencode(str:config.app_id) +
+                  "&Safe=" + urlencode(str:safe) +
+                  "&UserName=" + username +
+                  "&Address=" + address +
+                  "&Object=" + urlencode(str:object);
+    integrations::logger(
+      msg:'[INFO] CyberArk Host Auto-Collection Settings ~' +
+          '\nHOST : ' + config.host +
+          '\nCUSTOM_URL : ' + config.url +
+          '\nPORT : ' + config.port +
+          '\nFORCE_SSL : ' + config.ssl +
+          '\nSSL_VERIFY : ' + config.ssl_verify +
+          '\nAppID : ' + config.app_id +
+          '\nCERT Path: ' + config.cert +
+          '\nPrivate Key Path: ' + config.key +
+          '\nCert md5 Contents: ' + config.md5_cert +
+          '\nPrivate md5 Contents: ' + config.md5_key +
+          '\nPrivate Key Passphrase Length: ' + strlen(config.passphrase) +
+          '\nIIS Basic Auth Username : |' + config.username +
+          '\nEscalate with : | ' + config.escalate,
+      config:config,
+      lvl:1
+    );
+    integrations::logger(msg:'[INFO] AIM Webservice API Credential Request.', lvl:2, config:config);
+    var secret_request = integrations::get(config:config, command:command, json:TRUE);
+    if (!secret_request.success || empty_or_null(secret_request.body))
+    {
+      integrations::logger(
+        msg:'[ERROR] Failed to retrieve secret for: ' +
+            '\nAddress : ' + address + 
+            '\nUsername : ' + username +
+            '\nAccount Name : ' + object,
+        config:config,
+        lvl:1
+      );
+      return {success:FALSE};
+    }
+
+    # Set password and check
+    var creds;
+    creds['password'] = secret_request.body.Content;
+
+    if ("PRIVATE KEY" >< secret_request.body.Content)
+    {
+      creds['ssh_key'] = secret_request.body.Content;
+    }
+
+    if (empty_or_null(creds['password']) && empty_or_null(creds['ssh_key']))
+    {
+      integrations::logger(
+        msg:'[ERROR] Failed to retrieve secret for: ' +
+            '\nAddress : ' + address + 
+            '\nUsername : ' + username +
+            '\nAccount Name : ' + object,
+        config:config,
+        lvl:1
+      );
+      return {success:FALSE};
+    }
+
+    if (config.escalate == "sudo")
+    {
+      integrations::logger(msg:"Privilege Escalation using sudo detected. Setting sudo password.", lvl:2, config:config);
+      creds['sudo'] = config.escalate;
+      creds['sudo_password'] = creds['password'];
+    }
+
+    integrations::set_cache(secret:urlencode(str:safe) + username + address + urlencode(str:object), kv:creds);
+
+    return
+    {
+      success:TRUE,
+      password:creds['password'],
+      sudo:creds['sudo'],
+      sudo_password:creds['sudo_password'],
+      private_key:creds['ssh_key']
+    };
+  }
+
+  ##
+  # Public function to inject and store kb's for each resolved host.
+  #
+  # @param [accounts:nested list] result array returned from cyberark_auto_collect() that contains account data and number of accounts
+  # @param [pam:string] pam name (i.e. CyberArk) used in host level kb path
+  # @param [kb_path:string] portion of kb path that specifies what type of auto collect. Ex. auto_db, auto_ssh, auto_smb
+  # @param [settings:string] settings strings from Database, logins, or SSH to set correct host kb's
+  # 
+  # @return total number of host accounts and any hosts where nessus failed to resolve the host value in the CyberArk address field
+  ##
+  function cyberark_inject_host_kbs(accounts, pam, kb_path, settings)
+  {
+    var num_of_accts = max_index(accounts); 
+    var hosts = _hosts_to_inject(accounts:accounts);
+    var host_inject, kb_array;
+    foreach var host (hosts.hosts_to_inject)
+    {
+      if (empty_or_null(host))
+      {
+        continue;
+      }
+      # set host level staging kb's
+      if ('Database' >< settings)
+      {
+        kb_array = make_array(
+          pam + kb_path + 'port', host.platformAccountProperties.Port,
+          pam + kb_path + 'username', host.userName,
+          pam + kb_path + 'safe', host.safeName,
+          pam + kb_path + 'object', host.name,
+          pam + kb_path + 'address', host.address,
+          pam + kb_path + 'db_auth', host.platformAccountProperties.AuthType,
+          pam + kb_path + 'service', host.platformAccountProperties.Database,
+          pam + kb_path + 'db_service_type', host.platformAccountProperties.ServiceType,
+          'host/injected/integration', 'CyberArk'
+        );
+      }
+      else if ('Login' >< settings)
+      {
+        kb_array = make_array(
+          pam + kb_path + 'username', host.userName,
+          pam + kb_path + 'safe', host.safeName,
+          pam + kb_path + 'object', host.name,
+          pam + kb_path + 'address', host.address,
+          pam + kb_path + 'domain', host.platformAccountProperties.LogonDomain,
+          'host/injected/integration', 'CyberArk'
+        );
+      }
+      else
+      {
+        kb_array = make_array(
+          pam + kb_path + 'username', host.userName,
+          pam + kb_path + 'safe', host.safeName,
+          pam + kb_path + 'object', host.name,
+          pam + kb_path + 'address', host.address,
+          'host/injected/integration', 'CyberArk'
+        );
+      }
+
+      host_inject = inject_host(hostname:host.target, kb:kb_array);
+    }
+   
+    return
+    {
+      num_of_accts:num_of_accts,
+      failed_hosts:hosts.failed_hosts
+    };
+  }
+
+  ##
+  # Function to resolve hosts and return individual lists for hosts that can be inject or not. Helps to avoid weird issues when injecting hosts.
+  #
+  # @param [accounts:nested list] result array returned from cyberark_auto_collect() that contains account data and number of accounts
+  # 
+  # @return hosts that can be injected along with their account details AND list of hosts we failed to resolve.
+  ##
+  function _hosts_to_inject(accounts)
+  {
+    var host_ip;
+    var hosts_to_inject = [];
+    var failed_hosts = [];
+    foreach var account (accounts)
+    {
+      if (empty_or_null(account.address))
+      {
+        dbg::detailed_log(
+          lvl:1,
+          src:FUNCTION_NAME,
+          msg:'[ERROR] IP, DNS, or FQDN was not found in CyberArk Account Details.',
+          msg_details:{"Account": {"lvl":1, "value":account.name}}
+        );
+        continue;
+      }
+
+      host_ip = fqdn_resolv(name:account.address, ipv6:FALSE, fqdn:FALSE);
+      if (empty_or_null(host_ip[0]))
+      {
+        dbg::detailed_log(
+          lvl: 1,
+          src: FUNCTION_NAME,
+          msg: '[ERROR] Address field must be resolvable IP, DNS, or FQDN on your network by the scanner.',
+          msg_details: {"host": {"lvl":1, "value":account.address}}
+        );
+
+        append_element(var:failed_hosts, value:account.address);
+        continue;
+      }
+
+      account['target'] = host_ip[0];
+      append_element(var:hosts_to_inject, value:account);
+    }
+
+    return
+    {
+      hosts_to_inject:hosts_to_inject,
+      failed_hosts:failed_hosts
+    };
+  }
+
+  /* ##
+  # Gather PVWA REST API creds from CCP
+  # Add this back in once we have a change to the engine
+  #
+  # @param [config:object] configuration
+  #
+  # @return [result:array] success and data
+  ##
+  function _get_pvwa_creds_ccp(config)
+  {
+    config.host_and_port_ccp();
+    integrations::logger(
+      msg:'[INFO] CyberArk Host Auto-Collection Settings ~' +
+          '\nHOST : ' + config.host +
+          '\nCUSTOM_URL : ' + config.url +
+          '\nPORT : ' + config.port +
+          '\nFORCE_SSL : ' + config.ssl +
+          '\nSSL_VERIFY : ' + config.ssl_verify +
+          '\nAppID : ' + config.app_id +
+          '\nCERT Path: ' + config.cert +
+          '\nPrivate Key Path: ' + config.key +
+          '\nCert md5 Contents: ' + config.md5_cert +
+          '\nPrivate md5 Contents: ' + config.md5_key +
+          '\nPrivate Key Passphrase Length: ' + strlen(config.passphrase) +
+          '\nIIS Basic Auth Username : |' + config.username,
+      config:config,
+      lvl:1
+    );
+    var command = config.url + "Accounts?AppID=" + urlencode(str:config.app_id) + "&Object=" + urlencode(str:config.credential_id);
+    var result = integrations::get(config:config, command:command);
+
+    return result;
+  } */
+
+  ##
+  # Deliver PVWA REST API creds internally to _pvwa_login()
+  #
+  # @param [config:object] configuration
+  #
+  # @return [array] PVWA username and password
+  ##
+  function _pvwa_creds(config)
+  {
+    if (config.pvwa_user && config.pvwa_password)
+    {
+      return
+      {
+        pvwa_user : config.pvwa_user,
+        pvwa_password : config.pvwa_password
+      };
+    }
+
+    ### Commenting this out for use in the future
+    
+    /* integrations::logger(msg:"[INFO] Requesting PVWA API creds from CCP.", lvl:1, config:config);
+    var pvwa_cred_request = _get_pvwa_creds_ccp(config:config);
+    if (!pvwa_cred_request.success)
+    {
+      return FALSE;
+    }
+
+    var username;
+    if (pvwa_cred_request.body.UserName)
+    {
+      username = pvwa_cred_request.body.UserName;
+    }
+    else
+    {
+      username = pvwa_cred_request.body.username;
+    }
+
+    return
+    {
+      pvwa_user : username,
+      pvwa_password : pvwa_cred_request.body.Content
+    }; */
+
+    return FALSE;
+  }
+}

@@ -1,0 +1,124 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(231607);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/06");
+
+  script_cve_id("CVE-2024-50161");
+
+  script_name(english:"Linux Distros Unpatched Vulnerability : CVE-2024-50161");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The Linux/Unix host has one or more packages installed with a vulnerability that the vendor indicates will not be
+patched.");
+  script_set_attribute(attribute:"description", value:
+"The Linux/Unix host has one or more packages installed that are impacted by a vulnerability without a vendor supplied
+patch available.
+
+  - In the Linux kernel, the following vulnerability has been resolved: bpf: Check the remaining info_cnt
+    before repeating btf fields When trying to repeat the btf fields for array of nested struct, it doesn't
+    check the remaining info_cnt. The following splat will be reported when the value of ret * nelems is
+    greater than BTF_FIELDS_MAX: ------------[ cut here ]------------ UBSAN: array-index-out-of-bounds in
+    ../kernel/bpf/btf.c:3951:49 index 11 is out of range for type 'btf_field_info [11]' CPU: 6 UID: 0 PID: 411
+    Comm: test_progs ...... 6.11.0-rc4+ #1 Tainted: [O]=OOT_MODULE Hardware name: QEMU Standard PC (i440FX +
+    PIIX, 1996), BIOS ... Call Trace: <TASK> dump_stack_lvl+0x57/0x70 dump_stack+0x10/0x20
+    ubsan_epilogue+0x9/0x40 __ubsan_handle_out_of_bounds+0x6f/0x80 ? kallsyms_lookup_name+0x48/0xb0
+    btf_parse_fields+0x992/0xce0 map_create+0x591/0x770 __sys_bpf+0x229/0x2410 __x64_sys_bpf+0x1f/0x30
+    x64_sys_call+0x199/0x9f0 do_syscall_64+0x3b/0xc0 entry_SYSCALL_64_after_hwframe+0x4b/0x53 RIP:
+    0033:0x7fea56f2cc5d ...... </TASK> ---[ end trace ]--- Fix it by checking the remaining info_cnt in
+    btf_repeat_fields() before repeating the btf fields. (CVE-2024-50161)
+
+Note that Nessus relies on the presence of the package as reported by the vendor.");
+  script_set_attribute(attribute:"solution", value:
+"There is no known solution at this time.");
+  script_set_attribute(attribute:"agent", value:"unix");
+  script_set_cvss_base_vector("CVSS2#AV:L/AC:L/Au:S/C:N/I:N/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2024-50161");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+  script_set_attribute(attribute:"vendor_unpatched", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2024/11/07");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/03/06");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info2.nasl");
+  script_require_keys("Host/cpu", "Host/local_checks_enabled", "global_settings/vendor_unpatched");
+  script_require_ports("Host/Debian/dpkg-l", "Host/Ubuntu", "Host/Ubuntu/release");
+
+  exit(0);
+}
+include('vdf.inc');
+
+# @tvdl-content
+var vuln_data = {
+ "metadata": {
+  "spec_version": "1.0p"
+ },
+ "requires": [
+  {
+   "scope": "scan_config",
+   "match": {
+    "vendor_unpatched": true
+   }
+  },
+  {
+   "scope": "target",
+   "match": {
+    "os": "linux"
+   }
+  }
+ ],
+ "report": {
+  "report_type": "unpatched"
+ },
+ "checks": [
+  {
+   "product": {
+    "name": "linux-lowlatency-hwe-6.11",
+    "type": "dpkg_package"
+   },
+   "check_algorithm": "dpkg",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "ubuntu"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "24.04"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+};
+
+var vdf_res = vdf::check_and_report(vuln_data:vuln_data, severity:SECURITY_WARNING);
+vdf::handle_check_and_report_errors(vdf_result: vdf_res);

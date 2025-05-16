@@ -1,0 +1,102 @@
+#TRUSTED 0f828b4263983ec06aec4bcdae15634312ea19975e553ef95373f2f67ff8cba7c55f6749f4c2da57e0b75729d20ceff75a4b34c03781f439cdbf5756a9101222e57852c7577cb037b689590c7c3cf9d54bedd622b8990049017458b3597dfd1db8aff26d1abb815bc52d2f83feb8bc4e095a253acf83c814789b70073d013cd1decb83e32cb05e4b7deb81c6aa5b584a0a90ea0427592a59adb683b50341050e3f46de90e1f6410a162b05538715c323e2ab6dd6fc032502e89807a6d45a328cba08215d003532bde934ead4bf02ec7256774fbccab89d9348c455b36e6c42ebb01d2b9bcd00c6def6d8d1b3c9ad5eaf4f2e6bf72285da5ffb2dc4cec341ee3eda9feec7100b1e7c9473a7f2e498dcb03c890ea40fada379979559b47867bfb6465551a00e43f93f75827e0779c5c125ea3dac1059255ee6b884882e402a83c2899ac991771fad100504314c5e488a95c1fec56530f810faf06aaafd433154d1e92f57a70381caabdb42d0d286cfe17ddbd966432b5d41f92fe7526521eaf5f4f06401e15b64e031b91aa48a05cf6d5498f89f361b1cc9c67e94e32252093addb18e9cf9a7d0ad278a49f8ab686859f179a2d1aaeeb1aae7d5bbdcd73307bdc88e9649a041917f3076bf2b7e4d531a92becd28e4dfaeafa0cda135011447d5db5b2492d70916b30eed5f561f5b5c3db7d37e93cf63211b6a6dc18791d74c82d2
+#TRUST-RSA-SHA256 05926ad81f6b6eaf0e3f7c4dd31233e6fb1447adb06e5662260481c33e481ec4a549f2522b523153d69bad11f3e14881d7910cd38a2bd74eeba87a8d5bc662b0055714530aaff3356b6f7c01b3df06bac5257d942b918d4e4daa90b01ae1954e7466f0b8c118b77855f7fcdaedca5ca261d760ceaa0597f7ce653f81cf012f97b089b5349eca74d9012b3e55c27b6ea4662dc9d32230f580840e4f39abcc4ce05e621d0c0cc58b45d7e5068705c1a4d1310b54e1f0db490df8f5ae946df73a65bd35bb42dfbf5b25eac016168486bab08a14ab0be34393323229ec304334e3e1c32b5c95bf0b3f8538734ed85f9795a13861b1855b9739c906bc3ad16b1dcf747a30411258b1e3e8801cce53eeb30c477ab853957acbaabce8b388b1caa96bcf807bef638b30ddf642593a0f9e81dc93abcd56e84fa32e24a355a0341e72945030d4efb620c4d022df6f2fa14e8b441d9ce2e13933ea1eeea1bf347beccd1b8f5f23e2e0182503f76fcd99c999297201bb88b334a5eb97e00f7d1b50b3ed54a31fa6528a0ca6c9db0e11bd16cb5da3d7d6be66977e88265e25ef60f78f73da1757a3ebf702e33e28c447a6fac75a1f3122bac65fa954c7480996c228166577829762a835c61019ebc0a2ed00dfa806b39311e7258b35265780573a0b7cfe5312ccc3da11b4d9b13a4c03f79f5980e006a7239da00ab1b95f4dc360b13cfee198
+
+##
+# Sophos UTM Linux helper function
+#
+# @param   session              session object associated with connection
+# @param   use_shell_handler    shell handler information for commands to be run
+# @param   channel              address of channel object associated with connection
+# @param   cmd_res              string value of result of distribution check
+# @return  TRUE
+##
+
+function handle_sophos_utm(session, use_shell_handler, &channel, cmd_res)
+{
+  if(session)
+    session.clear_cmd_error();
+
+  # Attempt to gather Timezone info
+  if(!get_kb_item('Host/Timezone_checked'))
+    linux_timezone_check(session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  # Sophos UTM version information
+  var sys_cmd = "/usr/local/bin/version";
+  var cmd_buf = run_command(
+    cmd               : sys_cmd,
+    session           : session,
+    use_shell_handler : use_shell_handler,
+    channel           : channel
+  );
+
+  if(cmd_buf && 'Sophos UTM' >< cmd_res)
+  {
+    # Software version
+    var matches = pregmatch(string:cmd_buf, pattern:"Current software version.+:\s([\d+.]+)");
+    if (!isnull(matches))
+      replace_kb_item(name:"Host/Sophos UTM/version", value:matches[1]);
+
+    report += '\n\nThe output from the Sophos UTM version command reported :\n' + cmd_buf;
+
+    # System information
+    replace_kb_item(name:"Host/Sophos UTM/system", value:cmd_buf);
+
+    # Host identification
+    replace_kb_item(name:"Host/OS/showver", value: "Sophos UTM " + matches[1]);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/showver/Type", value:"utm");
+
+    # RPM information
+    var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                  internal_label:"Sophos UTM");
+    if(rpm_buf)
+    {
+      report += '\nOS Security Patch Assessment is available for this host';
+      sshlib::enable_local_checks();
+      replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_sophos_utm.static:', value: 58);
+    }
+  }
+  else
+  {
+    if(session.cmd_error)
+    {
+      failure_kb_msg = 'OS Security Patch Assessment is not available because of the following error :\n' + session.cmd_error;
+      failure_kb_type = lcx::ISSUES_INFO;
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    }
+  }
+
+  return TRUE;
+}
+
+
+function handle_not_sophos_utm(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/Sophos UTM/system", value:cmd_res);
+    host_info_key_val['host_not_sophos_utm'] = TRUE;
+  }
+}
+
+
+function sophos_utm_pre_check_fail()
+{
+  # Have we checked that host is not Sophos UTM?
+  if (host_info_key_val['host_not_sophos_utm']) return TRUE;
+
+  if (is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  return FALSE;
+}

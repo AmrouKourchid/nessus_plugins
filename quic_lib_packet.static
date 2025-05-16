@@ -1,0 +1,2012 @@
+#TRUSTED 4d78a3bfe93d69e0d0e2191386688099a525ac32c9f3cc31b204ef3bd117a619f5f37a9d802155cc3ce3c157588ecbdced356c8e2fee333ddd2b939eda3be2f8e1aba6b1293b4c59ad85d2b1ab3b31cf845e9b1a0356c1847afe9ecb45f16a0c86412ea8b4a0e97ac60faabc32c8828f99e3655f67197194cfc4f7ca47a2dabaf51e533f4aed258a3948827b21a2b457482e5013e52c3c414f3bec7eb8a25bc8b90e3f33a05fbc8b191db7e2488f1c71dc9f0b3cf1228fc63c46d4d6332a85e07ab930571955a144abc648980ad277aa91eefabbe28ffc6ec17151691f7e446a5ad1a936718ca273474dd26dd7b665e090ad99ca42e5a4032bf1b576b98d13bcbb81e5130ddf17c39697bb51ff46903113a1fd06d70a65e595f55d46c1dd6d4b7857b550849dfa48db03c0f7529c8bff0510a3923ba070fe7e9b584b317229466d2c610465233ca64bba431a8258663070a795a0510bae9f111b0eef3719c20212d60326abf0918a89cc8279218b45285b06d19ee2fc085118a374f0373e0204fdab53246fb03dff7381e9f2306ad5ce9498f9cc8e9a50353bdd120f17dd837bb62901121a4e5443c9bd6a399d5f49f33d2533cc026bc507567cc2133a93474099d71d4e1f580dcf1c9a2f89244dde6d2576710a2a444a1bd63503ab1fdcb6ed94f36cf7f6142f14c4d29429957e3ce2bbcf48b2074848ec09cb04423a1a9fdf
+#TRUST-RSA-SHA256 a5b460880bdad64b34e163109d0e4a40878402dc37d63038b086e03458679821657dfc5547a43cda63075df2e85ebd5979e11e1195d2d1d2d567655a7099a82d649a5a664e12a25ae655654549b1d058640eabc2b19bc27ff80241a87c7cd56bbf3f888d5991dca90fb97595c33d3a77530c237fed57b79a7636e2a741767d242b81fdd7d0f180cbd5f85865b96fda373c6314a2a82a3e14e78f5e1a5a315cd68723998b6dff481329b0f0ad0b9b98b60ec90bccb7c1d239a8fcbc8b5e295dd4944f82c8dcceaf18558e16a1bdd163ac1bf31f873c2dfe60a9ca27430e523e637a6e9bb3305a7bb02353ec57902eaa68cc4fcf219e9a19316939dccbb44b406bd699c0e9f3e63beb80a244c5991c5cb93a2cdfd28e29c93c541160bb13c426b43ac09c0bbb9cdaa94dec70e6c72d421672c765ce6bba47fe976be9e51f7e06ecfae29a4c2b2e5fc480ecc5cb5d8a5cc97472722c93fc4067f5eca5d107adca8b14a0e7f73aba9186ed5c3a9e322df65850f668304977740f3e97562a72ff7515ab7d59f32d385e722bd921f74e3ba281c1ced7b87cc4ad29f07230fb45c9ae955e4180b90da4bf20778b8eb7160b04c279c0ff722aa7f1d2dff3c4477b720895083ef08303917d06ccbf70c72e0f9bddc7265f4b2defbeaa905f03594f177ea92bf8a7e1c56541d61f6c8a85fdf655e6460aff7eab17927fde80b111de85f9fc
+
+###
+#
+# Implements the QUIC packet abstraction for the Nessus QUIC libary.
+# https://www.rfc-editor.org/rfc/rfc9000.html
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+###
+
+namespace quic
+{
+  object packet
+  {
+    # Reference to a packet space
+    var space;
+
+    # Packet number
+    var number;
+
+    # List of references to encapsulated frames
+    var frames = [];
+
+    # Type
+    var type;
+
+    # Retry token;
+    var retry_token;
+
+    # If true an ACK must be sent for this packet (received packets only)
+    var must_ack = FALSE;
+
+    ##
+    # Initialize the packet
+    #
+    # @param [space:object]      An initialized packet space
+    # @param [type:int]          A packet type code
+    # @param [received:boolean]  True if this packet was received (optional)
+    # @param [retry_token:bytes] Token sent by the server to accompany subsequent initial packets. (optional)
+    #
+    # @return [int|object] Returns SUCCESS or an error object.
+    ##
+    public function init(space, type, received, retry_token)
+    {
+      if(type != VERSION_NEGO_PACKET && type != RETRY_PACKET)
+      {
+        if(isnull(space) || typeof(space) != "object")
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Bad packet space argument.');
+        }
+
+        if(isnull(space.secrets))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Supplied packet space is uninitialized.');
+        }
+      }
+
+      if(isnull(type) || type > RETRY_PACKET || type < ONE_RTT_PACKET)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Bad packet type argument.');
+      }
+
+      if(type == RETRY_PACKET && empty_or_null(retry_token))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'A retry token is required for retry packets.');
+      }
+
+      if(isnull(received))
+        received = FALSE;
+
+      if(type == RETRY_PACKET || type == INITIAL_PACKET)
+        this.retry_token = retry_token;
+
+      if(!received)
+        this.number = space.get_next_packet_num();
+
+      this.space = space;
+      this.type = type;
+      this.must_ack = FALSE;
+
+      return SUCCESS;
+    }
+
+    ##
+    # Encrypt or decrypt data using AEAD ciphers
+    #
+    # @param [data:bytes]         Input data.
+    # @param [key:bytes]          Key.
+    # @param [iv:bytes]           Initialization vector.
+    # @param [enc:boolean]        Whether to encrypt (TRUE) or decrypt (FALSE).
+    # @param [aad:bytes]          Additional authentication data for AEAD ciphers.
+    # @param [cipher_desc:string] Description of the AEAD cipher to use.
+    #
+    # @return Result of encrypting or decrypting the given data.
+    ##
+    protected function aead_crypt(data, key, iv, enc, aad, cipher_desc)
+    {
+      var ret, tag_len, type;
+
+      if (isnull(cipher_desc))
+        return NULL;
+
+      var encryption = cipher_field(name:cipher_desc, field:"encrypt");
+
+      if ('AES-CCM(128)'  >< encryption)
+      {
+        type = 'aes_ccm';
+        tag_len = 16;
+      }
+      else if ('AES-CCM8(128)'  >< encryption)
+      {
+        type = 'aes_ccm';
+        tag_len = 8;
+      }
+      else if ('AES-GCM(128)'  >< encryption)
+      {
+        type = 'aes_gcm';
+        tag_len = 16;
+      }
+      else if ('AES-GCM(256)'  >< encryption)
+      {
+        type = 'aes_gcm';
+        tag_len = 16;
+      }
+      else
+      {
+        return NULL;
+      }
+
+      if ('CCM' >< cipher_desc || 'GCM' >< cipher_desc)
+      {
+        if (enc)
+        {
+          ret = crypto_encrypt(type:type, data:data, key:key, iv:iv, options:{taglen:tag_len, aad:aad});
+
+          return ret['ciphertext'] + ret['tag'];
+        }
+        else
+        {
+          var tag_end = strlen(data) - 1;
+          var tag_start = tag_end - tag_len;
+
+          var tag = substr(data, tag_start + 1, tag_end);
+          data = substr(data, 0, tag_start);
+
+          ret = crypto_decrypt(type:type, data:data, key:key, iv:iv, options:{taglen:tag_len, tag:tag, aad:aad});
+          return ret;
+        }
+      }
+
+      return NULL;
+    }
+
+
+    ##
+    # Encodes a packet header for this packet using the connection's source and
+    # destination ids.
+    #
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [bytes] Returns the encoded header.
+    ##
+    protected function encode_header(connection)
+    {
+      var pkt_num_len, pkt_num, version, header;
+
+      pkt_num_len = this.number[0] >> 6;
+      if(pkt_num_len > 3)
+        pkt_num_len = 3;
+
+      version = mkdword(1);
+
+      var form = 1;
+      if(this.type == ONE_RTT_PACKET)
+        form = 0;
+
+      var fixed = 1;
+      if(form)
+      {
+        var lpt = this.type;
+        if(this.type == VERSION_NEGO_PACKET)
+        {
+          fixed = 0;
+          lpt = 0;
+        }
+
+        var pkt_bits = 0;
+        if(this.type != VERSION_NEGO_PACKET && this.type != RETRY_PACKET)
+          pkt_bits = pkt_num_len;
+
+        header = mkbyte((form << 7) | (fixed << 6) | ((lpt & 0x03) << 4) | (pkt_bits & 0x03));
+        header += version;
+        header += mkbyte(strlen(connection.destination_id)) + connection.destination_id;
+        header += mkbyte(strlen(connection.source_id)) + connection.source_id;
+
+        return header;
+      }
+
+      header = mkbyte((form << 7) | (fixed << 6) | (mkword(connection.key_phase) << 2) | (pkt_num_len & 0x03));
+      header += connection.destination_id;
+      return header;
+    }
+
+
+    ##
+    # Decode an encoded QUIC header.
+    #
+    # @param [pkt_bytes:bytes]   A stream of bytes that includes an encoded QUIC header.
+    # @param [connection:object] A QUIC connection object.
+    # @param [offset:int]        Offset into pkt_bytes that is the start of the encoded header.
+    # @param [sending:bool]      TRUE if we are sending this packet; FALSE otherwise
+    #
+    # @return Returns a list of decoded header values [packet_type, long_form, offset, payload_len, retry_token]
+    ##
+    protected function decode_header(pkt_bytes, connection, offset, sending)
+    {
+      var packet_type;
+
+      if(isnull(sending))
+        sending = FALSE;
+
+      if(isnull(offset))
+        offset = 0;
+
+      var long_form = (ord(pkt_bytes[offset]) & 0x80) > 0;
+
+      var payload_len;
+      var res;
+      var retry_token = '';
+      var token_len;
+
+      if(long_form)
+      {
+        packet_type = (ord(pkt_bytes[offset]) & 0x30) >> 4;
+        var dcid_len = ord(pkt_bytes[offset + 5]);
+        var scid_len = ord(pkt_bytes[offset + 6 + dcid_len]);
+        offset = offset + 7 + dcid_len + scid_len;
+
+        if(packet_type == INITIAL_PACKET)
+        {
+          res = parse_variable_length_int(blob:pkt_bytes, offset:offset);
+          token_len = res[0];
+          offset = res[1];
+          if(token_len > 0)
+            retry_token = substr(pkt_bytes, offset, offset + token_len - 1);
+          offset += token_len;
+        }
+
+        res = parse_variable_length_int(blob:pkt_bytes, offset:offset);
+        payload_len = res[0];
+        offset = res[1];
+      }
+      else
+      {
+        packet_type = ONE_RTT_PACKET;
+        if(sending)
+          dcid_len = strlen(connection.destination_id);
+        else
+          dcid_len = strlen(connection.source_id);
+        offset += dcid_len + 1;
+        payload_len = strlen(pkt_bytes - offset);
+      }
+
+      return [packet_type, long_form, offset, payload_len, retry_token];
+    }
+
+
+    ##
+    # Applies QUIC header protection to an encoded packet header.
+    # See https://www.rfc-editor.org/rfc/rfc9001.html#name-header-protection
+    #
+    # @param [pbytes:bytes]      Packet bytes starting with an encoded header.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [bytes] Returns protected packet header bytes.
+    ##
+    protected function protect_header_in_place(pbytes, connection)
+    {
+      var hdr_vals = decode_header(pkt_bytes:pbytes, connection:connection, sending:TRUE);
+      var long_form = hdr_vals[1];
+      var packet_num_offset = hdr_vals[2];
+      var packet_num_len = (ord(pbytes[0]) & 0x03) + 1;
+
+      # Hard-code the mask derivation for now for initial packets - for other packets it is negotiated
+      # should be something like if(cipher_suite == TLS_AES_256_GCM_SHA384 || cipher_suite == AEAD_AES_128_GCM)
+      # where to get cipher_suite? -> task for some other day
+
+      var firstblock = substr(pbytes, packet_num_offset + 4, packet_num_offset + 19);
+      var mask = aes_ecb_encrypt(plaintext:firstblock, key:this.space.secrets[CLIENT_HPKEY]);
+
+      if(long_form)
+        pbytes[0] = raw_string(ord(pbytes[0]) ^ (ord(mask[0]) & 0x0f));
+      else
+        pbytes[0] = raw_string(ord(pbytes[0]) ^ (ord(mask[0]) & 0x1f));
+
+      var i, j;
+      for(i = packet_num_offset, j = 1; i < packet_num_offset + packet_num_len; i++, j++)
+        pbytes[i] = raw_string(ord(pbytes[i]) ^ ord(mask[j]));
+
+      return pbytes;
+    }
+
+    ##
+    # Removes header protection from QUIC packet bytes.
+    #
+    # @param [pbytes:bytes]      Packet bytes with a protected header.
+    # @param [connection:object] A QUIC connection object.
+    # @param [offset:int]        Start of the protected header
+    #
+    # @return [list|object On success returns a list of decoded header information.  Returns an Error object otherwise.
+    # @remark Return array is [packet_type, header, ciphertext, packet_num_offset, packet_num_len, payload_len, retry_token]
+    ##
+    protected function remove_header_protection(pbytes, connection, offset)
+    {
+      var hdr_vals = decode_header(pkt_bytes:pbytes, connection:connection, offset:offset, sending:FALSE);
+      var packet_type = hdr_vals[0];
+      var long_form = hdr_vals[1];
+      var packet_num_offset = hdr_vals[2];
+      var payload_len = hdr_vals[3];
+      var retry_token = hdr_vals[4];
+
+      var res = connection.get_packet_space(packet_type:packet_type);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Error retrieving space.');
+      }
+
+      var firstblock = substr(pbytes, packet_num_offset + 4, packet_num_offset + 19);
+
+      var space = res;
+      var mask;
+
+      if(!isnull(space))
+      {
+        if(dbg::is_error(this.init(space:space, type:packet_type, received:TRUE)))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:dbg::Error.get_last_code(),
+            name:get_error_desc(error:dbg::Error.get_last_code()),
+            msg:'Failed to initialize packet space.');
+        }
+
+        # Hard-code the mask derivation for now for initial pbytes - for other pbytes it is negotiated
+        # should be something like if(cipher_suite == TLS_AES_256_GCM_SHA384 || cipher_suite == AEAD_AES_128_GCM)
+        # where to get cipher_suite? -> task for some other day
+        mask = aes_ecb_encrypt(plaintext:firstblock, key:this.space.secrets[SERVER_HPKEY]);
+      }
+      else
+      {
+        mask = crap(data:'\x00', length:packet_num_len + 1);
+      }
+
+      if(packet_num_offset + 19 > strlen(pbytes))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Received packet too small to decode.');
+      }
+
+      if(long_form)
+        pbytes[offset] = raw_string(ord(pbytes[offset]) ^ (ord(mask[0]) & 0x0f));
+      else
+        pbytes[offset] = raw_string(ord(pbytes[offset]) ^ (ord(mask[0]) & 0x1f));
+
+      var i, j;
+      var packet_num_len = (ord(pbytes[offset]) & 0x03) + 1;
+      payload_len -= packet_num_len;
+      for(i = packet_num_offset, j = 1; i < packet_num_offset + packet_num_len; i++, j++)
+        pbytes[i] = raw_string(ord(pbytes[i]) ^ ord(mask[j]));
+
+      var ciphertext = substr(pbytes,
+                              packet_num_offset + packet_num_len,
+                              packet_num_offset + packet_num_len + payload_len - 1);
+      var header = substr(pbytes, offset, packet_num_offset + packet_num_len - 1);
+
+      return[packet_type, header, ciphertext, packet_num_offset, packet_num_len, payload_len, retry_token];
+    }
+
+    ##
+    # Encrypts and encodes this packet for transmission to a QUIC server.
+    #
+    # @param [connection:object] A QUIC connection object.
+    # @param [pad:bool]          TRUE to add a PADDING frame to make the packet size equal to our UDP MTU
+    #
+    # @return [bytes|NULL] On success returns this object as an encrypted and protected packet.
+    #                      On error returns NULL.
+    ##
+    public function get_encrypted_bytes(connection, pad)
+    {
+      var client_iv = this.space.secrets[CLIENT_IV];
+      var pkt_num = decode_variable_length_int(bytes:this.number);
+
+      var header = encode_header(connection:connection);
+      if(isnull(pad))
+        pad = FALSE;
+
+      var nonce = crap(data:'\x00', length:strlen(client_iv) - 8) + pkt_num;
+      nonce = xor(in1:nonce, in2:client_iv);
+
+      var payload = get_payload_bytes(header:header, pad:pad);
+      if(isnull(payload))
+        return NULL;
+
+      header = payload[0];
+      var plaintext = payload[1];
+
+      var res = '';
+      if(!empty_or_null(plaintext))
+      {
+        res = aead_crypt(data:plaintext,
+                         key:this.space.secrets[CLIENT_KEY],
+                         iv:nonce,
+                         enc:TRUE,
+                         aad:header,
+                         cipher_desc:ciphers_desc[AEAD_AES_128_GCM_SHA256]);
+      }
+
+      res = protect_header_in_place(pbytes:header + res, connection:connection);
+
+      return res;
+    }
+
+    ##
+    # Processes a ServerHello received in a CRYPTO frame by generating a shared
+    # key and initializing the next (handshake) packet space.
+    #
+    # @param [handshake:array]   A parsed TLS 1.3 handshake record.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] SUCCESS or an Error object.
+    ##
+    protected function handle_server_hello(handshake, connection)
+    {
+      var ciphers = get_cipherspec_from_names(ciphernames:cipher_suites());
+      if(mkword(handshake["cipher_spec"]) >!< ciphers)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:CONNECTION_REFUSED,
+          name:get_error_desc(error:CONNECTION_REFUSED),
+          msg:'Server returned an unexpected cipher suite');
+      }
+
+      var ecc_len, server_pub_x, server_pub_y;
+
+      if(handshake["extension_supported_versions"][0] != TLS_13)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Server does not support TLS 1.3');
+      }
+
+      var grp_ex = handshake["extension_key_share_group"];
+      if(grp_ex == 0x17) #secp256r1
+      {
+        ecc_len = 32;
+      }
+      else
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:CONNECTION_REFUSED,
+          name:get_error_desc(error:CONNECTION_REFUSED),
+          msg:'Server offered unsupported group exchange: ' + serialize(grp_ex) + '.');
+      }
+
+      var keyshare = handshake["extension_key_share_key_exchange_data"];
+      if(isnull(keyshare) || strlen(keyshare) != 65)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Server did not send adequate key share.');
+      }
+
+      var offset = 1;
+      server_pub_x = substr(keyshare, offset, offset + ecc_len - 1);
+      offset += ecc_len;
+
+      server_pub_y = substr(keyshare, offset, offset + ecc_len - 1);
+      offset += ecc_len;
+
+      var shared_secret = ecc_scalar_multiply(
+        curve_nid:curve_nid.tls[0x17],
+        x:server_pub_x,
+        y:server_pub_y,
+        scalar:connection.handshake_priv_key
+      );
+
+      var ps = connection.initialize_packet_space(secret:shared_secret.x,
+                                                  salt:this.space.next_iv,
+                                                  crypto_level:CRYPTO_LEVEL_HANDSHAKE);
+      if(dbg::is_error(ps))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Failed create handshake packet space.');
+      }
+
+      return SUCCESS;
+    }
+
+
+    ##
+    # Parses out the values from the quic_transport_params TLS 1.3 extension and
+    # stores the stateless reset token included in those parameters.  Since this QUIC
+    # library has no notion of flow control, the rest of the parameter values are
+    # discarded.
+    #
+    # @param [params:bytes]      A quic_transport_params blob.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object]  On success returns SUCCESS. On failure returns an Error object.
+    ##
+    protected function handle_transport_params(params, connection)
+    {
+      var length, id, res, value;
+      var offset = 0;
+      var end = strlen(params);
+      while(offset < end)
+      {
+        res = parse_variable_length_int(blob:params, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        id = res[0];
+        offset = res[1];
+
+        res = parse_variable_length_int(blob:params, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        length = res[0];
+        offset = res[1];
+
+        if(id == STATELESS_RESET_TOKEN_TP)
+        {
+          if(offset + length > end)
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:INTERNAL_ERROR,
+              name:get_error_desc(error:INTERNAL_ERROR),
+              msg:'Data too short to hold stateless reset token.');
+          }
+
+          value = substr(params, offset, offset + length - 1);
+          connection.set_stateless_reset_token(token:value);
+        }
+
+        offset += length;
+      }
+
+      return SUCCESS;
+    }
+
+
+    ##
+    # Parses an ACK frame and marks sent packets as acked by the server.
+    #
+    # @param [fdata:bytes] Packet bytes containing the frame data.
+    # @param [offset:int]  Offset into the packet marking the start of the ACK frame.
+    # @param [type:int]    Specific ACK type - some ACKs contain additional data.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_ack_frame(fdata, offset, type)
+    {
+      var largest_ack, delay, first_ack, range_count;
+      var ranges = [];
+
+      var res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      largest_ack = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      delay = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      range_count = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      first_ack = res[0];
+      offset = res[1];
+
+      var i, j, skip;
+      for(i = largest_ack; i > largest_ack - first_ack; i--)
+        this.space.packet_acked(number:i);
+      largest_ack -= first_ack;
+
+      skip = TRUE;
+      for(j = 0; j < range_count * 2; j++)
+      {
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        first_ack = res[0];
+        offset = res[1];
+
+        if(!skip)
+        {
+          for(i = largest_ack; i > largest_ack - first_ack; i--)
+            this.space.packet_acked(number:i);
+          skip = TRUE;
+        }
+        else
+        {
+          skip = FALSE;
+        }
+
+        largest_ack -= first_ack;
+      }
+
+      # ignore these for now
+      if(type == ACK_CONGESTION_FRAME)
+      {
+        var ecn_val;
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        ecn_val = res[0];
+        offset = res[1];
+
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        ecn_val = res[0];
+        offset = res[1];
+
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        ecn_val = res[0];
+        offset = res[1];
+      }
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received an ack frame.');
+      return offset;
+    }
+
+
+    ##
+    # Handles a RESET_STREAM frame.  Stopping the receipt of new data if the
+    # stream is found on the connection.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the RESET_STREAM frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_reset_stream_frame(fdata, offset, connection)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a reset stream frame.');
+
+      var res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var stream_id = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var app_err = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var final_size = res[0];
+      offset = res[1];
+
+      var stream = connection.get_stream(id:stream_id);
+      if(!isnull(stream))
+        stream.reset_recv();
+
+      return offset;
+    }
+
+
+    ##
+    # Handles a STOP_SENDING frame.  Stopping the receipt of new data if the
+    # stream is found on the connection.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the STOP_SENDING frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_stop_sending_frame(fdata, offset, connection)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Received a stop sending frame.');
+
+      var res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var stream_id = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var app_err = res[0];
+      offset = res[1];
+
+      var stream = connection.get_stream(id:stream_id);
+      if(!isnull(stream))
+        stream.stop_send();
+
+      return offset;
+    }
+
+
+    ##
+    # Handles a CRYPTO frame.  Parses the underlying TLS 1.3 record
+    # and dispatches to handle handshake operations.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the CRYPTO frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_crypto_frame(fdata, offset, connection)
+    {
+      var res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var stream_offset = res[0];
+      offset = res[1];
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var length = res[0];
+      offset = res[1];
+
+      var crypto_stream = connection.get_crypto_stream(level:this.space.crypto_level);
+      if(isnull(crypto_stream))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Could not retrieve crypto stream.');
+      }
+
+      if(strlen(fdata) < offset + length)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Packet is too short for this crypto frame.');
+      }
+
+      var frame = substr(fdata, offset, offset + length - 1);
+
+      res = crypto_stream.add_recv_data(data:frame, offset:stream_offset, fin:FALSE);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Could not store frame data in crypto stream.');
+      }
+
+      frame = crypto_stream.get_recv_data();
+
+      if(empty_or_null(frame))
+        return offset + length;
+
+      connection.append_transcript(msg:frame);
+
+      if(!isnull(connection.crypto_residue[this.space.crypto_level]))
+      {
+        frame = connection.crypto_residue[this.space.crypto_level] + frame;
+        length = strlen(frame);
+      }
+
+      connection.set_crypto_residue(level:this.space.crypto_level, residue:NULL);
+
+      var handshake, parsed_handshake;
+      var tls_offset = 0;
+
+      do {
+        handshake = mkbyte(SSL3_CONTENT_TYPE_HANDSHAKE) +
+                    mkword(769) +
+                    mkword(length - tls_offset) + substr(frame, tls_offset);
+        parsed_handshake = ssl_parse(blob:handshake, tls13:TRUE);
+
+        #May happen with fragmented crypto frames, just store the residue and return.
+        if(isnull(parsed_handshake))
+        {
+          connection.set_crypto_residue(level:this.space.crypto_level, residue:substr(frame, tls_offset));
+          break;
+        }
+
+        if(parsed_handshake["handshake_type"] == SSL3_HANDSHAKE_TYPE_SERVER_HELLO)
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a server hello.');
+          res = this.handle_server_hello(handshake:parsed_handshake, connection:connection);
+          if(dbg::is_error(res))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:INTERNAL_ERROR,
+              name:get_error_desc(error:INTERNAL_ERROR),
+              msg:'Failed to handle server hello.');
+          }
+        }
+        else if(parsed_handshake["handshake_type"] == TLS13_HANDSHAKE_TYPE_ENCRYPTED_EXTENSIONS)
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a TLS encrypted extensions message.');
+          var protos = connection.get_app_protos();
+          var proto_good = FALSE;
+          foreach var app_proto(protos)
+          {
+            if(parsed_handshake["extension_alpn_protocol"] == app_proto)
+            {
+              proto_good = TRUE;
+              break;
+            }
+          }
+
+          if(!proto_good)
+          {
+            dbg::detailed_log(lvl:2, src:FUNCTION_NAME,
+                              msg:"Server does not support the expected application protocols.",
+                              msg_details:{
+                                "Expected protos":{"lvl":3, "value":protos}
+                              });
+            connection.disconnect();
+            return SUCCESS;
+          }
+
+          if(!isnull(parsed_handshake["quic_transport_params"]))
+          {
+            res = this.handle_transport_params(params:parsed_handshake["quic_transport_params"], connection:connection);
+            if(dbg::is_error(res))
+            {
+              return dbg::raise_error(
+                src:FUNCTION_NAME,
+                code:INTERNAL_ERROR,
+                name:get_error_desc(error:INTERNAL_ERROR),
+                msg:'Failed to handle transport parameters.');
+            }
+          }
+        }
+        else if(parsed_handshake["handshake_type"] == SSL3_HANDSHAKE_TYPE_CERTIFICATE)
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a TLS certificate message.');
+          var cert = parsed_handshake["certificates"];
+
+          for(var i in cert)
+          {
+            cert[i] = blob_to_pem(cert[i]);
+
+            dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:"Successfully retrieved certificates" +
+                                                            ", setting them in the KB.");
+            if(i == 0)
+              replace_kb_item(name:"SSL/Certificate/" + connection.port, value:cert[i]);
+            else
+              replace_kb_item(name:"SSL/Certificate/" + connection.port + "/" + i, value:cert[i]);
+          }
+        }
+        else if(parsed_handshake["handshake_type"] == SSL3_HANDSHAKE_TYPE_CERTIFICATE_VERIFY)
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a TLS certificate verify message.');
+        }
+        else if(parsed_handshake["handshake_type"] == SSL3_HANDSHAKE_TYPE_FINISHED)
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a TLS finished message.');
+
+          if(dbg::is_error(connection.send_client_finished()))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:INTERNAL_ERROR,
+              name:get_error_desc(error:INTERNAL_ERROR),
+              msg:'Error sending TLS Client Finished.');
+          }
+
+          var ps = connection.initialize_packet_space(secret:crap(data:'\x00', length:32),
+                                                      salt:this.space.next_iv,
+                                                      crypto_level:CRYPTO_LEVEL_APPLICATION);
+          if(dbg::is_error(ps))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:INTERNAL_ERROR,
+              name:get_error_desc(error:INTERNAL_ERROR),
+              msg:'Failed to create application packet space.');
+          }
+        }
+        else if(parsed_handshake["handshake_type"] == SSL3_HANDSHAKE_TYPE_NEW_SESSION_TICKET)
+        {
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a TLS new session ticket message.');
+        }
+        else
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Received a TLS message we are not ready for yet.');
+        }
+
+        tls_offset += parsed_handshake["end_offset"] - 5;
+
+      } while(tls_offset < length);
+
+      offset += length;
+
+      return offset;
+    }
+
+
+    ##
+    # Handles a NEW_TOKEN frame.  The Nasl QUIC does not support relocation or forwarding yet so
+    # this frame is ignored for the time being.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the NEW_TOKEN frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_new_token_frame(fdata, offset)
+    {
+      var id_len, res;
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a new token frame.');
+
+      # id length
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      id_len = res[0];
+      offset = res[1] + id_len;
+
+      return offset;
+    }
+
+
+    ##
+    # Handles a STREAM frame, creating a new receive frame if necessary.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the STREAM frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    # @param [type:int]          Frame type code - carries STREAM sub type.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_stream_frame(fdata, offset, type, connection)
+    {
+      var fin, len, length, off, str_off;
+      var stream_id, stream_data, res;
+
+      str_off = 0;
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a stream frame.');
+
+      fin = type & 1;
+      len = type & 2;
+      off = type & 4;
+
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      stream_id = res[0];
+      offset = res[1];
+
+      if(off)
+      {
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        str_off = res[0];
+        offset = res[1];
+      }
+
+      if(len)
+      {
+        # stream length
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+        length = res[0];
+        offset = res[1];
+
+        if(strlen(fdata) < offset + length)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short for stream data.');
+        }
+
+        stream_data = substr(fdata, offset, offset + length - 1);
+        offset += length;
+      }
+      else
+      {
+        if(strlen(fdata) <= offset)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short for stream data.');
+        }
+        stream_data = substr(fdata, offset);
+        offset = strlen(fdata);
+      }
+
+      res = connection.handle_stream_frame(data:stream_data, stream_id:stream_id, offset:str_off, fin:fin);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:res.get_last_code(),
+          name:get_error_desc(error:res.get_last_code()),
+          msg:'Connection failed to handle stream frame.');
+      }
+
+      return offset;
+    }
+
+
+    ##
+    # Stub for handling MAX_DATA frames.  Since the QUIC library currently has no notion of
+    # flow control.  Receipt of a MAX_DATA frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the MAX_DATA frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_max_data_frame(fdata, offset)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a max data frame - not implemented yet.');
+    }
+
+
+    ##
+    # Stub for handling MAX_STREAM_DATA frames.  Since the QUIC library currently has no notion of
+    # flow control.  Receipt of a MAX_STREAM_DATA frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the MAX_STREAM_DATA frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_max_stream_data_frame(fdata, offset)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a max stream data frame - not implemented yet.');
+    }
+
+
+    ##
+    # Stub for handling MAX_STREAMS frames.  Since the QUIC library currently has no notion of
+    # flow control.  Receipt of a MAX_STREAMS frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the MAX_STREAMS frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_max_streams_frame(fdata, offset, type)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a max streams frame - not implemented yet.');
+    }
+
+
+    ##
+    # Stub for handling DATA_BLOCKED frames.  Since the QUIC library currently has no notion of
+    # flow control.  Receipt of a DATA_BLOCKED frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the DATA_BLOCKED frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_data_blocked_frame(fdata, offset)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a data blocked frame - not implemented yet.');
+    }
+
+
+    ##
+    # Stub for handling STREAM_DATA_BLOCKED frames.  Since the QUIC library currently has no notion of
+    # flow control.  Receipt of a STREAM_DATA_BLOCKED frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the STREAM_DATA_BLOCKED frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_stream_data_blocked_frame(fdata, offset)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a stream data blocked frame - not implemented yet.');
+    }
+
+
+    ##
+    # Stub for handling STREAMS_BLOCKED frames.  Since the QUIC library currently has no notion of
+    # flow control.  Receipt of a STREAMS_BLOCKED frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the STREAMS_BLOCKED frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_streams_blocked_frame(fdata, offset, type)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a streams blocked frame - not implemented yet.');
+    }
+
+
+    ##
+    # Handles a NEW_CONNECTION_ID frame.  The Nasl QUIC does not support relocation or forwarding yet so
+    # this frame is ignored for the time being.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the NEW_CONNECTION_ID frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_new_connection_id_frame(fdata, offset)
+    {
+      var var_len_val, id_len, res, reset_token;
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a new connection ID frame.');
+
+      #Sequence number
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var_len_val = res[0];
+      offset = res[1];
+
+      # Retire prior to
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      var_len_val = res[0];
+      offset = res[1];
+
+      #New connection id and new stateless reset token for that id
+      id_len = getbyte(blob:fdata, pos:offset++);
+      if(strlen(fdata) < offset + id_len + 16)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+      offset += id_len + 16;
+
+      return offset;
+    }
+
+
+    ##
+    # Stub for handling RETIRE_CONNECTION_ID frames.  The Nasl QUIC does not support relocation or forwarding yet.
+    # Receipt of a RETIRE_CONNECTION_ID frame is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the RETIRE_CONNECTION_ID frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_retire_connection_id_frame(fdata, offset)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a retire connection ID frame - not implemented yet.');
+    }
+
+
+    ##
+    # Handles the receipt of a PATH_CHALLENGE frame by immediately returning a PATH_RESPONSE
+    # frame with the same entropy bytes provided by that packet.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the PATH_RESPONSE frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_path_challenge_frame(fdata, offset, connection)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a path challenge frame.');
+
+      if(strlen(fdata) < 64 + offset)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short for frame.');
+      }
+
+      var entropy = substr(fdata, offset, offset + 63);
+      offset += 64;
+
+      var ret = connection.send_path_response(entropy:entropy, pkt:this);
+
+      if(dbg::is_error(ret))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:ret.get_last_code(),
+          name:get_error_desc(error:ret.get_last_code()),
+          msg:'Failed to send path response.');
+      }
+
+      return offset;
+    }
+
+
+    ##
+    # Stub for handling PATH_RESPONSE frames.  The Nasl QUIC does not support relocation or forwarding yet.
+    # Receipt of a PATH_RESPONSEframe is considered an internal error.
+    #
+    # @param [fdata:bytes] Packet bytes containing the PATH_RESPONSE frame.
+    # @param [offset:int]  Offset into the packet marking the start of this frame.
+    #
+    # @return [object] Returns an error object.
+    ##
+    protected function parse_path_response_frame(fdata, offset)
+    {
+      return dbg::raise_error(
+        src:FUNCTION_NAME,
+        code:INTERNAL_ERROR,
+        name:get_error_desc(error:INTERNAL_ERROR),
+        msg:'Received a path response frame - not implemented yet.');
+    }
+
+    ##
+    # Handles a CONNECTION_CLOSE frame by immediately closing the current connection.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the CONNECTION_CLOSE frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    # @param [type:int]          Specific CONNECTION_CLOSE type.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object] On success returns an offset that points to the next packet bytes after the frame.
+    #                      On failure an Error object is returned.
+    ##
+    protected function parse_connection_close_frame(fdata, offset, type, connection)
+    {
+      if(strlen(fdata) < offset)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Data too short for frame.');
+      }
+
+      var res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+
+      var error = res[0];
+      offset = res[1];
+
+      var frame_type = '';
+      if(type == CONNECTION_CLOSE_PROTO_FRAME)
+      {
+        res = parse_variable_length_int(blob:fdata, offset:offset);
+        if(res[1] == -1)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Data too short to parse variable length integer.');
+        }
+
+        frame_type = res[0];
+        frame_type = get_frame_desc(type:frame_type);
+        offset = res[1];
+        error = get_error_desc(error:error);
+      }
+      else
+      {
+        error = "Application error - code: " + serialize(error);
+      }
+
+      var reason_len;
+      res = parse_variable_length_int(blob:fdata, offset:offset);
+      if(res[1] == -1)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:PROTOCOL_VIOLATION,
+          name:get_error_desc(error:PROTOCOL_VIOLATION),
+          msg:'Data too short to parse variable length integer.');
+      }
+
+      reason_len = res[0];
+      offset = res[1];
+
+      var reason = "";
+      if(reason_len > 0)
+      {
+        if(strlen(fdata) < offset + reason_len)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:PROTOCOL_VIOLATION,
+            name:get_error_desc(error:PROTOCOL_VIOLATION),
+            msg:'Frame too short to store frame reason text.');
+        }
+
+        reason = substr(fdata, offset, offset + reason_len);
+        offset += reason_len;
+      }
+
+      dbg::detailed_log(lvl:2,
+                        src:FUNCTION_NAME,
+                        msg:'Received a close connection frame: type ' + serialize(type) + '.',
+                        msg_details:{
+                          "Error":{"lvl":3, "value":error},
+                          "Frame Type":{"lvl":3, "value":frame_type},
+                          "Reason":{"lvl":3, "value":reason}
+                        });
+
+      connection.disconnect();
+
+      return offset;
+    }
+
+
+    ##
+    # Handles a HANDSHAKE_DONE frame.  There is nothing for us to do here.
+    #
+    # @param [fdata:bytes]       Packet bytes containing the CONNECTION_CLOSE frame.
+    # @param [offset:int]        Offset into the packet marking the start of this frame.
+    #
+    # @return [int] Returns an offset that points to the next packet bytes after the frame.
+    ##
+    protected function parse_handshake_done_frame(fdata, offset)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Received a handshake done frame.');
+      return offset;
+    }
+
+
+    ##
+    # Extracts frames from a QUIC packet and dispatches to the appropriate
+    # handler for each discovered frame.
+    #
+    # @param [pdata:bytes] Raw packet bytes.
+    # @param [connection:object] A QUIC connection object.
+    #
+    # @return [int|object].  If successful returns an offset that points to the next packet bytes
+    # after the frame.  On failure an Error object is returned.
+    ##
+    protected function parse_frames_from_packet(pbytes, connection)
+    {
+      var offset = 0;
+      var length = strlen(pbytes);
+      var type, result;
+
+      while(offset < length)
+      {
+        type = getbyte(blob:pbytes, pos:offset++);
+
+        if(type != ACK_FRAME &&
+           type != ACK_CONGESTION_FRAME &&
+           type != PADDING_FRAME &&
+           type != CONNECTION_CLOSE_PROTO_FRAME &&
+           type != CONNECTION_CLOSE_APP_FRAME)
+          this.must_ack = TRUE;
+
+        switch(type)
+        {
+          case PADDING_FRAME:
+            result = length;
+            break;
+          case PING_FRAME:
+            result = offset + 1;
+            break;
+          case ACK_FRAME:
+          case ACK_CONGESTION_FRAME:
+            result = parse_ack_frame(fdata:pbytes, offset:offset, type:type);
+            break;
+          case RESET_STREAM_FRAME:
+            result = parse_reset_stream_frame(fdata:pbytes, offset:offset, connection:connection);
+            break;
+          case STOP_SENDING_FRAME:
+            result = parse_stop_sending_frame(fdata:pbytes, offset:offset, connection:connection);
+            break;
+          case CRYPTO_FRAME:
+            result = parse_crypto_frame(fdata:pbytes, offset:offset, connection:connection);
+            break;
+          case NEW_TOKEN_FRAME:
+            result = parse_new_token_frame(fdata:pbytes, offset:offset);
+            break;
+          case STREAM_FRAME:
+          case STREAM_FIN_FRAME:
+          case STREAM_LEN_FRAME:
+          case STREAM_LEN_FIN_FRAME:
+          case STREAM_OFF_FRAME:
+          case STREAM_OFF_FIN_FRAME:
+          case STREAM_OFF_LEN_FRAME:
+          case STREAM_OFF_LEN_FIN_FRAME:
+            result = parse_stream_frame(fdata:pbytes, offset:offset, type:type, connection:connection);
+            break;
+          case MAX_DATA_FRAME:
+            result = parse_max_data_frame(fdata:pbytes, offset:offset);
+            break;
+          case MAX_STREAM_DATA_FRAME:
+            result = parse_max_stream_data_frame(fdata:pbytes, offset:offset);
+            break;
+          case MAX_STREAMS_BI_FRAME:
+          case MAX_STREAMS_UNI_FRAME:
+            result = parse_max_streams_frame(fdata:pbytes, offset:offset, type:type);
+            break;
+          case DATA_BLOCKED_FRAME:
+            result = parse_data_blocked_frame(fdata:pbytes, offset:offset);
+            break;
+          case STREAM_DATA_BLOCKED_FRAME:
+            result = parse_stream_data_blocked_frame(fdata:pbytes, offset:offset);
+            break;
+          case STREAMS_BLOCKED_BI_FRAME:
+          case STREAMS_BLOCKED_UNI_FRAME:
+            result = parse_streams_blocked_frame(fdata:pbytes, offset:offset, type:type);
+            break;
+          case NEW_CONNECTION_ID_FRAME:
+            result = parse_new_connection_id_frame(fdata:pbytes, offset:offset);
+            break;
+          case RETIRE_CONNECTION_ID_FRAME:
+            result = parse_retire_connection_id_frame(fdata:pbytes, offset:offset);
+            break;
+          case PATH_CHALLENGE_FRAME:
+            result = parse_path_challenge_frame(fdata:pbytes, offset:offset, connection:connection);
+            break;
+          case PATH_RESPONSE_FRAME:
+            result = parse_path_response_frame(fdata:pbytes, offset:offset);
+            break;
+          case CONNECTION_CLOSE_PROTO_FRAME:
+          case CONNECTION_CLOSE_APP_FRAME:
+            result = parse_connection_close_frame(fdata:pbytes, offset:offset, type:type, connection:connection);
+            break;
+          case HANDSHAKE_DONE_FRAME:
+            result = parse_handshake_done_frame(fdata:pbytes, offset:offset);
+            break;
+          default:
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:FRAME_ENCODING_ERROR,
+              name:get_error_desc(error:FRAME_ENCODING_ERROR),
+              msg:'Received an unrecognized frame: type ' + serialize(type) + '.');
+        }
+
+        if(dbg::is_error(result))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:FRAME_ENCODING_ERROR,
+            name:get_error_desc(error:FRAME_ENCODING_ERROR),
+            msg:'Error parsing frames from packet.');
+        }
+
+        offset = result;
+      }
+
+      return offset;
+    }
+
+
+    ##
+    # Decrypts and parses a QUIC packet.
+    #
+    # @param [bytes:bytes] UDP datagram bytes contaiing an encrypted and protected packet.
+    # @param [connection:object] A QUIC connection object.
+    # @param [offset:int] Offset into a UDP datagram of these packet bytes.
+    #
+    # @return [int|object].  If successful returns an offset that points to the next packet bytes
+    # after the frame.  On failure an Error object is returned.
+    ##
+    public function parse_packet_data(bytes, connection, offset)
+    {
+      var datalen = strlen(bytes);
+      if(datalen >= 16 && substr(bytes, datalen - 16, datalen - 1) == connection.stateless_reset_token)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Server sent a stateless reset.");
+        connection.disconnect();
+        return SUCCESS;
+      }
+
+      var res = remove_header_protection(pbytes:bytes, connection:connection, offset:offset);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Header protection failed.');
+      }
+
+      # Note: per RFC9000, Section 17.1 and Appendix A3 the value of the unprotected packet number has
+      # to be combined with the 62-bit expected packet number.  So, the variable length integer MSBs that
+      # indicate length have to be masked-off before the combination.
+
+      var header = res[1];
+      var ciphertext = res[2];
+      var packet_num_offset = res[3];
+      var packet_num_len = res[4];
+      var payload_len = res[5];
+
+      this.type = res[0];
+      this.retry_token = res[6];
+
+      var pkt_num_bytes = substr(header, packet_num_offset - offset, packet_num_offset + packet_num_len - offset - 1);
+
+      if(this.type != VERSION_NEGO_PACKET && this.type != RETRY_PACKET)
+      {
+        var pkt_num = decode_variable_length_int(bytes:pkt_num_bytes);
+
+        this.number = encode_variable_length_int(bytes:pkt_num);
+        var nonce = crap(data:'\x00', length:strlen(space.secrets[SERVER_IV]) - 8) + pkt_num;
+
+        if(strlen(nonce) != strlen(space.secrets[SERVER_IV]))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Could not remove header protection.');
+        }
+
+        nonce = xor(in1:nonce, in2:space.secrets[SERVER_IV]);
+
+        var plaintext = aead_crypt(data:ciphertext,
+                                   key:space.secrets[SERVER_KEY],
+                                   iv:nonce,
+                                   enc:FALSE,
+                                   aad:header,
+                                   cipher_desc:ciphers_desc[AEAD_AES_128_GCM_SHA256]);
+
+        if(empty_or_null(plaintext))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Failed to decrypt payload.');
+        }
+
+        res = this.parse_frames_from_packet(pbytes:plaintext, connection:connection);
+        if(dbg::is_error(res))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:res.get_last_code(),
+            name:get_error_desc(error:res.get_last_code()),
+            msg:'Failed to parse frames from packet.');
+        }
+      }
+
+      offset = packet_num_offset + packet_num_len + payload_len;
+
+      if(!isnull(this.space) && this.space.crypto_level == CRYPTO_LEVEL_INITIAL)
+      {
+        var new_dcid_len = ord(header[5]);
+        var new_dcid = '';
+        var new_dcid_off = 6;
+        if(strlen(header) < new_dcid_off + new_dcid_len)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Header too short to extract scid.');
+        }
+
+        new_dcid_off += new_dcid_len;
+        new_dcid_len = ord(header[new_dcid_off]);
+        new_dcid_off ++;
+        if(strlen(header) < new_dcid_off + new_dcid_len)
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Header too short to extract dcid..');
+        }
+
+        if(new_dcid_len > 0)
+        {
+          new_dcid = substr(header, new_dcid_off, new_dcid_off + new_dcid_len - 1);
+          connection.set_destination_id(dcid:new_dcid);
+        }
+      }
+
+      return offset;
+    }
+
+
+    ##
+    # Adds a raw CRYPTO_FRAME to this packet.  The crypto stream offset, and length are prepended to
+    # the frame bytes.
+    #
+    # @param [payload:bytes]     A CRYPTO_FRAME payload.
+    # @param [stream_offset:int] Offset into the crypto stream of the associated packet space for this frame.
+    #
+    # @return [int|object] On success returns the length of the new frame.  On failure returns an Error object.
+    ##
+    public function add_crypto_frame(payload, stream_offset)
+    {
+      if(this.type == ZERO_RTT_PACKET)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'It is illegal to add a crypto frame to a ' + get_packet_desc(type:this.type) +  ' packet.');
+      }
+
+      var buffer = mkbyte(CRYPTO_FRAME);  # Let's pretend this is actually a variable sized int
+      buffer += encode_variable_length_int(bytes:mkdword(0) + mkdword(stream_offset));
+
+      var length = mkdword(0) + mkdword(strlen(payload));
+      buffer += encode_variable_length_int(bytes:length);
+      buffer += payload;
+
+      if(dbg::is_error(add_frame(frame:buffer)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:dbg::Error.get_last_code(),
+          name:get_error_desc(error:dbg::Error.get_last_code()),
+          msg:'Failed to add crypto frame to packet.');
+      }
+
+      return strlen(buffer);
+    }
+
+
+    ##
+    # Adds a STREAM frame to this packet.  Prepends the stream type, stream offset and
+    # length of this frame's payload to the frame data.
+    #
+    # @param [data:bytes] The data to transmit in this frame.
+    # @param [id:int]     A stream identifier.
+    # @param [offset:int] Offset into the stream of this data.
+    # @param [fin:bool]   TRUE if this frame data represents the end of the stream; FALSE otherwise.
+    # @return [null|object] Returns nothing unless there is an error adding a frame, then returns an Error object.
+    ##
+    public function add_stream_frame(data, id, offset, fin)
+    {
+      var length = 0;
+      var type = STREAM_FRAME;
+
+      if(!isnull(offset) && offset > 0)
+        type = type | 4;
+
+      # This library always uses length
+      type = type | 2;
+
+      if(!isnull(fin) && fin)
+        type = type | 1;
+
+      if(!empty_or_null(data))
+        length = strlen(data);
+
+      var buffer = mkbyte(type);
+      buffer += encode_variable_length_int(bytes:mkdword(0) + mkdword(id));
+
+      if(type & 4)
+        buffer += encode_variable_length_int(bytes:mkdword(0) + mkdword(offset));
+
+      buffer += encode_variable_length_int(bytes:mkdword(0) + mkdword(length));
+
+      buffer += data;
+
+      if(dbg::is_error(add_frame(frame:buffer)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:dbg::Error.get_last_code(),
+          name:get_error_desc(error:dbg::Error.get_last_code()),
+          msg:'Failed to add stream frame to packet.');
+      }
+    }
+
+
+    ##
+    # Adds a frame to this packet.  This function assumes that the frame is fully formed.
+    #
+    # @param [frame:bytes] Frame data.
+    # @return [NULL|object] Returns NULL on success, otherwise returns an Error object.
+    ##
+    public function add_frame(frame)
+    {
+      if(isnull(frame) || (typeof(frame) != "string" && typeof(frame) != "data"))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Bad frame supplied as an argument.');
+      }
+
+      if(this.type == VERSION_NEGO_PACKET || this.type == RETRY_PACKET)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:get_packet_desc(type:this.type) + ' packets do not contain frames.');
+      }
+
+      append_element(var:this.frames, value:frame);
+    }
+
+
+    ##
+    # Returns the unencrypted/unprotected data for this packet
+    #
+    # @param [header:bytes] An unprotected QUIC packet header.
+    # @param [pad:bool]     TRUE if the packet must be padded to the UDP MDU size.  FALSE otherwise.
+    #
+    # @return [list] Returns a possibly modified header and the packet bytes in a list of the form:
+    #                [header, packet bytes].
+    ##
+    protected function get_payload_bytes(header, pad)
+    {
+      var payload = '';
+
+      #For now we only support version 1
+      if(this.type == VERSION_NEGO_PACKET)
+        return [header, mkdword(1)];
+
+      if(this.type == INITIAL_PACKET)
+      {
+        if(!empty_or_null(this.retry_token))
+        {
+          header += encode_variable_length_int(bytes:mkdword(0) + mkdword(strlen(this.retry_token)));
+          header += this.retry_token;
+        }
+        else
+        {
+          header += encode_variable_length_int(bytes:crap(data:'\x00', length:8));
+        }
+      }
+
+      var pkt_num = this.number;
+      if(strlen(pkt_num) > 4)
+        pkt_num = substr(pkt_num, strlen(pkt_num) - 4);
+
+      var frame;
+      var pkt_payload = '';
+      for(frame in this.frames)
+        pkt_payload += frames[frame];
+
+      if(pad)
+      {
+        var padlen = 1200 - (strlen(header) + strlen(pkt_num) + strlen(pkt_payload) + 16);
+        pkt_payload += crap(data:'\x00', length:padlen);
+      }
+
+      # The packet length does not go on short header packets
+      if(this.type != ONE_RTT_PACKET)
+      {
+        # The 16 constant represents the size of a AEAD header
+        var length = strlen(pkt_payload) + strlen(pkt_num) + 16;
+        header += encode_variable_length_int(bytes:mkdword(0) + mkdword(length));
+      }
+
+      header += pkt_num;
+      payload += pkt_payload;
+
+      return [header, payload];
+    }
+  }
+}
+

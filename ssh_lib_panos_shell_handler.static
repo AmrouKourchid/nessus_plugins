@@ -1,0 +1,194 @@
+#TRUSTED 2878310fbbe97407bdac1357c1930434147394c520ca52b2a17299c7582b4ff03973986cce3a40d7cb6b3a01056e4deb14004d012cf3fcd8792906123456b54726e3b6d1ea7aac30d05f6176a1859ae2abf4d2ad6eafca5a65a3ef6c532f6d0a03be9cc1ec5fcd08b1911241e05a5f8a227e2c11919ebc5576661d55c6df03f76ef46e7538d614bf12798469b6e95c701a966418fb38b14c2bf4fc60d319c83fb4f1393816b3a7bc228fb1f8f6506d8dffce67b1baea47420056f4d683ffbb865dd69e789f9962506a2a2ae14af8fcd7ddcb4f440350f7582ddfa705497b11354e7ea8b1a0bbd2c5068cee75871708c08f8583ca8fe8905aab0c8bea1dcc577208e86c73c76bfe9a8313a9510b3b4d7bed57bbb41e54db469b72b218e76693cb4ccd5f855d47b7beaaa52d5a3f27eef32370b9757c5e1aef4ce522aedbd1f44739360e2d660045da56d1e8663df3e505d73d03a8dff26d180af098e9aaa2973db7e7bece07ec624a016125fb0c357d96d134124e3f6652694e17debe90d0df02afa4ed9be79e6ab5a01da13079e3dbb10d95b5e1de194d9bedf2df69b014d974867a2a367a82362ea9986e034e62b45d9f3fedc1fdf6f420991137b03f5e0ff9c8bc9b8f6f7ed583f19f45e5f302e75c35889e6ce02624e7faea77206310ab42d0d3f4031d236e4140984b2712782b2659fb2b27ff02b19930555ea0f09b63b1
+#TRUST-RSA-SHA256 a66f28951a37b42d5918683e3f9131edcb30f5dd191eba667361b6535b5b13d8aaa7c11e6149ba8022d0614afafb48644792cf23c34264ced7ab7d0f2d581bba4981d3a43b016e4b2886035c958b0f789bda7c3ec5b622eb73bc79a4fd291d547f81f229894d8b4d384bae91a58d74ef5936ec6d462551c39937a839a04ad5026758bccb64075cacb0eea5e1363e3bf81f2ac6f4c7ebb50e5b11aca89026e67ddc74792f66cb91836f5bc04569d8d0bd1eabd96f4f70ab58afa6507300798d88a669c46a8bda9257670415909243a530e28af224d5827c4c785c7c9e32db2b5f5efcc17216d53353dbbc1fafc05cb434decba187e44eee6c09b17339c7239738523764916b97a60bcce5f48db7b06769a104caa534dbdf6f7456e786f2a1764f3f1ec802fa4c03d7aae37141243e82f585553898f8f666d7023c617b91ffb25a80f79d4130fa363f5d8b56f1892705e4dbc000b1be707c197bda37cebc74ddfb4e8e296738601b58dbc7dd4956873c398e72f12aee82fbc2c607370f05e437d1abb88fb8ac91ede05b56cea8623837e9d2fcec75fe87bbfdc309f4f09cef8b08c7985246f29c81007dbea7065e2d0a6521c04c3664989cdccc7f75a269f8bf9e1568be419108d02a12e7abf9a03f6b55b56491637e73e7c9ac7915280d913198b9bddb2084d21a64c87cea141c126eb1db7c52001bcaee97768b2970a30c0ae4
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+###
+
+##
+# Palo Alto PAN-OS shell handler
+##
+
+namespace sshlib
+{
+  object panos_shell_handler : sshlib::basic_shell_handler
+  {
+    var objname = 'panos_shell_handler::';
+    var paging_pattern = "lines [0-9]+-[0-9]+";
+    var last_paging_ts;
+    # Attempt to force the sending of 'exit\n', PANOS can hold a zombie SSH connection
+    # for up to 60 minutes on misconfigured devices.
+    var cleanup_required_before_close = TRUE;
+
+    ##
+    # Returns carriage return opcode
+    # @no53   If true don't populate flag 53 with any value. (unused)
+    #         This shell handler never sets flag 53 (PTY_OPT_ECHO) as it reputedly breaks Palo Alto's SSH implementation,
+    #         but the function parameter must be supported anyway for compatibility with ssh_compat.static
+    # @return list of required pty opcodes
+    # @category SSH
+    # @remark Flag 53 (PTY_OPT_ECHO) is incompatible with some versions of Palo Alto per ssh_get_info.nasl and shouldn't be sent
+    ##
+    public function get_pty_opts(no53)
+    {
+      return make_array(PTY_OPT_ONLCR, mkdword(0, order:BYTE_ORDER_BIG_ENDIAN));
+    }
+
+    ##
+    # Check for pagination and send newline to proceed if detected
+    # @param channel channel for ssh session
+    # @return NULL
+    # @category SSH
+    ##
+    protected function handle_pagination(&channel)
+    {
+      var fn = this.objname + FUNCTION_NAME;
+
+      var data = str_replace(find:'\x00', replace:'', string:channel.data_buf);
+      data = remove_escape_sequences(data);
+
+      var lines = split(data);
+      if (lines && lines[len(lines) - 1] !~ "^" + this.paging_pattern) return NULL;
+      if (!isnull(this.last_paging_ts) && this.last_paging_ts > this.last_buffer_update_ts)
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:'No buffer update since paging last handled, not sending space character');
+        return NULL;
+      }
+      dbg::detailed_log(lvl:3, src:fn, msg:'Detected paging, sending space character');
+      channel.window_send_data(data:' ');
+      this.last_paging_ts = unixtime();
+      return NULL;
+    }
+
+    ##
+    # check for prompt or inactivity timeout with 2 character prompt
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE
+    # @category SSH
+    ##
+    public function at_prompt2_or_timeout(&channel)
+    {
+      this.handle_pagination(channel:channel);
+      return super.at_prompt2_or_timeout(channel:channel);
+    }
+
+    ##
+    # function to check for buffer update or inactivity timeout
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE if found
+    # @category SSH
+    ##
+    public function on_channel_buffer_update_or_timeout(&channel)
+    {
+      this.handle_pagination(channel:channel);
+      return super.on_channel_buffer_update_or_timeout(channel:channel);
+    }
+
+    ##
+    # Clean up command result to remove command echo and paging
+    #
+    # @param result command result to clean up
+    # @param command command string to remove from result
+    #
+    # @return result with command and paging removed
+    # @category SSH
+    ##
+    public function clean_result(&session, result, command)
+    {
+      var fn = this.objname + FUNCTION_NAME;
+
+      if (command >!< result && result !~ this.paging_pattern)
+      {
+        dbg::detailed_log(lvl:3, src:fn, msg:'Result is already clean, returning result');
+        return result;
+      }
+
+      dbg::detailed_log(lvl:3, src:fn, msg:'Command result before cleanup',
+        msg_details:{"Data":{"lvl":3, "value":result}});
+
+      # Remove command echo
+      var cmd_idx = stridx(result, command+'\r\n');
+      if (cmd_idx >= 0) result = substr(result, cmd_idx + strlen(command+'\r\n'));
+
+      # Remove paging
+      if (result =~ this.paging_pattern)
+      {
+        var tmp, lines = split(result, sep:'\n', keep:FALSE);
+        for (var i=0; i < len(lines); i++)
+        {
+          if (lines[i] =~ this.paging_pattern + '\r')
+          {
+            dbg::detailed_log(lvl:3, src:fn, msg:'Removing paging from line ' + i,
+              msg_details:{"Data":{"lvl":3, "value":lines[i]}});
+            lines[i] = substr(lines[i], stridx(lines[i], '\r') + 1);
+            dbg::detailed_log(lvl:3, src:fn, msg:'After removing paging',
+              msg_details:{"Data":{"lvl":3, "values":lines[i]}});
+          }
+        }
+        result = join(lines, sep:'\n');
+      }
+      dbg::detailed_log(lvl:1, src:fn, msg:'Command result after cleanup',
+        msg_details:{"Data":{"lvl":1, "value":result}});
+      return result;
+    }
+
+    ##
+    # run given command using basic_shell_handler
+    #
+    # @param session SSH session in case reconnection is needed
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    # @param cmd_shell The global var for the viptela shell that should
+    #                  be used to run the command (optional, default VIPTELA_MODE)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&session, &channel, command, force_priv_escl,
+      cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+      var obj_ch_id = '[channel ' + channel.local_channel + ']: ';
+      var msg, res;
+      if (!session) session = channel.session;
+
+      # Check channel and replace if necessary; replace_shell() will
+      # set applicable error if it fails
+      channel.set_shell_handler(shell_handler:this);
+      if (!channel_usable_for_shell_command(channel:channel))
+      {
+        if (!session_replace_shell(session:session, channel:channel))
+        {
+          msg = 'Did not run command due to session error.\nCommand : ' + command + '\nSession error : "' + last_error + '"';
+          session.set_error(msg);
+          return msg;
+        }
+      }
+
+      dbg::detailed_log(lvl:1, src:fn, msg:'Running command "' + command + '" using PAN-OS shell handler');
+
+      # Run via basic shell handler's run_command() if possible
+      var ret = super.run_command(
+        channel                : channel,
+        command                : command,
+        cmd_timeout_min        : cmd_timeout_min,
+        inactivity_timeout_min : inactivity_timeout_min);
+
+      return this.clean_result(session:session, result:ret, command:command);
+    }
+  }
+}

@@ -1,0 +1,71 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(215069);
+  script_version("1.2");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/02/07");
+
+  script_cve_id("CVE-2025-0500");
+  script_xref(name:"IAVA", value:"2025-A-0064");
+
+  script_name(english:"Amazon DCV Client <= 2023.1.6203 MITM");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote host is affected by a man in the middle vulnerability");
+  script_set_attribute(attribute:"description", value:
+"The version of Amazon DCV Client installed on the host is vulnerable to a man-in-the-middle vulnerability, allowing an
+attacker to access remote sessions.
+
+Note that Nessus has not tested for this issue but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://aws.amazon.com/security/security-bulletins/AWS-2025-001/");
+  script_set_attribute(attribute:"solution", value:
+"Update to version 2023.1.6703 or later");
+  script_set_attribute(attribute:"agent", value:"all");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:H/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2025-0500");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2025/01/15");
+  script_set_attribute(attribute:"patch_publication_date", value:"2025/01/15");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/02/06");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"x-cpe:/a:amazon:dcv_client");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("amazon_dcv_client_linux_installed.nbin", "amazon_dcv_client_macos_installed.nbin");
+  script_require_keys("installed_sw/Amazon DCV Client");
+
+  exit(0);
+}
+
+include('vcf.inc');
+
+var app_info = vcf::get_app_info(app:'Amazon DCV Client');
+
+# There's a 4th part of the version that looks to always be 0. There shouldn't be any version between 2023.1.6203
+# the max affected and 2023.1.6703 the fix. To be very careful, we're setting max to 2023.1.6204, in case there is
+# e.g. 2023.1.6203.1000 which should be affected
+var constraints = [
+  { 'max_version' : '2023.1.6204', 'fixed_display' : '2023.1.6703' }
+];
+
+vcf::check_version_and_report(app_info:app_info, constraints:constraints, severity:SECURITY_HOLE);

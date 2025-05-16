@@ -1,0 +1,148 @@
+#TRUSTED 24086c8ebe30f3d268f89698d1de60ec4bf6c9ed45e5e3eb701a3a1996fce21ed6a71a7b2df78d809c944f3a84a9224ebea04fece603a8287c67653f435d9f50eedda40061a4eb9b3f5f0e581ac3266ef7960b68abd4732e9e7e63b70ba0c91c030d4e2ffaf340f0a4b1471e02cc6c4db383a68abc066c057b27de0b7bd9d0181b428af80122eb3620c04adec5a814d32c03dfcc63cf3056f84b3a893ace369e7a2a6c395ec1ecc239e94f79324fccad42ebd6c99279aa1d4de77828f1f0372456dbb568de4c7fb60e3b6fa290798a3c85a47a9bc28f0aeb543ac654f60f8da973cc32392220f414aaa9155bd1cc5f8cf7165f1d5a093b7b6f8aa83db11bc0295f4dfe9d181f91a218e3510ad3efcdad6fe9d4542269350f4b737fa1c05afe83c46e8273122058bec0cc34d3217102b6e483378377531db5bfacdeca519af1eb4db97c3c93047d429c73517a5ea3df5c62f92840d9132e0d7e21845f1324c7f470cb09b8bd261f8e85b54c54793f9c972ad1a92b88460362717854674d4714d570939f0c4dec3616cd313c42616acf34a77c99cbe1d5ecbe8ff0747eaaf0d3b01d7df1e942369920d9453c04868681eaf5c32d20f095773a476189e89ec00449e773306340032341a6ed2391a8708c913864280abcbe585ad9042b1a326f4a345ee85bd02eb18c22c43c6744a66275bf53980d6d7e4cc1683798fb97d7d9cd8c
+#TRUST-RSA-SHA256 6ce928d08e50d59dfd6bcf57453a7ad61d4547e14a0249cbfd5918dc441cd950ced9e0b0032b9e3ffbd7a3aa5b59e02372b1d3a3e90c8e1d8cbba9d48545aca043a40262e31f920d2be0ba7334991e272586f8c908c43c2f2311936e124f2b9a99c7d719fd3ab2d927e2cd994240c32c7cbdda0471b62baad2ed7029623a6915312b36eace180b4cac35b843ca697b968ea5b941fe6f238f00ae71cab81986205dc943dcca10c240ab975f66bbcb11bde458d6af158bed23d5f52c092c2269edd0a1499280088284feab09f04ee7a6981f5007d5e0689618675e98fb37a96a7b9f2318fd6ceed9e7771e61b9f69e82125cdcac6bb69ba23b7df24d073c97083ff131472412a8b3a16af2d551f2dc1b5c99c4ecbb7c0b3e89a41cbc28504ab04539bd44273a79ca04c665459237a5c5bc163335d4c69df14dee8e0822997ca02cdf5d363b120aca8d88424a48236d04630f80952f4b66a464f9b7852bacaae739500c227a22ac3dff461a4d8a8d1220ca8e2ddd417dee623e7e3f95594a8fa0e0f3822c50d538da74a9ea79c56c43e8e4bb0b8669721611da24a27a66151edd5908ef4887cb0a05757cb92dbd2099b46ff5f4c2b32c44a0e9cb65bc84a510b8a311aba85c5c5a54b008072298c50b7416df4fbba9213b87eeb6a9e7ae48095d6d7fb0c57bdd875d138b5449568e047c3e1160dd9a5feedf096061fdcc367e267a
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.21
+#
+
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+function is_citrix_adc()
+{
+  if ("NetScaler" >< host_info_key_val['showversion_unrecognized'])
+    return TRUE;
+
+  return FALSE;
+}
+
+
+#
+# citrix_adc_pre_check_fail
+#
+function citrix_adc_pre_check_fail()
+{
+  if(host_info_key_val['host_not_citrix_adc'])
+    return TRUE;
+
+  # Not Citrix ADC if one of the following devices
+  if (is_huawei() ||
+      is_panos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+
+#
+# callback for systems with a NetScaler component in show ns version
+#
+function handle_citrix_adc(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var command, show_ver, show_hardware, matches, check_fipsStatus, fips_str;
+  local_var version, build, model, os_name = "Citrix Netscaler ADC";
+
+  ##
+  #  'show ns version' is the same as 'show version', but its more specific to this device,
+  ##
+  command = "show ns version";
+  show_ver = run_command(cmd:command,
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+  dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"'show ns version' returned: "+show_ver);
+  matches = pregmatch(pattern:".*NetScaler NS([\d]+[\.][\d]+):[ \t]+Build ([0-9][^ \t,]+), Date", string:show_ver);
+  if(isnull(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find version in output of "'+chomp(command)+'".');
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return FALSE;
+  }
+  else
+  {
+    version = matches[1];
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Version determined to be '+version+'.\n');
+    build   = matches[2];
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Build determined to be '+build+'.\n');
+    os_name += " " + version + " Build " + build;  
+  }
+  
+  ##
+  # show hardware supplies platform information with the device type in the output
+  ##
+  show_hardware = run_command(
+    cmd               : 'show hardware',
+    session           : session,
+    use_shell_handler : use_shell_handler,
+    channel           : channel
+  );
+
+  matches = pregmatch(pattern:"Platform:\s(.*)", string:show_hardware);
+  if (isnull(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unable to find model in output of "show hardware"');
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return FALSE;
+  }
+  model = matches[1];
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Model determined to be '+model+'.\n');
+
+  ## Check FIPS status
+  check_fipsStatus = run_command(
+    cmd               : 'show fipsStatus',
+    session           : session,
+    use_shell_handler : use_shell_handler,
+    channel           : channel
+  );
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'\n show fipsStatus returned : ' + check_fipsStatus + '\n');
+
+  if (!empty_or_null(check_fipsStatus))
+  {
+    fips_str = pregmatch(pattern:"([A-Za-z\s]+FIPS mode)", string:check_fipsStatus);
+
+    if (!isnull(fips_str && !isnull(fips_str[1])))
+      replace_kb_item(name:"Host/NetScaler/show_fipsStatus", value:fips_str[1]);
+  }
+
+  #We have a local detection for Citrix ADC (citric_netscaler_detect.nasl)
+  #So local checks enabled
+  report += strcat('\nLocal checks have been enabled for ', os_name, '.\n');
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_citrix_adc.static', value: 122);
+
+  replace_kb_item(name:"Host/OS/showver", value:os_name);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/NetScaler/device_type", value:'General');
+  replace_kb_item(name:"Host/NetScaler/show_hardware", value:show_hardware);
+  replace_kb_item(name:"Host/NetScaler/show_version", value:show_ver);
+
+  return TRUE;
+}
+
+
+#
+# callback for systems without a NetScaler component in show ns version
+#
+function handle_not_citrix_adc(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['host_not_citrix_adc'] = TRUE;
+  }
+}

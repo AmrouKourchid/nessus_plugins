@@ -1,0 +1,129 @@
+#TRUSTED 8d4adacacbfd0464314ffc3391fabfcde71bdf084ac6d70f1edf91574148d0455a046ac8a190e85762e042b68ea7aef696a6f7378db5c7a79f2f85cf8fd0e5d35dd48eca965966392835a6bf0e060922565445a8054cc4371c0ad175159efc0da3926c15739387d4eaa264b4c1216ee394791a3fe7aff53e5856edfca2ac13733b3a13d92c1b27c2a046d3fb1199fd4f2cd5c978243e0e144537cf70ebe0ae910e69921ba747dbf559edbfbd789d20b3137fb95fa84401375a01ba07618b2e11069742bf4fa942a02d8a82d4af5008eb68ff32cd4bcefc09a6d61729d11806e874817a4270be00919adfdbb2fcd0d1e71fb03b19befbfb4a1a4d5fde9efe911d66d17cf8d5302dee90ce26b670e1bf0db00ffeac742af9b23026344471ef03d1be746844a3d112e20b7ed07f350bd1508a0fb0d7fcc5541e28be5a6067706740bf5c2aaeb40191870318bd94995f24fb7facd30d1ce2a7f16fc632c837ffe63e0c27ab6c6cb103ef1d21d70b70c435454214c8aadb6dc3c5dabb800f899452ff65f3642a269fe577b5548c3134192b19cd10af4c4ff32d1ad2c910a69e587351721c342cefe6f185f91d1c038c1da5929d123156aefc55b5efbf9bec7adaae024ea4a0247eef559e7a5705f5212dfe38726c3636981baffa0720b0b6ea2c5f0b4508bb8c36c96f160d2ea1fe161d1abcfc85e379c82c1b85143df74fcd60868e
+#TRUST-RSA-SHA256 29a132831770442ce76a6a6cefeb3c870023cb2ec8084348f708b556e082683aa36366dfbc9ef71d92ed41140fcf2a0659d5f0a7ca2b319836334063a89ddc6fe793169d04cd4a167f16e5ba7bdeb90464595db497bf0845ddf5c45d1752db53d0bbfe0bf9ba432ced43a8cc0629736afbcfa8df412a039f51fec87b73eb6cdeb60269839f07ea17e6f2a392b151bacc772cecfc43e1e7acd2b8826bdab048ca636c31169721109cda1875b1b8ef1d757ab8b2c93b2579681669f3e780cd30e27392dc5cc7bb235015b059e81b7b2efd37433a9e456eb35c56638a828c48bef56054e1f1b1aee3f06c0ef34711421543f80bcd991f5787078c23d42e21fb6715035d28a8a2e24b8501aabec773626fb9f0586ac51036fcc482ee4e4a3400f79a4aa9401deb27a2f65b44c75ab5c8bde03124c4ef6cb05380f472d2ffdbfd7a788432a28eca677ee4af0f71ab39c2c423535a7bbc564c98270ff9e480f96563eb7eedcd7a80e1d4770643c9f089e5b67bb514fb1befd674c2c17954f4fc7e5b56c61ccd6f7a6ecc46780ba1c4a05349b458af740d9a6ca315c11ad9d51fc853422e40ca829bfc89184c37aa8d78482800f3dfb5dfc7bf45866191bce089824bf2cac7f298610f222a1995e90feab5c16e6deaed595f923e3af00bf9a8755312376adf73aaa656726b0e0e19e5dab80ffbdb689fd6772be03743dfed35c2f66722
+# (C) Tenable Network Security, Inc.
+
+##
+# check if target is PAN-OS
+##
+function is_panos()
+{
+  if (get_kb_item(sshlib::SSH_LIB_KB_PREFIX + 'login_disclaimer/PAN-OS'))
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# check if this is a panos device based on information collected.
+##
+function panos_pre_check_fail()
+{
+  # have we already checked that the host is not panos?
+  if(host_info_key_val['host_not_panos'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['show_system_info_unrecognized']) &&
+     host_info_key_val['show_system_info_unrecognized'] !~ panos_check['test_cmd_regex'])
+    return TRUE;
+
+  # verify target is not another product based on SSH banner etc
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_viptela_ssh() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "model: ((PA|pa|VM|vm)-|Panorama)" in output of show system info
+##
+function handle_panos(session, use_shell_handler, channel, cmd_res)
+{
+  var os = "PAN-OS";
+  report += '\nLocal checks have been enabled for this host.';
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+
+  # Try to get full version needed for PAN-OS OS Security Patch Assessment checks
+  var pat = "sw-version: ([0-9.]+(?:-[Hh][0-9]+)?)";
+  var match = pregmatch(string:cmd_res, pattern:pat, icase:TRUE);
+
+  if (!isnull(match)) os += ' ' + match[1];
+
+  report += '\nThe remote Palo Alto system is : ' + os + '\n';
+
+  replace_kb_item(name:'Host/Palo_Alto/show_system_info', value:cmd_res);
+  replace_kb_item(name:'Host/OS/showver', value:os);
+  replace_kb_item(name:'Host/OS/showver/Confidence', value:100);
+  replace_kb_item(name:'Host/OS/showver/Type', value:'firewall');
+
+  if (isnull(match))
+  {
+    failure_kb_msg =
+      'Failed to parse the full product version (sw-version) from the result of command "show system info".\n' +
+      'The product version may be missing from the output or in an unexpected format not yet supported by this plugin.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report +=
+      '\nOS Security Patch Assessment is not available for this host because' +
+      '\nof the following issue :' +
+      '\n' + failure_kb_msg + '\n';
+    return NULL;
+  }
+
+  # Enumerate IP addresses
+  var show_int = run_command(
+                    cmd:"show interface all",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (!show_int)
+    show_int = 'unknown';
+  replace_kb_item(name:'Host/Palo_Alto/show_interface_all', value:show_int);
+
+  var show_int_man = run_command(
+                    cmd:"show interface management",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (!show_int_man)
+    show_int_man = 'unknown';
+  replace_kb_item(name:'Host/Palo_Alto/show_interface_management', value:show_int_man);
+
+  report += '\nOS Security Patch Assessment is available for this host.\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_panos.static', value: 111);
+  return NULL;
+}
+
+##
+# callback for systems without "model: ((PA|pa|VM|vm)-|Panorama)" in output of show system info
+##
+function handle_not_panos(session, use_shell_handler, channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    # store more details for other handlers to use.
+    host_info_key_val['show_system_info_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_panos'] = TRUE;
+  }
+}

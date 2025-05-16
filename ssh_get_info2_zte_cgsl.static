@@ -1,0 +1,141 @@
+#TRUSTED 8455e552a9b53728fa00ffbbfa395c5878d1a47e0e5c03c0c8fe59e2a1dd5253f9724e24abb08fc1ce24f84dacb841b1c5dfc8eca22994a2660e062288830526426881b320ad9de306a097f6a96ac170067e38b4b715b5cc419b2fcacf508a4aab1c1607c3fd028a1ef62a6ef30b8bfe757810ebb08b45fdd4baacd10517f86aa099243f1b03d7f47da6dc8bf9c4413aeba48cf0723e28acb578830201a5969e732ef620a98c4a3a3c99c6d6e9862eff18b92ac764b9ce663656c920aeffdb7891257be05bd4865cea816560debc65fdedab2264a53b5d8a22f28e9a6824a2b7de6d445ee7e20c08945765aa95dcd0ccf56f696706e264d44f54e286e641ed8fc3e548ef710299214ffc5c815813c9e8844b6b64a653e85b99811edb5a755cb3ff3830d09afba57aaefe1f4dd337c5423855078dcccd336b6dc248a9ba57d3b2dac0a29359925d5630f5d28ffb8d62ce2933a4c8a489e2c303870b533e3d4ad2b85d04e3be0c760f0b13b05e1763d38f7c79a928f2eb0352b044e903088803974ca2a29d3fd9918eaf18c89b17fbeeb0dd383e7f49679d3bad32b1a14a76aa15882f35a814c3b30c878126d44b13f9b9053debb56b387ce93a40e7dd3470c01a42004db5952a592895eb8ce4f973e331b58794621dae3158f2fd93e135af24f9453240b31e00e406da1c9412ea2ac631dd699057cbc4c6e124602a66e898808e
+#TRUST-RSA-SHA256 5b445c80adc747ba47dfa0a5d34381d723c24cc9f628308a6843b0c85a4b3a37cef00d9cf6444d597348db71db31168b9104e694760331b3c8ad70c7b9ef87b7bb5f855db84fc5ab13c6c572d11ccd3f7f2371e8c12104c26e52d16fcb2b2b3d183411cb0a9aa763042f8f374cd8320cb83fb4377f8d7cfcf64c04c6d7eca1200ee905b6fc4dd99ef8372618bd4598ef7c4c6209e0abf3f09a83cf2f98efdc8385da8eb688f89d9ba01dd9070f67d52618b66a0fc6bd5977ab4874fa04451b1d58f8beb043e869d53c12a5382e80e2663bfb2d22bfb00800206ecc540a120dc3fdbb733331fbe45a0fa9fc5b710eaf2b0c06310c692c45e18c9f560577894a084ebaf78f0df6a802080522051a1ff740d12643eca2c729f305fb99dfcf92bee7dc1fb5d92dcccba501e07272f985a752168074d1622d24a996176fa80a2822c78574783be0609b830688734e8362e8d1ade7d21962d7de3b18256ae43e4eb7c171810f75235b3a66269f17e6fa6420ca0a5992816d3675550cab7ec7011df4182118f332fa467c4924cc8b81ec67b2171d43beb8a16d19769dfa2308b5ed601d2d317ce8c246946cb239f92c9b02a632e04e056392df88ac26aed315618fd5782a6e439331f0863342ac5282c3432851bed54eeb11828e568b6ccdf1ef2fc0fc77c77d437971a4d713d27c4ace61f262cbd33c6325eb94131e71a9676c13cb19
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+
+function handle_zte_cgsl(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var rpm_buf, cpu, err_msg, cgsl_res, cgsl_pattern, cgsl_match;
+  local_var minor_ver, command;
+  local_var klinux_string, klinux_pattern, klinux_match, klinux_res, klinux_ver;
+  local_var interrupted_errors;
+  interrupted_errors = 0;
+
+  # 1.a get version from cmd_res (content of /etc/cgsl-release).
+  replace_kb_item(name:"Host/etc/cgsl-release", value: cmd_res);
+
+  cgsl_pattern = "NewStart Carrier Grade Server Linux( Core)? release (\d(\.\d+)*)(\s+\(.+?\))?";
+  cgsl_match = pregmatch(string:cmd_res, pattern:cgsl_pattern);
+  if (!isnull(cgsl_match))
+  {
+    cgsl_res = "CGSL ";
+    if (empty_or_null(cgsl_match[1]))
+    {
+      # Main release
+      cgsl_res += "MAIN " + cgsl_match[2];
+    }
+    else
+    {
+      # Core release
+      cgsl_res += "CORE " + cgsl_match[2];
+    }
+    if (!empty_or_null(cgsl_match[4]))
+    {
+      # brach release: e.g "(SP)" is the branch release name for 04P4B19.
+      # At the time of writing, 6.06.04P4B19 is one-to-one correspondence to CGSL MAIN 6.06 (SP)
+      cgsl_res += cgsl_match[4];
+    }
+    replace_kb_item(name:"Host/ZTE-CGSL/release", value:cgsl_res);
+
+    minor_ver = pregmatch(string:cgsl_match[2], pattern:"\.[0]*(\d+)$");
+    if (!isnull(minor_ver))
+    {
+      replace_kb_item(name:"Host/ZTE-CGSL/minor_release", value:minor_ver[1]);
+    }
+  }
+
+  report += '\nThe remote Carrier Grade Server Linux system is :\n' + cmd_res + '\n';
+
+
+  # 1.b Try to retrieve info from klinux-release
+  command = "cat /etc/klinux-release";
+  klinux_string = run_command(cmd:command,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  if(check_cmd_interrupted_local_checks(session:session, command:command))
+    interrupted_errors++;
+
+  if(klinux_string && "/etc/klinux-release" >!< klinux_string && "No such file or directory" >!< klinux_string)
+  {
+    replace_kb_item(name:"Host/etc/klinux-release", value:klinux_string);
+    klinux_pattern = "TAG_CGS_(MAIN|CORE)_V(\d)_(\d+)_([\w\d]+)";
+    klinux_match = pregmatch(string: klinux_string, pattern:klinux_pattern);
+    if (!isnull(klinux_match))
+    {
+      klinux_res = "CGSL " + klinux_match[1] + " " + klinux_match[2] + "."+klinux_match[3] + "." + klinux_match[4];
+      replace_kb_item(name:"Host/ZTE-CGSL/klinux_version", value:klinux_res);
+      # sometimes klinux contains more detailed information than system-release
+      klinux_ver = "CGSL " + klinux_match[1] + " " + klinux_match[2] + "."+klinux_match[3];
+      if (isnull(minor_ver) && cgsl_res >< klinux_ver)
+      {
+        replace_kb_item(name:"Host/ZTE-CGSL/release", value:klinux_ver);
+        cgsl_res = klinux_ver;
+        minor_ver = pregmatch(string:klinux_match[3], pattern:"[0]*(\d+)$");
+        if (!isnull(minor_ver))
+        {
+          replace_kb_item(name:"Host/ZTE-CGSL/minor_release", value:minor_ver[1]);
+        }
+      }
+    }
+  }
+
+  # 1.c Checking if cgsl_res conforms to our supported version checks
+  local_var zte_cgsl_pattern = "^CGSL (MAIN|CORE) ([3-6])\.[0-9]+(\s+\(.+?\))?$";
+  if (isnull(cgsl_res))
+  {
+    failure_kb_msg = "ZTE CGSL version does not match known patterns.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\nThe output of "cat /etc/system-release" is :\n' + cmd_res + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+  else if (!preg(pattern:zte_cgsl_pattern, string:cgsl_res))
+  {
+    report +=
+      '\nOS Security Patch Assessment is not supported for this ZTE CGSL release.\n';
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return TRUE;
+  }
+
+
+  # 2. gather RPM info
+  rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                            internal_label:"ZTE-CGSL");
+
+
+  # 3. run uname
+  cpu = host_info_key_val['cpu'];
+
+  if(rpm_buf && cpu && !interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+
+    replace_kb_item(name:"Host/ZTE-CGSL/rpm-list", value:rpm_buf);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_zte_cgsl.static', value: 117);
+    return TRUE;
+  }
+
+  if(interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because the following' +
+      '\ncommands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing OS Security Patch Assessment:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  return TRUE;
+}
+

@@ -1,0 +1,3506 @@
+#TRUSTED 14096df73f578b334d724c1f561a2683251c46411a0ce8456a92b8fea9f20de9ca48da57b678d2abd443d0389048e29055c95a7416e2ddde8951a601e5cf0366bcfc81155a1cee2131a56a8f651773cd8431a16d482c6defb21ad334813aa452ed63ed7bc8059b6a94c72bc3a5befd7aa48c40df61a86c64543bef7ac64530dd43ac7166556c314350d46da93a4618bc6751b6623ffbd36b792c95d679b801431a86edf661227dddf1fa454b0406284623a974710f00879ea01e75da179210ce8de717f6fd447e771c4ca757da676e3a3ad63b60faee9e149bea2567193a37922037eeb1a35ec5bd322987c8151f3558f03ddf333b8ff1b6c7c6473dd2925117393172e97e5cce016e8b583975a623ea4cb4fbda13d19a81317ae9961328a05fd176496ffeb88b9dd7f4696942a8dd425d2beccd7ab20c484e402fd3c0735041e9cfb68ae2e758b02ea48ccfa8a31c6e7f7a94673c2aa889b1ff0a9ad14fc95d1299a09e4ad8b7aa33b4138c344c64da1731175ac940edee3b81dabcb0113dda3f938f6e837e9cb6475dc17b80d0f8d838c204601a72329aa1ecfd7d422fe279bd1eaf5f986ba62d3f0f5e666fe316dd7a5faeb9a0fc506dad51033640eed24676170da832bc442535b5394bf3d898d497d797d3e2b68b13c38ea89d81dafffe6f7daa131f21d1a392b3bf69ca7f212b7ada676e2cc7c4eb89e85c58a06f72d0
+#TRUST-RSA-SHA256 92e87bc6a0bcd1262c73cfa15fa651b99ff1a57d248970d3e4bd49ebcfaa976699832def6bcca609e1a3cb04239e3cf2eac9979c7cff2c4dd53fbbdba0841008ef319f753175c672462351f826aacafed0ef41b202800190c2860ad5843cb06daf27fc143e129e904c2dfdf29b56114c7cd305833d50de9869e62d57793aefa330f1a69d1a1f496e8c53738dfaa8f9ab6e6ce357785d63ee463376fe4767734b2cf591756e04433e3792b13a59307cb57401c414949d635b292ef483db151600fb5d5a1dba1e1d73d95b9475c6b344f8ef468607feb9428881be7dbcb752dfa36cd6dc1abf4cf57a58cb013c8db2d0b62503c0d32d5f4fea61dbb16a571000234b634f9c79b536b7504b59fdcf25a6eb7f2175fc66fff773849a182b1ef12b11316a51656a5f705c1efdae72eba97d5971bf9d478abc11017616930656cfa383ff40e48f1e3531e6a13049a7bb6415ef57ac528cedbba9ab87086007b101c4d5ee0cc05619a2b5094181cd894c78f5c33574df1b53ef2c405f994f18ea97d879143c81194323c1433363bcc800a8ea871ebd5504b4f0662b0e2fbf241441946f8ea13f5f1a7e0ba49e82728084c9637c0ab0e0531b275913faa62de76ae94b864fe9e0fecde3a87cf7880abc652ff974b0f43264b7ab5691fa9f14c0f71dd254f7eb863f3f1e35807bdd60ed3daf0e9cf333cea105619843681e30d687d743a4
+# -*- Fundamental -*-
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.10
+
+###
+# Functions to support Kerberos authentication.
+###
+
+global_var KERBEROS5_OID = "1.2.840.113554.1.2.2";
+
+##
+# Maps encryption types to the checksum types that
+# validate them.
+#
+# @param [enc_type:int] The Kerberos encryption type.
+# @return [int] Returns a corresponding checksum type.
+##
+function get_checksum_type (enc_type)
+{
+  if (enc_type == 23)
+    return -138;
+  else if (enc_type == 3)
+    return 8;
+  else if (enc_type == 18)
+    return 16;
+  else if (enc_type == 17)
+    return 15;
+  else if (enc_type == 19)
+    return 19;
+  else if (enc_type == 20)
+    return 20;
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+  return 0;
+}
+
+
+##
+# Check if encryption type is supported
+#
+# @param [type:int]       Kerberos encryption type code.
+# @param [dcerpc:boolean] TRUE if used for DCERPC (optional)
+# @return [boolean] Returns TRUE if the encryption type is supported, FALSE otherwise.
+##
+function supported_encryption_type(type, dcerpc)
+{
+  if(isnull(dcerpc))
+    dcerpc = FALSE;
+
+  if(!dcerpc)
+  {
+    if((type == 23) || # arcfour
+       (type == 3)  || # des-cbc-md5
+       (type == 18) || # aes256-sha1-96
+       (type == 17) || # aes128-sha1-96
+       (type == 19) || # aes128-sha256-128
+       (type == 20))   # aes256-sha384-192
+      return TRUE;
+  }
+  else
+  {
+    if((type == 18) || # aes256-sha1-96
+       (type == 17))   # aes128-sha1-96
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+
+##
+# Computes a checksum based on encryption type.
+#
+# @param [key:bytes]    The checksum key.
+# @param [type:int]     A key usage code; used as a salt for key derivation.
+# @param [data:bytes]   Data to compute the checksum over.
+# @param [enc_type:int] The Kerberos encryption type code.
+#
+# @return [bytes] Returns the computed checksum.
+##
+function kerberos_checksum (key, type, data, enc_type)
+{
+  local_var enckey, keysize;
+
+  if (enc_type == 23)
+    return rc4_hmac_checksum (key:key, type:raw_dword(d:type), data:data, real_key:TRUE);
+  else if (enc_type == 3)
+    return des_cbc_md5_checksum (data:data, key:key);
+  else if(enc_type == 17 || enc_type == 18)
+    return krb_aes_checksum(data:data, key:key, keyusage: raw_dword(d:type, be:TRUE));
+  else if(enc_type == 19 || enc_type == 20)
+    return krb_aes_checksum_sha2(data:data, key:key, keyusage: raw_dword(d:type, be:TRUE), enc_type:enc_type);
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+  return NULL;
+}
+
+
+##
+# Decrypts a data blob according to encryption type.
+#
+# @param [key:bytes]    The checksum key.
+# @param [type:int]     A key usage code; used as a salt for key derivation.
+# @param [data:bytes]   Data to compute the checksum over.
+# @param [enc_type:int] The Kerberos encryption type code.
+#
+# @return [bytes] Returns the decrypted packet data.
+##
+function kerberos_decrypt (key, type, data, enc_type)
+{
+  local_var enckey, keysize;
+
+  if (enc_type == 23)
+    return rc4_hmac_decrypt (key:key, type:raw_dword(d:type), data:data, real_key: TRUE);
+  else if (enc_type == 3)
+    return des_cbc_md5_decrypt (data:data, key:key);
+  else if(enc_type == 17 || enc_type == 18)
+    return krb_aes_decrypt(data:data, key:key, keyusage: raw_dword(d:type, be: TRUE));
+  else if(enc_type == 19 || enc_type == 20)
+    return krb_aes_decrypt_sha2(data:data, key:key, keyusage: raw_dword(d:type, be: TRUE), enc_type:enc_type);
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+  return NULL;
+}
+
+
+##
+# Encrypts a data blob according to encryption type.
+#
+# @param [key:bytes]    The checksum key.
+# @param [type:int]     A key usage code; used as a salt for key derivation.
+# @param [data:bytes]   Data to compute the checksum over.
+# @param [enc_type:int] The Kerberos encryption type code.
+#
+# @return [bytes] Returns the encrypted packet data.
+##
+function kerberos_encrypt (key, type, data, enc_type)
+{
+  local_var enckey, keysize;
+
+  if (enc_type == 23)
+    return rc4_hmac_encrypt (key:key, type:raw_dword(d:type), data:data, real_key:TRUE);
+  else if (enc_type == 3)
+   return des_cbc_md5_encrypt (data:data, key:key);
+  else if(enc_type == 17 || enc_type == 18)
+   return krb_aes_encrypt(data:data, key:key, keyusage: raw_dword(d:type, be: TRUE));
+  else if(enc_type == 19 || enc_type == 20)
+   return krb_aes_encrypt_sha2(data:data, key:key, keyusage: raw_dword(d:type, be: TRUE), enc_type:enc_type);
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+  return NULL;
+}
+
+
+##
+# Encrypts and DER encodes a Kerberos encrypted data block.
+#
+# @param [key:bytes]    The checksum key.
+# @param [type:int]     A key usage code; used as a salt for key derivation.
+# @param [data:bytes]   Data to compute the checksum over.
+# @param [enc_type:int] The Kerberos encryption type code.
+#
+# @return [bytes] Returns DER encoded encrypted data.
+##
+function der_encode_crypt (data, key, type, enc_type)
+{
+ local_var crypted, encrypted_data;
+
+ encrypted_data = kerberos_encrypt (key:key, type:type, data:data, enc_type:enc_type);
+
+ crypted = NULL;
+ crypted[0] = der_encode_int (i:enc_type);
+ crypted[1] = NULL;
+ crypted[2] = der_encode_octet_string (string:encrypted_data);
+
+ return der_encode_sequence (seq:crypted);
+}
+
+
+##
+# DER encode a Kerberos name.
+#
+# @param [type:int] Name type.
+# @param [name1:string] A name to encode.
+# @param [name2:string] A second name to encode.
+#
+# @return [bytes] Returns a DER encoded Kerberos name.
+#
+# @remark
+# ```
+#   PrincipalName ::= SEQUENCE {
+#     name-type[0]     INTEGER,
+#     name-string[1]   SEQUENCE OF GeneralString
+#   }
+# ```
+##
+function der_encode_name (type, name1, name2)
+{
+ local_var list, names;
+
+ if (isnull (name1) && isnull (name2))
+   return NULL;
+
+ list = NULL;
+
+ names = der_encode_string (string:name1);
+ names += der_encode_string (string:name2);
+
+ list[0] = der_encode_int (i:type);
+ list[1] = der_encode_list (list:names);
+
+ return der_encode_sequence (seq:list);
+}
+
+
+##
+# DER encode PA-ENC time structure
+#
+# @param [time:string] A Kerberos time string
+# @return [bytes] Returns DER encoded PA-ENC time.
+#
+# @remark
+# ```
+#    PA-ENC-TS-ENC ::= SEQUENCE {
+#      patimestamp [0] KerberosTime, -- client's time
+#      pausec      [1] INTEGER OPTIONAL
+#    }
+# ```
+##
+function der_encode_paenc(time)
+{
+ local_var paenc;
+
+ paenc = NULL;
+ paenc[0] = der_encode_time (time:time);
+ paenc[1] = NULL;
+
+ return der_encode_sequence (seq:paenc);
+}
+
+
+##
+# DER encode Kerberos preauthentication data (PA-DATA)
+#
+# @param [type:int]     Type code
+# @param [value:bytes ] The preauthentication data to encode
+#
+# @return [bytes] Returns a DER encoded PA-DATA structure
+# @remark
+# ```
+#   PA-DATA ::= SEQUENCE {
+#     padata-type  [1] INTEGER,
+#     padata-value [2] OCTET STRING,
+#   }
+# ```
+##
+function der_encode_padata (type,value)
+{
+ local_var pa_data;
+
+ pa_data = NULL;
+
+ pa_data[0] = NULL;
+ pa_data[1] = der_encode_int32 (i:type);
+ pa_data[2] = der_encode_octet_string (string:value);
+
+ return der_encode_sequence (seq:pa_data);
+}
+
+
+##
+# DER encode a KDC-REQ structure.
+#
+# @param [pvno:int]       pvno
+# @param [msg_type:int]   Message type code.
+# @param [list:list]      PA data (optional)
+# @param [req_body:bytes] The KDC request.
+#
+# @return [bytes] Returns a DER encoded KDC-REQ.
+# @remark
+# ```
+#   KDC-REQ ::= SEQUENCE {
+#     pvno     [1] INTEGER,
+#     msg-type [2] INTEGER,
+#     padata   [3] SEQUENCE OF PA-DATA OPTIONAL,
+#     req-body [4] KDC-REQ-BODY
+#   }
+# ```
+##
+function der_encode_kdcreq (pvno, msg_type, list, req_body)
+{
+ local_var l;
+
+ l = NULL;
+
+ l[0] = NULL;
+ l[1] = der_encode_int (i:pvno);
+ l[2] = der_encode_int (i:msg_type);
+ l[3] = der_encode_list (list:list);
+ l[4] = req_body;
+
+ return der_encode_sequence (seq:l);
+}
+
+
+##
+# DER encode a request
+#
+# @param [req:bytes] The request data
+#
+# @return [bytes] Returns a DER encoded Kerberos request.
+##
+function der_encode_request (req)
+{
+ local_var request;
+
+ request = NULL;
+ request[0] = der_encode (tag:0x01, data:req);
+
+ return der_encode_sequence(seq:request);
+}
+
+
+##
+# DER encode a KDC request body.
+#
+# @param [principal:string]  The target principal (user)
+# @param [realm:string]      The Kerbreros realm
+# @param [service:string]    The target service - ex. remote file service
+# @param [hosts:list]        The target hosts
+#
+# @return [bytes] Returns a DER encoded KDC request body.
+# @remark
+# ```
+#   KDC-REQ-BODY ::= SEQUENCE {                             #
+#     kdc-options [0] KDCOptions,
+#     cname       [1] PrincipalName OPTIONAL,
+#     realm       [2] Realm, -- Server's realm
+#     sname       [3] PrincipalName OPTIONAL,
+#     from        [4] KerberosTime OPTIONAL,
+#     till        [5] KerberosTime,
+#     rtime       [6] KerberosTime OPTIONAL,
+#     nonce       [7] INTEGER,
+#     etype       [8] SEQUENCE OF INTEGER, -- EncType
+#     addresses   [9] HostAddresses OPTIONAL,
+#     enc-authorization-data [10]  EncryptedData OPTIONAL,
+#     additional-tickets     [11]  SEQUENCE OF Ticket OPT
+#   }
+# ```
+##
+function der_encode_kdc_req_body (principal,realm,service,hosts)
+{
+ local_var list, options;
+
+ list = options = NULL;
+
+ options = der_encode (tag:0x03, data:raw_string (0x00,0x00,0x00,0x00,0x00));
+
+ list[0] = options;
+ if (!isnull(principal))
+   list[1] = der_encode_name (type:1, name1:principal, name2:NULL);
+ else
+   list[1] = NULL;
+ list[2] = der_encode_string (string:realm);
+ list[3] = service;
+ list[4] = NULL;
+ list[5] = der_encode_time (time:"20370913024805Z");
+ list[6] = der_encode_time (time:"20370913024805Z");
+ list[7] = der_encode_int (i:rand());
+ list[8] = der_encode_list(list:der_encode_int(i:20) +   # 20 = aes256-cts-hmac-sha384-192
+                                der_encode_int(i:19) +   # 19 = aes128-cts-hmac-sha256-128
+                                der_encode_int(i:18) +   # 18 = aes256-cts-hmac-sha1-96
+                                der_encode_int(i:17) +   # 17 = aes128-cts-hmac-sha1--96
+                                der_encode_int(i:23));   # 23 = rc4-hmac-md5
+ if (!isnull(hosts))
+   list[9] = der_encode_list (list:hosts);
+ else
+   list[9] = NULL;
+
+ return der_encode_sequence (seq:list);
+}
+
+
+##
+# Create a Kerberos Time formatted string of the current time.
+#
+# @return [string] Returns a Kerberos time string  YYYYMMDDHHMMSSZ (Z = UTC time)
+##
+function kerberostime()
+{
+ local_var tmp,time,conv,field;
+
+ time = localtime(unixtime(),utc:TRUE);
+ tmp = string (time["year"]);
+ foreach field (make_list("mon", "mday", "hour", "min", "sec"))
+ {
+  conv = string (time[field]);
+  if (strlen (conv) == 1)
+    conv = "0" + conv;
+  tmp += conv;
+ }
+ tmp += "Z";
+
+ return tmp;
+}
+
+##
+# DER encode a Kerberos AS-REQ message.
+#
+# @param [principal:string] The target principal (user)
+# @param [realm:string]     The Kerberos realm name
+# @param [padata:bytes]     DER encoded preauthentication data
+#
+# @return [bytes] Returns a DER encoded KDC-REQ message
+# @remark
+# ```
+#   AS-REQ ::= [APPLICATION 10] KDC-REQ
+#
+#   KDC-REQ ::= SEQUENCE {
+#     pvno     [1] INTEGER,
+#     msg-type [2] INTEGER,
+#     padata   [3] SEQUENCE OF PA-DATA OPTIONAL,
+#     req-body [4] KDC-REQ-BODY
+#   }
+#
+#   PA-DATA ::= SEQUENCE {
+#     padata-type  [1] INTEGER,
+#     padata-value [2] OCTET STRING,
+#   }
+#
+#   padata-type     ::= PA-ENC-TIMESTAMP
+#   padata-value    ::= EncryptedData -- PA-ENC-TS-ENC
+#
+#   PA-ENC-TS-ENC ::= SEQUENCE {
+#     patimestamp [0] KerberosTime, -- client's time
+#     pausec      [1] INTEGER OPTIONAL
+#   }
+# ```
+##
+function der_encode_asreq (principal,realm, padata)
+{
+ local_var req_body, encoded, host,  request, service;
+
+
+ service = der_encode_name (type:2, name1:"krbtgt", name2:realm);
+ req_body = der_encode_kdc_req_body (principal:principal, realm:realm, service:service);
+
+ encoded = der_encode_kdcreq (pvno:5, msg_type:0x0A, list:padata, req_body:req_body);
+
+ return der_encode (tag:0x6A, data:encoded);
+}
+
+
+##
+# DER encode a Kerberos error.
+#
+# @param [data:bytes] Error data.
+# @return [bytes]
+#   Returns a DER encoded error.
+# @remark
+# ```
+#     KRB-ERROR       ::= [APPLICATION 30] SEQUENCE {
+#       pvno            [0] INTEGER (5),
+#       msg-type        [1] INTEGER (30),
+#       ctime           [2] KerberosTime OPTIONAL,
+#       cusec           [3] Microseconds OPTIONAL,
+#       stime           [4] KerberosTime,
+#       susec           [5] Microseconds,
+#       error-code      [6] Int32,
+#       crealm          [7] Realm OPTIONAL,
+#       cname           [8] PrincipalName OPTIONAL,
+#       realm           [9] Realm -- service realm --,
+#       sname           [10] PrincipalName -- service name --,
+#       e-text          [11] KerberosString OPTIONAL,
+#       e-data          [12] OCTET STRING OPTIONAL
+#     }
+# ```
+##
+function der_decode_krberror(data)
+{
+  local_var buf, cname, crealm, der, err_code, err_text, err_data;
+  local_var kvno, msg_type, pvno, seq, sname, srealm, ret, tmp;
+
+  ret = NULL;
+  buf = der_decode (data:data);
+  if (isnull(buf) || (buf[0] != 0x7E))
+    return NULL;
+
+  # Data are in SEQUENCE
+  seq = der_parse_sequence (seq:buf[1], num:13, list:FALSE);
+  if (isnull(seq))
+    return NULL;
+
+  # PVNO == 5
+  pvno = der_parse_int (i:seq[0]);
+  if (isnull(pvno) || (pvno != 5))
+    return NULL;
+
+  # MSG-Type == KRB-ERROR
+  msg_type = der_parse_int (i:seq[1]);
+  if (isnull(msg_type) || (msg_type != 30))
+    return NULL;
+
+  # Error code
+  err_code = der_parse_int (i:seq[6]);
+  if (isnull(err_code))
+    return NULL;
+
+  # Client realm; OPTIONAL
+  if(seq[7])
+  {
+    crealm = der_parse_data(tag:0x1b, data:seq[7]);
+    if(isnull(crealm))
+      return NULL;
+  }
+
+  # Client principal name; OPTIONAL
+  if(seq[8])
+  {
+    tmp = krb_parse_principal_name(data:seq[8]);
+    if(isnull(tmp))
+      return NULL;
+    cname = tmp[1];
+  }
+
+  # Service realm
+  if(isnull(seq[9])) return NULL;
+  srealm = der_parse_data(tag:0x1b, data:seq[9]);
+  if(isnull(srealm))return NULL;
+
+  # Service principal name
+  if(isnull(seq[10])) return NULL;
+  tmp = krb_parse_principal_name(data:seq[10]);
+  if(isnull(tmp)) return NULL;
+  sname = tmp[1];
+
+  # e-text; OPTIONAL
+  if(seq[11])
+  {
+    err_text = der_parse_data(tag:0x1b, data:seq[11]);
+  }
+
+  # e-data; OPTIONAL
+  if(seq[12])
+  {
+    # Implementation defined error data
+    err_data = der_parse_octet_string(string: seq[12]);
+
+    # KDC_ERR_PREAUTH_REQUIRED
+    # RFC 4120 mandates a SEQUENCE OF PA-DATA for KDC_ERR_PREAUTH_REQUIRED
+    if(err_code == 25)
+      err_data = krb_parse_padata(data:err_data);
+
+   if(isnull(err_data)) return NULL;
+  }
+
+  ret[0]  = err_code;
+  ret[1]  = err_text;
+  ret[2]  = err_data;
+  ret[3]  = srealm;
+  ret[4]  = sname;;
+  ret[5]  = crealm;
+  ret[6]  = cname;
+
+  return ret;
+
+}
+
+
+##
+# Decodes a KDC-REP message.
+#
+# @param [type:int]         Message type code (AS-REP or TGS-REP)
+# @param [password:string]  Principal's password - used for key derivation
+# @param [data:string]      The message data to decode.
+# @param [real_key:boolean] If True, derive key from the password, else use it raw
+#
+# @return [list] Returns a list of decoded data:
+# @remark
+# The returned list has the following structure:
+# ```
+#     ret[0] = der-encoded ticket
+#     ret[1] = session key
+#     ret[2] = der-encoded client realm
+#     ret[3] = der-encoded client name
+#     ret[4] = encryption type the session key is meant to be used with
+#     ret[5] = ticket expiration time
+#     ret[6] = der-encoded padata; can be NULL
+#
+#   ASN.1 grammar of a KDC-REP message:
+#
+#   AS-REP ::=    [APPLICATION 11] KDC-REP
+#   KDC-REP ::=   SEQUENCE {
+#     pvno            [0]   INTEGER,
+#     msg-type        [1]   INTEGER,
+#     padata          [2]   SEQUENCE OF PA-DATA OPTIONAL,
+#     crealm          [3]   Realm,
+#     cname           [4]   PrincipalName,
+#     ticket          [5]   Ticket,
+#     enc-part        [6]   EncryptedData
+#   }
+#
+#   EncryptedData ::=   SEQUENCE {
+#     etype           [0]   INTEGER, -- EncryptionType
+#     kvno            [1]   INTEGER OPTIONAL,
+#     cipher          [2]   OCTET STRING -- ciphertext
+#   }
+#
+#   EncASRepPart ::=    [APPLICATION 25] EncKDCRepPart
+#   EncKDCRepPart ::=   SEQUENCE {
+#     key             [0]   EncryptionKey,
+#     last-req        [1]   LastReq,
+#     nonce           [2]   INTEGER,
+#     key-expiration  [3]   KerberosTime OPTIONAL,
+#     flags           [4]   TicketFlags,
+#     authtime        [5]   KerberosTime,
+#     starttime       [6]   KerberosTime OPTIONAL,
+#     endtime         [7]   KerberosTime,
+#     renew-till      [8]   KerberosTime OPTIONAL,
+#     srealm          [9]   Realm,
+#     sname           [10]  PrincipalName,
+#     caddr           [11]  HostAddresses OPTIONAL
+#   }
+# ```
+##
+function der_decode_kdcrep (type,password, data, real_key)
+{
+ local_var buf,pvno,msg_type,pa_data,crealm,cname,ticket,enc_part,kvno,seq,enc_type,encrypted;
+ local_var decrypted, enc_key, enc_types, key, padata;
+ local_var endtime,resp, realm, principal, salt, s2kparams;
+
+ resp = NULL;
+
+ buf = der_decode (data:data);
+ if (isnull(buf) || ((buf[0] != 0x6B) && (buf[0] != 0x6D)))
+   return NULL;
+
+ # Data are in SEQUENCE
+ seq = der_parse_sequence (seq:buf[1], num:7, list:FALSE);
+ if (isnull(seq))
+   return NULL;
+
+ # PVNO == 5
+ pvno = der_parse_int (i:seq[0]);
+ if (isnull(pvno) || (pvno != 5))
+   return NULL;
+
+ # MSG-Type == AS-REP | TGS-REP
+ msg_type = der_parse_int (i:seq[1]);
+ if (isnull(msg_type) || (msg_type != type))
+   return NULL;
+
+ # (OPTIONAL) padata; alternative salt can be specified here by the KDC
+ padata = seq[2];
+ resp[6] = padata;
+
+ # crealm
+ crealm = seq[3];
+ if (!crealm) return NULL;
+ resp[2] = crealm;
+
+ # cname
+ cname = seq[4];
+ if (!cname) return NULL;
+ resp[3] = cname;
+
+ # TGT
+ ticket = seq[5];
+ if (!ticket) return NULL;
+ resp[0] = ticket;
+
+ # enc-part
+ enc_part = seq[6];
+ if (!enc_part) return NULL;
+
+ # ENC-Part is a SEQUENCE
+ seq = der_parse_sequence (seq:enc_part, num:3, list:FALSE);
+ if (isnull(seq))
+   return NULL;
+
+ # Encryption type
+ enc_type = der_parse_int (i:seq[0]);
+ if (isnull(enc_type) || (supported_encryption_type(type:enc_type) == FALSE))
+   return NULL;
+
+ # Check enc_types in padata; KDC can specify alternative salt and s2kparams in a PADATA-ETYPE-INFO2
+ salt = s2kparams = NULL;
+ if(padata)
+ {
+    enc_types =  krb_get_enctypes_from_padata(data:padata);
+    # It should be only one enctype and match the enc-type used to encrypt the 'ENC-Part'
+    if(max_index(enc_types) == 1 && enc_types[0][0] == enc_type)
+    {
+      salt      = enc_types[0][1];
+      s2kparams = enc_types[0][2];
+    }
+ }
+
+ # (OPTIONAL) Kvno
+ # We should not check the kvno; seems kvno changes when the principal changes password
+ #
+ #kvno = der_parse_int (i:seq[1]);
+ #if (kvno && ((kvno != 2) && (kvno != 1) && (kvno != 3)))
+ #  return NULL;
+
+ # encrypted data
+ encrypted = der_parse_octet_string (string:seq[2]);
+ if (!encrypted)
+   return NULL;
+
+ # We have enc-part in _encrypted[1] here.
+
+ realm = der_parse_data(tag:0x1b, data:crealm);
+ seq = der_parse_sequence (seq:cname, num:5, list:FALSE);
+ if (isnull(seq))
+   return NULL;
+ seq = der_parse_sequence (seq:seq[1], num:5, list:TRUE);
+ if (isnull(seq))
+   return NULL;
+ principal = der_parse_data(tag:0x1b, data:seq[1]);
+
+ # Compute key from password
+ if(isnull(salt)) salt = realm + principal; # no salt = default salt
+ if(! real_key)
+  key = krb_string_to_key(enc_type: enc_type, password:password, salt: salt, s2kparams: s2kparams);
+ else
+  key = password;
+
+ # enc-part is either EncASRepPart or EncTGSRepPart
+ # RFC 4120, section 5.4.2 says about the enc-part:
+ #     Compatibility note: Some implementations unconditionally send an
+ #     encrypted EncTGSRepPart (application tag number 26) in this field
+ #     regardless of whether the reply is a AS-REP or a TGS-REP.  In the
+ #     interest of compatibility, implementors MAY relax the check on the
+ #     tag number of the decrypted ENC-PART.
+ #
+ # if the reply is AS-REP,  the key usage number used to encrypt the enc-part is 3 (section 7.5.1).
+ # if the reply is TGS-REP, the key usage number used to encrypt the enc-part is 8 (section 7.5.1).
+ # We don't know which reply is the kdc reply until we successfully decrypt the reply, which requires the correct key usage number.
+ # This can create a catch-22 situation, here we try both key usage numbers 8 and 3
+ decrypted = kerberos_decrypt(key:key, type:8, data:encrypted, enc_type:enc_type);
+ if (isnull(decrypted))
+ {
+    decrypted = kerberos_decrypt(key:key, type:3, data:encrypted, enc_type:enc_type);
+    if(isnull(decrypted))return NULL;
+ }
+ enc_part = der_decode (data:decrypted);
+ if (isnull(enc_part) || ((enc_part[0] != 0x79) && (enc_part[0] != 0x7A)))
+   return NULL;
+
+ enc_part = der_parse_sequence (seq:enc_part[1], num:12, list:FALSE);
+ if (isnull (enc_part))
+   return NULL;
+
+ enc_key = der_parse_sequence (seq:enc_part[0], num:2, list:FALSE);
+ if (isnull (enc_key))
+   return NULL;
+
+ # We parse encryption key
+
+ # Encryption type
+ enc_type = der_parse_int (i:enc_key[0]);
+ if (isnull (enc_type) || (supported_encryption_type(type:enc_type) == FALSE))
+   return NULL;
+
+ resp[4] = enc_type;
+
+ # Encryption key
+ enc_key = der_parse_octet_string (string:enc_key[1]);
+ if (isnull (enc_key))
+   return NULL;
+
+ # We store the session key
+ resp[1] = enc_key;
+
+ # Ticket endtime
+ if(isnull(enc_part[7])) return NULL;
+ endtime = der_parse_data(tag:0x18, data: enc_part[7]);
+ if(isnull(endtime)) return NULL;
+ resp[5] = endtime;
+
+ return resp;
+}
+
+
+##
+# Decode a DER encoded AS-REP message
+#
+# @param [password:string] The Kerberos principal's password.
+# @param [data:bytes]      The AS-REP message to decode
+#
+# @return [bytes] Returns a decoded AS-REP message
+##
+function der_decode_asrep (password, data)
+{
+ return der_decode_kdcrep (type:0x0B, password:password, data:data, real_key:FALSE);
+}
+
+
+##
+# Decode a DER encoded TGS-REP message.
+#
+# @param [password:string] The Kerberos principal's password.
+# @param [data:bytes]      The TGS-REP message to decode
+#
+# @return [bytes] Returns a decoded TGS-REP message
+##
+function der_decode_tgsrep (session, data)
+{
+ return der_decode_kdcrep (type:0x0D, password:session[1], data:data, real_key:TRUE);
+}
+
+
+##
+# DER encodes an AP-REP message.
+#
+# @param [session:list]  Kerberos session state
+# @param [type:int]      Kerberos message type code
+# @param [_seqnum:int]   DCERPC message sequence number
+#
+# @remark This is a Kerberos client library; this AP-REP message is the "third leg" of DCERPC Kerberos auth.
+##
+function der_encode_aprep (session, type, _seqnum)
+{
+  var aprep = [];
+  var aprep_enc_part = [];
+
+  aprep[0] = der_encode_int(i:5);
+  aprep[1] = der_encode_int(i:15);
+  aprep_enc_part[0] = der_encode_time(time:kerberostime());
+
+  aprep_enc_part[1] = der_encode(tag:BER_INTEGER_TAG, data:'\x00\x00\x00');
+  aprep_enc_part[2] = NULL;
+  aprep_enc_part[3] = der_encode_int32(i:_seqnum);
+  var aprep_enc_part_seq = der_encode_sequence(seq:aprep_enc_part);
+
+  aprep[2] = der_encode_crypt(data: der_encode(tag:0x7b, data:aprep_enc_part_seq), key:session[1], type:type, enc_type:session[4]);
+
+  return der_encode(tag:0x6F, data:der_encode_sequence(seq:aprep));
+}
+
+##
+# DER encode an AP-REQ message
+#
+# @param [session:list]    Kerberos session state
+# @param [req_body:bytes]  The request body
+# @param [type:int]        A usage type code; used as salt for key derivation
+# @param [_checksum:bytes] Authenticator checksum
+# @param [_seqnum:int]     The message sequence number
+# @param [subkey:bytes]    An encryption key to be used by the target service
+# @param [options:bytes]   Message options.
+#
+# @return [bytes] Returns a DER encoded AP-REQ message
+##
+function der_encode_apreq (session, req_body, type, _checksum, _seqnum, subkey, options)
+{
+ var list, encoded, authenticator, authenticators, checksum, auth, realm, seq, cksum;
+
+ authenticator = authenticators = checksum = NULL;
+
+ realm = der_parse_data(tag:0x1b, data:session[2]);
+ seq = der_parse_sequence (seq:session[3], num:5, list:FALSE);
+ if (isnull(seq))
+   return NULL;
+
+ seq = der_parse_sequence (seq:seq[1], num:5, list:TRUE);
+ if (isnull(seq))
+   return NULL;
+
+ if(isnull(options))
+  options = der_encode (tag:0x03, data:raw_string (0x00,0x20,0x00,0x00,0x00));
+ else
+  options = der_encode (tag: 0x03, data: options);
+
+ authenticator[0] = der_encode_int(i:5);
+ authenticator[1] = session[2];
+ authenticator[2] = session[3];
+
+ if (!isnull(req_body))
+ {
+  cksum = kerberos_checksum(key:session[1],type:6,data:req_body,enc_type:session[4]);
+
+  checksum[0] = der_encode_int (i:get_checksum_type(enc_type:session[4]));
+  checksum[1] = der_encode (tag:0x4, data:cksum);
+
+  authenticator[3] = der_encode_sequence (seq:checksum);
+ }
+ else if (!isnull(_checksum))
+  authenticator[3] = _checksum;
+ else
+  authenticator[3] = NULL;
+
+ authenticator[4] = der_encode_int(i:0);
+ authenticator[5] = der_encode_time (time:kerberostime());
+
+if (!isnull(subkey))
+{
+  var subkey_algo = der_encode_int(i:session[4]);
+  var subkey_enc = der_encode_octet_string(string: subkey);
+  authenticator[6] = der_encode_sequence(seq: [subkey_algo, subkey_enc]);
+}
+else if (!isnull(_seqnum))
+{
+  authenticator[6] = NULL;
+}
+
+ if (!isnull(_seqnum))
+  authenticator[7] = der_encode_int32 (i:_seqnum);
+
+ auth = der_encode_sequence (seq:authenticator);
+
+ authenticators = der_encode_crypt (key:session[1], type:type, data:der_encode (tag:0x62, data:auth), enc_type:session[4]);
+
+ list = NULL;
+
+ list[0] = der_encode_int(i:5); # Pvno = 5
+ list[1] = der_encode_int(i:0x0E); # MSG-Type = AP-REQ
+ list[2] = options;
+ list[3] = session[0];
+ list[4] = authenticators;
+
+ encoded = der_encode_sequence (seq:list);
+
+ return der_encode (tag:0x6E, data:encoded);
+}
+
+
+##
+# DER encode a TGS-REQ message
+#
+# @param [session:list] Kerberos session state
+# @param [name:string]  Ticket granting principal ("cifs" for Microsoft, "host" otherwise)
+#
+# @return [bytes] Returns a DER encoded TGS-REQ message.
+##
+function der_encode_tgsreq (session,name)
+{
+ local_var realm, req_body, encoded, padata, service, apreq;
+
+ realm = der_decode (data:session[2]);
+ #service = der_encode_name (type:3, name1:"host", name2:name);  # Microsoft uses "cifs" for "host"
+ service = krb_encode_principal(type: 3, name: name);
+ req_body = der_encode_kdc_req_body (realm:realm[1], service:service);
+
+ apreq = der_encode_apreq (session:session,req_body:req_body,type:7, options: raw_string(0x00, 0x00, 0x00, 0x00, 0x00));
+ padata = der_encode_padata (type:1, value:apreq);
+
+ encoded = der_encode_kdcreq (pvno:5, msg_type:0x0C, list:padata, req_body:req_body);
+
+ return der_encode (tag:0x6C, data:encoded);
+}
+
+
+##
+# DER encodes a NegTokenInit sequence
+#
+# @param [mechtypes:bytes]   DER encoded sequence of mechanism types (optional)
+# @param [reqflags:int]      Request flags (optional)
+# @param [mechtoken:bytes]   DER encoded mechanism OID (optional)
+# @param [mechlistmic:bytes] A message integrity code for the mechanism list. (optional)
+#
+# @return [bytes] Returns a DER encoded NegTokenInit sequence
+# @remark
+# ```
+#   NegTokenInit ::= SEQUENCE {
+#     mechTypes     [0]  MechTypeList  OPTIONAL,
+#     reqFlags      [1]  ContextFlags  OPTIONAL,
+#     mechToken     [2]  OCTET STRING  OPTIONAL,
+#     mechListMIC   [3]  OCTET STRING  OPTIONAL
+#   }
+# ```
+##
+function der_encode_negtokeninit (mechtypes, reqflags, mechtoken, mechlistmic)
+{
+ local_var seq, encoded, list, negtokeninit, spnego_oid;
+
+ encoded = list = NULL;
+
+ if (mechtypes)
+   list[0] = mechtypes;
+
+ if (reqflags)
+   list[1] = reqflags;
+
+ if (mechtoken)
+   list[2] = mechtoken;
+
+ if (mechlistmic)
+   list[3] = mechlistmic;
+
+ seq = der_encode_sequence (seq:list);
+
+ # NegTokenInit Tag = 0xA0
+ negtokeninit = der_encode (tag:0xA0, data:seq);
+
+ # SPNEGO OID
+ spnego_oid = der_encode_oid (oid:"1.3.6.1.5.5.2");
+
+ # Application Constructed Object Tag = 0x60
+ return der_encode (tag:0x60, data: spnego_oid + negtokeninit);
+}
+
+
+##
+# DER encodes a NegTokenTarg sequence
+#
+# @param [mechtypes:bytes]   DER encoded sequence of mechanism types (optional)
+# @param [reqflags:int]      Request flags (optional)
+# @param [mechtoken:bytes]   DER encoded mechanism OID (optional)
+# @param [mechlistmic:bytes] A message integrity code for the mechanism list. (optional)
+#
+# @return [bytes] Returns a DER encoded NegTokenTarg sequence
+# @remark
+# ```
+#   NegTokenTarg ::= SEQUENCE {
+#     mechTypes     [0]  MechTypeList  OPTIONAL,
+#     reqFlags      [1]  ContextFlags  OPTIONAL,
+#     mechToken     [2]  OCTET STRING  OPTIONAL,
+#     mechListMIC   [3]  OCTET STRING  OPTIONAL
+#   }
+# ```
+##
+function der_encode_negtokentarg(supportedmech, reqflags, mechtoken, mechlistmic)
+{
+ var encoded, list;
+
+ encoded = list = NULL;
+
+ if (reqflags)
+   list[0] = reqflags;
+
+ if (supportedmech)
+   list[1] = supportedmech;
+
+ if (mechtoken)
+   list[2] = mechtoken;
+
+ if (mechlistmic)
+   list[3] = mechlistmic;
+
+ var seq = der_encode_sequence (seq:list);
+
+ # NegTokenTarg Tag = 0xA1
+ return der_encode (tag:0xA1, data:seq);
+}
+
+
+##
+# Parses a DER encoded SPNEGO blob.
+#
+# @param [sdata:bytes]  DER SPNEGO blob.
+# @return [list] Returns a list of decoded SPNEGO data
+##
+function der_parse_spnego_init (sdata)
+{
+ local_var tmp, data, oid, list, seq, mechtypes, mechseq, mechlistmic;
+ local_var negtokeninit;
+
+ data = der_parse_data (tag:0x60, data:sdata);
+ if (isnull(data))
+   return NULL;
+
+ list = der_parse_list (list:data);
+ if (isnull(list) || (list[0] != 2))
+   return NULL;
+
+ oid = der_parse_oid (oid:list[1]);
+ if (!oid || (oid != "1.3.6.1.5.5.2"))
+   return NULL;
+
+ negtokeninit = NULL;
+ negtokeninit[0] = negtokeninit[1] = negtokeninit[2] = negtokeninit[4] = NULL;
+
+ # negTokenInit
+ data = der_parse_data (tag:0xA0, data:list[2]);
+ if (data)
+ {
+  seq = der_parse_sequence (seq:data, num:4, list:FALSE);
+  if (isnull(seq))
+    return NULL;
+
+  #mechType
+  if (seq[0] != NULL)
+  {
+   mechtypes = der_parse_list_oid (list:seq[0]);
+   if (!mechtypes)
+     return NULL;
+
+   negtokeninit[0] = mechtypes;
+  }
+
+  #mechListMIC
+  if (seq[3] != NULL)
+  {
+   mechseq = der_parse_sequence (seq:seq[3], num:1, list:FALSE);
+   if (isnull (mechseq))
+     return NULL;
+
+   tmp = der_decode (data:mechseq[0]);
+   if (isnull(tmp) || (tmp[0] != 0x1B))
+     return NULL;
+
+   mechlistmic = tmp[1];
+
+   negtokeninit[3] = mechlistmic;
+  }
+ }
+ else
+  return NULL;
+
+ return negtokeninit;
+}
+
+
+##
+# Parses a DER encoded SPNEGO response.
+#
+# @param [sdata:bytes] The DER encoded SPNEGO response.
+# @return [list] Returns a list of decoded SPNEGO response data
+##
+function der_parse_spnego_resp (sdata)
+{
+ local_var data, seq, negresult, supportedmech, responsetoken;
+ local_var negtokentarg;
+
+ negtokentarg = NULL;
+ negtokentarg[0] = negtokentarg[1] = negtokentarg[2] = negtokentarg[3] = NULL;
+
+ data = der_parse_data (tag:0xA1, data:sdata);
+ if (isnull(data))
+   return NULL;
+
+ seq = der_parse_sequence (seq:data, num:4, list:FALSE);
+ if (isnull(seq))
+   return NULL;
+
+ #negresult
+ if (seq[0] != NULL)
+ {
+  negresult = der_parse_data (tag:0x0A,data:seq[0]);
+  if (isnull (negresult))
+    return NULL;
+
+  negresult = ord(negresult[0]);
+
+  negtokentarg[0] = negresult;
+ }
+
+ if (seq[1] != NULL)
+ {
+  supportedmech = der_parse_oid (oid:seq[1]);
+  if (!supportedmech)
+    return NULL;
+
+  negtokentarg[1] = supportedmech;
+ }
+
+ if (seq[2] != NULL)
+ {
+  responsetoken = der_parse_data (tag:0x04, data:seq[2]);
+  if (!responsetoken)
+    return NULL;
+
+  negtokentarg[2] = responsetoken;
+ }
+
+ return negtokentarg;
+}
+
+
+##
+# Discovers if a Kerberos ticket has been acquired.
+#
+# @param [login:string]  Principal (user)
+# @param [realm:string]  Realm name of the KDC
+# @param [sname:string]  Service name
+# @param [srealm:string] Service realm
+#
+# @return [boolean] Returns TRUE if a ticket has been acquired, FALSE otherwise.
+# @remark See https://datatracker.ietf.org/doc/html/rfc4120#section-3.2.3
+##
+function acquired_ticket (login, realm, sname, srealm)
+{
+ local_var client, service;
+
+ client   = login + '@' + realm;
+ service  = sname + '@' + srealm;
+
+ if (get_kb_item ("kerberos/" + client + "/" + service + "/tgs_ticket"))
+   return 1;
+ else
+   return 0;
+}
+
+
+##
+# Determines if the current ticket is expired.
+#
+# @param [session:list] Kerberos session state
+#
+# @return [boolean] Returns TRUE if the current ticket is expired, FALSE otherwise.
+##
+function expired_ticket(session)
+{
+  local_var endtime, field, now;
+
+  if(isnull(session) || isnull(session[5]))
+    return TRUE;
+
+  endtime['year']  = int(substr(session[5], 0, 3));
+  endtime['mon']   = int(substr(session[5], 4, 5));
+  endtime['mday']  = int(substr(session[5], 6, 7));
+  endtime['hour']  = int(substr(session[5], 8, 9));
+  endtime['min']   = int(substr(session[5], 10, 11));
+  endtime['sec']   = int(substr(session[5], 12, 13));
+
+  now = localtime(unixtime() + 300, utc:TRUE);
+
+  foreach field (make_list('year', 'mon', 'mday', 'hour', 'min', 'sec'))
+  {
+    if(endtime[field] > now[field]) return FALSE;
+    if(endtime[field] < now[field]) return TRUE;
+  }
+
+  # two times are the same
+  return TRUE;
+}
+
+
+##
+# Saves the current TGS session to the KB
+#
+# @param [session:list] Kerberos session state
+# @param [login:string]  Principal (user)
+# @param [realm:string]  Realm name of the KDC
+# @param [sname:string]  Service name
+# @param [srealm:string] Service realm
+##
+function save_tgs_session (session, login, realm, sname, srealm)
+{
+ local_var client, service;
+
+ client   = login + '@' + realm;
+ service  = sname + '@' + srealm;
+
+ replace_kb_item (name: "kerberos/" + client + "/" + service + "/tgs_session_0", value:hexstr(session[0]));
+ replace_kb_item (name: "/tmp/kerberos/" + client + "/" + service + "/tgs_session_1", value:hexstr(session[1]));
+ replace_kb_item (name: "kerberos/" + client + "/" + service + "/tgs_session_2", value:hexstr(session[2]));
+ replace_kb_item (name: "kerberos/" + client + "/" + service + "/tgs_session_3", value:hexstr(session[3]));
+ replace_kb_item (name: "kerberos/" + client + "/" + service + "/tgs_session_4", value:session[4]);
+ replace_kb_item (name: "kerberos/" + client + "/" + service + "/tgs_session_5", value:session[5]);
+ replace_kb_item (name: "kerberos/" + client + "/" + service + "/tgs_ticket", value:1);
+}
+
+
+##
+# Populate the current session state from the KB
+#
+# @param [login:string]  Principal (user)
+# @param [realm:string]  Realm name of the KDC
+# @param [sname:string]  Service name
+# @param [srealm:string] Service realm
+#
+# @return [list] On success returns a Kerberos sessions state list, otherwise returns NULL.
+##
+function load_tgs_session (login, realm, sname, srealm)
+{
+ local_var session, client, service;
+
+ dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Looking up current Kerberos session.");
+ # No ticket
+ if (!acquired_ticket(login:login, realm:realm, sname:sname, srealm: srealm))
+ {
+   dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"No ticket available.",
+                     msg_details:{
+                       "login":{"lvl":3, "value":login},
+                       "realm":{"lvl":3, "value":realm},
+                       "sname":{"lvl":3, "value":sname},
+                       "srealm":{"lvl":3, "value":srealm}
+                     });
+   return NULL;
+ }
+
+ client   = login + '@' + realm;
+ service  = sname + '@' + srealm;
+
+ session[0] = hex2raw(s:get_kb_item ("kerberos/" + client + "/" + service + "/tgs_session_0"));
+ session[1] = hex2raw(s:get_kb_item ("/tmp/kerberos/" + client + "/" + service + "/tgs_session_1"));
+ session[2] = hex2raw(s:get_kb_item ("kerberos/" + client + "/" + service + "/tgs_session_2"));
+ session[3] = hex2raw(s:get_kb_item ("kerberos/" + client + "/" + service + "/tgs_session_3"));
+ session[4] = get_kb_item ("kerberos/" + client + "/" + service + "/tgs_session_4");
+ session[5] = get_kb_item ("kerberos/" + client + "/" + service + "/tgs_session_5");
+
+ # Expired ticket
+ if(expired_ticket(session:session))
+ {
+   dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Current ticket is expired.");
+   return NULL;
+ }
+
+ dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Found active Kerberos session.");
+ return session;
+}
+
+
+##
+# Generates a Kerberos security blob for Windows/SMB
+#
+# @param [login:string]    The target principal (user)
+# @param [password:string] Password
+# @param [realm:string]    The Kerberos realm name (Windows domain)
+# @param [host:string]     The target host name
+#
+# @return [bytes] Returns a GSSAPI/SPNEGO blob
+##
+function kerberos_securityblob (login,password,realm,host)
+{
+ local_var ret, mechtypes, mechtoken, apreq,  session, sname, srealm;
+
+ # We only support Microsoft Kerberos
+ mechtypes = der_encode (tag:0x30, data:der_encode_oid (oid:KERBEROS5_OID));
+
+ # SPN must be 'cifs/<host>' when policy "Microsoft network server: Server SPN target name validation level" is set to
+ # a value other than 'off'.
+ # If this policy is not disabled or set to 'off', SPN 'host/<host>' can be used
+ sname = 'cifs/' + host;
+ srealm = realm; # We currently only support single realm auth
+ session = load_tgs_session(login: login, realm: realm, sname:sname, srealm: srealm);
+ if (isnull(session))
+ {
+  dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:"No current session - attempting authentication.");
+  session = krb_get_ticket(login: login, password: password, realm: realm, sname: sname, type: "SMB");
+  if(isnull(session))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Failed to establish session.");
+    return NULL;
+  }
+  save_tgs_session(session:session, login: login, realm: realm, sname:sname, srealm:srealm);
+ }
+
+ apreq = der_encode_apreq (session:session, type:11);
+
+ mechtoken = der_encode_oid (oid:KERBEROS5_OID) +
+             raw_word (w:1)+
+             apreq;
+ mechtoken = der_encode (tag:0x60, data:mechtoken);
+ mechtoken = der_encode_octet_string (string:mechtoken);
+
+ # MS KRB5 has no init flags and no mechListMIC
+ ret = NULL;
+ ret[0] = session[1];
+ ret[1] = der_encode_negtokeninit (mechtypes:mechtypes, reqflags:NULL, mechtoken:mechtoken, mechlistmic:NULL);
+
+ dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Success!  Returning session key and authentication token.");
+ return ret;
+}
+
+##
+# Checks and validate a Kerberos response, decrypts if necessary.
+#
+# @param [data:bytes]       The response data
+# @param [key:bytes]        Kerberos session key for decryption
+# @param [realm:string]     The Kerberos realm name
+# @param [principal:string] Target principal (user)
+#
+# @return [list] Returns a list if the response is valid.  Returns NULL if the response is not valid.
+# @remark
+# ```
+# Structure of the returned response:
+#    ret[0] = TRUE,
+#    ret[1] = encryption key,
+#    ret[2] = sequence number,
+#    ret[3] = supported mechanism
+# ```
+##
+function check_kerberos_response (data, key, realm, principal)
+{
+ local_var negtokentarg, negresult, supportedmech, responsetoken, init, msg, challenge, kerberosblob, name;
+ local_var list, oid, seq, kid, aprep, pvno, msg_type, enc_part, enc_type, encrypted, decrypted, enc_key, ret;
+
+ negtokentarg = der_parse_spnego_resp (sdata:data);
+ if (isnull (negtokentarg))
+   return NULL;
+
+ negresult = negtokentarg[0];
+ if (negresult != 0 && negresult != 1) # Accept Rejected or error
+   return NULL;
+
+ supportedmech = negtokentarg[1];
+
+ if (MICROSOFT_KERBEROS_OID >!< supportedmech &&
+     KERBEROS5_OID >!< supportedmech)
+   return NULL;
+
+ responsetoken = negtokentarg[2];
+ if (!responsetoken)
+   return NULL;
+
+ kerberosblob = der_parse_data (tag:0x60, data:responsetoken);
+ if (!isnull (kerberosblob))
+ {
+  list = der_parse_list (list:kerberosblob);
+  if (isnull (list))
+    return NULL;
+
+  if (list[0] != 3)
+    return NULL;
+
+  oid = der_parse_oid (oid:list[1]);
+  if (!oid || (KERBEROS5_OID >!< oid))
+    return NULL;
+
+  kid = list[2];
+  if (ord(kid[0]) != 2) # AP-REP
+    return NULL;
+
+  aprep = der_parse_data (tag:0x6F, data:list[3]);
+  if (isnull (aprep))
+    return NULL;
+ }
+ else if(ord(responsetoken) == 0x6F)
+ {
+   aprep = der_parse_data (tag:0x6F, data:responsetoken);
+   if(isnull (aprep))
+     return NULL;
+ }
+ else
+ {
+   return NULL;
+ }
+
+ seq = der_parse_sequence (seq:aprep, num:4, list:FALSE);
+ if (isnull (seq))
+   return NULL;
+
+ pvno = der_parse_int (i:seq[0]);
+ if (isnull (pvno) || (pvno != 5))
+   return NULL;
+
+ msg_type = der_parse_int (i:seq[1]);
+ if (isnull (msg_type) || (msg_type != 15)) # AP-REP
+   return NULL;
+
+ enc_part = der_parse_sequence (seq:seq[2], num:3, list:NULL);
+ if (isnull (enc_part))
+   return NULL;
+
+ enc_type = der_parse_int (i:enc_part[0]);
+ if (isnull (enc_type) || (supported_encryption_type(type:enc_type) == FALSE))
+   return NULL;
+
+ encrypted = der_parse_octet_string (string:enc_part[2]);
+ if (isnull (encrypted))
+   return NULL;
+
+ decrypted = kerberos_decrypt (key:key, type:12, data:encrypted, enc_type:enc_type);
+ if (isnull (decrypted))
+   return NULL;
+
+ # we need to extract the subkey if present for SMB Signing
+ enc_part = der_parse_data (tag:0x7b, data:decrypted);
+ if (isnull (enc_part))
+   return NULL;
+
+ seq = der_parse_sequence (seq:enc_part, num:4, list:NULL);
+ if (isnull (seq))
+   return NULL;
+
+
+ ret = [0];
+
+ if (seq[2] != NULL)
+ {
+  var seq_no = der_parse_int(i:seq[3]);
+  seq = der_parse_sequence (seq:seq[2], num:2, list:NULL);
+  if (isnull (seq))
+    return NULL;
+
+  enc_type = der_parse_int (i:seq[0]);
+  if (isnull (enc_type) || (supported_encryption_type(type:enc_type) == FALSE))
+    return NULL;
+
+  enc_key = der_parse_octet_string (string:seq[1]);
+  if (isnull (enc_key))
+   return NULL;
+
+  ret = [1, enc_key, seq_no, supportedmech];
+ }
+
+ return ret;
+}
+
+
+##
+# Generate a NTLMSSP_NEGOTIATE blob
+#
+# @param [flags:byte] Optional negotiate flags.
+# @return [bytes] Returns a NTLMSSP negotiate blob.
+##
+function raw_ntlmssp_negotiate (flags)
+{
+ local_var ntlmssp;
+
+ if (isnull(flags))
+   flags = 0;
+
+ ntlmssp = "NTLMSSP" + raw_string (0x00);
+ ntlmssp += raw_dword (d:1); # NTLMSSP_NEGOTIATE
+
+ ntlmssp += raw_dword (d:NTLMSSP_NEGOTIATE_UNICODE | NTLMSSP_REQUEST_TARGET | NTLMSSP_NEGOTIATE_NTLM | NTLMSSP_NEGOTIATE_NTLM2 | NTLMSSP_NEGOTIATE_ALWAYS_SIGN | flags);  # Flags
+ ntlmssp += ntlmssp_data (data:NULL,offset:0); # workstation domain NULL
+ ntlmssp += ntlmssp_data (data:NULL,offset:0); # workstation name NULL
+
+ # Version 1.0
+ ntlmssp += raw_byte (b:5) + raw_byte (b:1);
+ # Version Number = 0
+ ntlmssp += raw_word (w:2600);
+
+ # Unknown value
+ ntlmssp += raw_string (0x00,0x00,0x00,0x0F);
+
+ return ntlmssp;
+}
+
+
+##
+# Generates a DER encoded NTLMSSP_NEGOTIATE token.
+#
+# @return [bytes] Returns a NTLMSSP negotiate token.
+##
+function ntlmssp_negotiate_securityblob ()
+{
+ local_var mechtypes, mechtoken, ntlmssp, offset;
+
+ mechtypes = der_encode (tag:0x30, data:der_encode_oid (oid:"1.3.6.1.4.1.311.2.2.10"));
+
+ ntlmssp = raw_ntlmssp_negotiate ();
+
+ mechtoken = der_encode_octet_string (string:ntlmssp);
+
+ return der_encode_negtokeninit (mechtypes:mechtypes, reqflags:NULL, mechtoken:mechtoken, mechlistmic:NULL);
+}
+
+
+##
+# Parses a NTLMSSP response token
+#
+# @param [data:bytes] the raw packet.
+# @return [list]
+#   On success returns ``[challenge bytes, domain, flags, target name list]``
+#   On failure returns NULL;
+##
+function raw_ntlmssp_parse_challenge (data)
+{
+ local_var init, msg, d_len, offset, domain, challenge, ret;
+
+ ret = NULL;
+
+ init = substr (data, 0, 7);
+ if ("NTLMSSP" >!< init)
+   return NULL;
+
+ msg = substr (data, 8, 11);
+ if ("02000000" >!< hexstr(msg)) # NTLMSSP_CHALLENGE
+   return NULL;
+
+ d_len = get_word (blob:data, pos:12);
+ offset = get_dword (blob:data, pos:16);
+
+ domain = substr (data, offset, offset+d_len-1);
+ challenge = substr (data, 24, 31);
+
+ # blob
+ d_len = get_word (blob:data, pos:40);
+ offset = get_dword (blob:data, pos:44);
+
+ ret[0] = challenge;
+ ret[1] = domain;
+ ret[2] = get_dword (blob:data, pos:20);
+ if (d_len > 0)
+ {
+  ret[3] = substr(data, offset, offset+d_len-1);
+ }
+
+ return ret;
+}
+
+
+##
+# Parse a NTLMSSP challenge packet
+#
+# @param [data:bytes] Packet data
+# @return [list]
+#   On success returns ``[challenge bytes, domain, flags, target name list]``
+#   On failure returns NULL;
+##
+function ntlmssp_parse_challenge (data)
+{
+ local_var negtokentarg, negresult, supportedmech, responsetoken, init, msg, challenge, d_len, offset, domain, ret;
+
+ negtokentarg = der_parse_spnego_resp (sdata:data);
+ if (isnull (negtokentarg))
+   return NULL;
+
+ negresult = negtokentarg[0];
+ if (negresult != 1) # Accept Incomplete
+   return NULL;
+
+ supportedmech = negtokentarg[1];
+
+ if ("1.3.6.1.4.1.311.2.2.10" >!< supportedmech)
+   return NULL;
+
+ responsetoken = negtokentarg[2];
+ if (!responsetoken)
+   return NULL;
+
+ if (strlen(responsetoken) < 40)
+   return NULL;
+
+
+ return raw_ntlmssp_parse_challenge (data:responsetoken);
+}
+
+
+##
+# Parses a negotiation result out of a NTLMSSP response packet.
+#
+# @param [data:bytes] Packet data
+# @return [bytes] Returns the negotiation result.
+##
+function ntlmssp_parse_response (data)
+{
+
+ local_var negtokentarg, negresult;
+
+ negtokentarg = der_parse_spnego_resp (sdata:data);
+ if (isnull (negtokentarg))
+   return NULL;
+
+ negresult = negtokentarg[0];
+ return negresult;
+}
+
+
+##
+# Generates a size/offset prefix to NTLMSSP data
+#
+# @param [data:bytes] The data
+# @param [offset:int] The data offset
+#
+# @return [bytes] Returns a prefix containing the size and offset of the data.
+##
+function ntlmssp_data (data,offset)
+{
+ return raw_word (w:strlen(data)) + raw_word (w:strlen(data)) + raw_dword (d:offset);
+}
+
+
+##
+# Generate a raw NTLMSSP security blob for authentication
+#
+# @param [password:string] The principal's password
+# @param [login:string]    The principal (user name)
+# @param [hash:bytes]      NTLM password hash (optional for hash based auth)
+# @param [domain:string]   Windows domain
+# @param [challenge:bytes] NTLMSSP challenge bytes
+# @param [flags:int]       Option flags
+# @param [skey:bytes]      Establishes the session key
+# @param [sblob:bytes]     Target name list from the NTLMSSP challenge
+# @param [forceip:boolean] TRUE: Use an IP address instead of an FQDN (optional)
+#
+# @return [bytes] Returns a raw NTLMSSP security blob for authentication
+##
+function raw_ntlmssp_auth_securityblob (password, login, hash, domain, challenge, flags, skey, sblob, forceip)
+{
+ local_var ntlmssp,nt,response;
+ local_var hostname,sessionkey,lm,offset,key,ret;
+
+ if (isnull(forceip))
+   forceip = FALSE;
+
+ if (isnull(flags))
+   flags = 0;
+
+ sessionkey = lm = nt = NULL;
+
+ #hostname supplies the "source workstation" parameter of a NTMMSSP_AUTH blob.
+ #on some Windows platforms supplying this value will break NULL SMB authentication.
+ if(!isnull(login) && !isnull(password))
+ {
+   hostname = this_host_name();
+   hostname = mk_unicode_or_null(hostname);
+ }
+
+ # Systems with Extended Security Authentication support NTLMv2 so NTLMv1 is useless here (?)
+
+ if (login)
+ {
+  response = LMv2_Response (password:password, login:login, hash:hash, domain:domain, challenge:challenge);
+  lm = response[0];
+  key = response[1];
+  if (sblob)
+  {
+   response = NTLMv2_Response (password:password, login:login, hash:hash, domain:domain, challenge:challenge, sblob:sblob, forceip:forceip);
+   nt = response[0];
+   key = response[1];
+  }
+ }
+ else
+ {
+  lm = raw_string(0x00);
+  key = raw_string (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+ }
+
+ #response = NTLM_Response (password:password, hash:hash, challenge:challenge);
+ #nt = response[0];
+
+ offset = 0x48; # First text;
+
+ ntlmssp = "NTLMSSP" + raw_string (0x00);
+ ntlmssp += raw_dword (d:3); # NTLMSSP_AUTH
+
+ # Lan Manager response = NULL
+ ntlmssp += ntlmssp_data (data:lm,offset:offset);
+ offset += strlen (lm);
+
+ # NTLM Response
+ ntlmssp += ntlmssp_data (data:nt,offset:offset);
+ offset += strlen(nt);
+
+ # Domain name = NULL
+ ntlmssp += ntlmssp_data (data:domain, offset:offset);
+ offset += strlen (domain);
+
+ # User name
+ ntlmssp += ntlmssp_data (data:login, offset:offset);
+ offset += strlen (login);
+
+ # Host name
+ ntlmssp += ntlmssp_data (data:hostname, offset:offset);
+ offset += strlen (hostname);
+
+ if (!isnull(skey))
+ {
+  # if we only use LMv2 then XP needs this key to be set to 0.
+  # arcfour_setkey(key:raw_string(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0));
+  # else the password derived key works fine against 2000/2003/Vista
+  # I wonder if this changed was introduced to break samba.
+  # However NTLMv2 signature works fine.
+  arcfour_setkey(key:key);
+  sessionkey = ARCFOUR(data:skey);
+ }
+
+ # Session Key = NULL
+ ntlmssp += ntlmssp_data (data:sessionkey, offset:offset);
+ offset += strlen (sessionkey);
+
+ ntlmssp += raw_dword (d:NTLMSSP_NEGOTIATE_UNICODE | NTLMSSP_REQUEST_TARGET | NTLMSSP_NEGOTIATE_NTLM | NTLMSSP_NEGOTIATE_NTLM2 | flags); # Flags
+ # Version 1.0
+ ntlmssp += raw_byte (b:1) + raw_byte (b:0);
+ # Version Number = 0
+ ntlmssp += raw_word (w:0);
+
+ # Unknown value
+ ntlmssp += raw_string (0x00,0x00,0x00,0x0F);
+
+ ntlmssp += lm + nt + domain + login + hostname + sessionkey;
+
+ ret = NULL;
+ ret[0] = ntlmssp;
+ ret[1] = key;
+
+ return ret;
+}
+
+
+##
+# Generate a DER encoded NTLMSSP security blob for authentication
+#
+# @param [password:string] The principal's password
+# @param [login:string]    The principal (user name)
+# @param [hash:bytes]      NTLM password hash (optional for hash based auth)
+# @param [domain:string]   Windows domain
+# @param [challenge:bytes] NTLMSSP challenge bytes
+# @param [flags:int]       Option flags
+# @param [skey:bytes]      Establishes the session key
+# @param [sblob:bytes]     Target name list from the NTLMSSP challenge
+# @param [forceip:boolean] TRUE: Use an IP address instead of an FQDN (optional)
+#
+# @return [bytes] Returns a DER encoded NTLMSSP security blob for authentication
+##
+function ntlmssp_auth_securityblob (password,login,hash,domain,challenge, flags, skey, sblob, forceip)
+{
+ local_var ntlmssp, responsetoken, ret;
+
+ if (!forceip) forceip = FALSE;
+ ret = raw_ntlmssp_auth_securityblob (password:password, login:login, hash:hash, domain:domain, challenge:challenge, flags:flags, skey:skey, sblob:sblob, forceip:forceip);
+
+ ntlmssp = der_encode_octet_string (string:ret[0]);
+ responsetoken = der_encode (tag:0xA2, data:ntlmssp);
+ responsetoken = der_encode_list (list:responsetoken);
+
+ ret[0] = ret[1];
+ ret[1] = der_encode (tag:0xA1, data:responsetoken);
+
+ return ret;
+}
+
+
+##
+# Retrieves a Kerberos ticket and encodes an AP-REP response.
+#
+# @param [login:string]    Principal (user name)
+# @param [password:string] Principal's password
+# @param [realm:string]    Kerberos realm
+# @param [host:string]     Target host
+# @param [seqnum:int]      Client (our) sequence number
+#
+# @return [list]
+#   On success returns [session key, response packet, negotiated encryption type code].
+#   Otherwise, returns NULL.
+##
+function kerberos_ssh (login,password,realm,host,seqnum)
+{
+ local_var ret, cksum, checksum, apreq, innercontexttoken, initialcontexttoken, session, sname, srealm;
+
+ sname = 'host/' + host;
+ srealm = realm; # We current support single realm auth
+
+ session = load_tgs_session(login: login, realm: realm, sname: sname, srealm: srealm);
+ if(isnull(session))
+ {
+  session = krb_get_ticket(login: login, password: password, realm: realm, sname: sname, type: "SSH");
+  if(isnull(session)) return NULL;
+  save_tgs_session(session:session, login: login, realm: realm, sname: sname, srealm: srealm);
+ }
+
+ cksum = raw_dword (d:16) + # bnd length
+         crap (data:raw_string(0),length:16) + #bnd
+         raw_dword (d:32|2); # flags
+
+ checksum = NULL;
+ checksum[0] = der_encode_int32 (i:0x8003);
+ checksum[1] = der_encode (tag:0x04, data:cksum);
+
+ apreq = der_encode_apreq(session:session, type:11, _checksum:der_encode_sequence (seq:checksum), _seqnum:seqnum);
+
+ innercontexttoken = raw_string(0x01,0x00) + apreq;
+ initialcontexttoken = der_encode_oid(oid:KERBEROS5_OID) + innercontexttoken;
+
+ ret = NULL;
+ ret[0] = session[1];
+ ret[1] = der_encode (tag:0x60, data:initialcontexttoken);
+ ret[2] = session[4];
+
+ return ret;
+
+}
+
+
+##
+# Decrypts a GSS_Wrap payload and validates its integrity
+#
+# @param [pkt:bytes]    The wrapped packet payload.
+# @param [authlen:int]  Length of the auth token.
+# @param [key:bytes]    The GSSAPI subkey used by the server to encrypt.
+# @param [seqnum:int]   Expected server sequence number.
+# @param [enc_type:int] Encryption type (algo) code.
+#
+# @return [bytes] On success, returns the decrypted PDU, otherwise returns NULL.
+##
+function gssapi_dcerpc_unwrap_verify(pkt, authlen, key, seqnum, enc_type)
+{
+  var auth_hdr, auth_token, enc_token;
+
+  if(isnull(pkt) || isnull(authlen) || isnull(key) || isnull(seqnum) || isnull(enc_type))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Required arguments are missing!");
+    return NULL;
+  }
+
+  var pktlen = strlen(pkt);
+
+  if(pktlen < authlen + 40)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Supplied data was too short.");
+    return NULL;
+  }
+
+  if(!supported_encryption_type(type:enc_type, dcerpc:TRUE))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+    return NULL;
+  }
+
+  # Pull off the auth data and header
+  var pkt_hdr = substr(pkt, 0, 23);
+  var enc_pdu = substr(pkt, 24, pktlen - authlen - 1);
+  var auth = substr(pkt, pktlen - authlen);
+
+  auth_hdr = substr(auth, 0, 7);
+  auth_token = substr(auth, 8, 23);
+  enc_token = substr(auth, 24);
+
+  # Compose the ciphertext
+  var ciphertext = substr(enc_token, strlen(enc_token) - 16); #encrypted confounder
+  ciphertext += enc_pdu + substr(enc_token, 0, 31);
+
+  var usage = raw_dword(d:22, be:TRUE);
+  var iv = crap(data:'\x00', length:16);
+
+  # Derive the encryption key
+  var ke = krb_dk_aes(basekey:key, outsize:strlen(key), const:usage + '\xAA');
+  var res = aes_cbc_cts_decrypt(data:ciphertext, key:ke, iv:iv);
+
+  var plaintext = res[0];
+  var decrypted_pdu;
+  var decrypted_confounder;
+
+  if(strlen(plaintext) > 16)
+  {
+    decrypted_confounder = substr(plaintext, 0, 15);
+    decrypted_pdu = substr(plaintext, 16);
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Decrypted plaintext too small to extract a PDU" + serialize(enc_type));
+    return NULL;
+  }
+
+  var decrypted_token = substr(decrypted_pdu, strlen(decrypted_pdu) - 32);
+
+  if(strlen(decrypted_pdu) > 32)
+  {
+    decrypted_pdu = substr(decrypted_pdu, 0, strlen(decrypted_pdu) - 33);
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Decrypted plaintext too small to support a PDU" + serialize(enc_type));
+    return NULL;
+  }
+
+  var token_seqnum = getdword(blob:decrypted_token, order:BYTE_ORDER_BIG_ENDIAN, pos:28);
+
+  if(token_seqnum != seqnum)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME,
+                             msg:"Sequence numbers do not match (ours: " + serialize(seqnum) +
+                                 " server's: " + serialize(token_seqnum) + ")");
+    return NULL;
+  }
+
+  var ki = krb_dk_aes(basekey:key, outsize:strlen(key), const:usage + '\x55');
+  var hmac = HMAC_SHA1(key:ki, data:decrypted_confounder + pkt_hdr + decrypted_pdu + auth_hdr + decrypted_token);
+  var our_authhash = substr(hmac, 0, 11);
+
+  var their_authhash = substr(enc_token, 32, strlen(enc_token) - 17);
+
+  if(our_authhash != their_authhash)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME,
+                             msg:"Authentication HMAC's do not match (ours: " + serialize(hexstr(our_authhash)) +
+                                 " server's: " + serialize(hexstr(their_authhash)) + ")");
+    return NULL;
+  }
+
+  return decrypted_pdu;
+}
+
+
+##
+# Generates a GSS-API wrap DCERPC in privacy mode.
+#
+# @param [data:bytes]    GSS-API PDU data with header
+# @param [hdrlen:int]    Length of the GSS-API packet header (may include RPC GUID target)
+# @param [key:bytes]     The current Kerberos acceptor subkey
+# @param [seqnum:int]    DCERPC sequence number
+# @param [enc_type:int]  Kerberos encryption type code
+# @param [flags:int]     Kerberos protected message flags
+#
+# @return [list] On success returns [GSSAPI auth token, encrypted PDU], otherwise returns NULL.
+#
+# @remark See ``[MS-KILE]`` for more information.
+# @remark https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-kile/2a32282e-dd48-4ad9-a542-609804b02cc9
+##
+function gssapi_dcerpc_wrap (data, hdrlen, key, seqnum, enc_type, flags)
+{
+  var length = strlen(data);
+  if(length < hdrlen + 8)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Supplied data was too short.");
+    return NULL;
+  }
+
+  if(!supported_encryption_type(type:enc_type, dcerpc:TRUE))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+    return NULL;
+  }
+
+  # Get a confounder of block size
+  var confounder = make_confounder(length:16);
+
+  var usage = raw_dword(d:24, be:TRUE);
+
+  # Derive the encryption key
+  var ke = krb_dk_aes(basekey:key, outsize:strlen(key), const:usage + '\xAA');
+
+  # Encrypt the confounder
+  var iv = crap(data:'\x00', length:16);
+  var res = aes_cbc_encrypt(data:confounder, key:ke, iv:iv);
+
+  if(isnull(res) || isnull(res[0]) || isnull(res[1]))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Encrypting the confounder failed.");
+    return NULL;
+  }
+
+  var encrypted_confounder = res[0];
+  iv = res[1];
+
+  #Strip off the GSS-API header
+  var pdu_header = substr(data, 0, hdrlen - 1);
+  var pdu = substr(data, hdrlen);
+
+  length -= hdrlen;
+
+  #Remove the authdata from the PDU
+  var auth_header = substr(pdu, length - 8);
+  pdu = substr(pdu, 0, length - 9);
+
+  length -= 8;
+
+  #[MS-KILE] specifies a zero RRC when computing the auth MAC
+  var token4hash = crap(data:'\x00', length:16) + get_gssapi_wrap_hdr(seqnum:seqnum, flags:flags, dcerpc:TRUE, rrc:0, ec:16);
+
+  var padding = '';
+
+  if(length % 16 > 0)
+    padding = crap(data:'\x00', length:(16 - (length % 16)));
+
+  #Encrypt pdu + padding + token
+  res = aes_cbc_cts_encrypt(data:pdu + padding + token4hash, key:ke, iv:iv);
+  if(isnull(res) || isnull(res[0]) || isnull(res[1]))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Encrypting the wrap token failed.");
+    return NULL;
+  }
+
+  var tokenheader = get_gssapi_wrap_hdr(seqnum:seqnum, flags:flags, dcerpc:TRUE, rrc:28, ec:16);
+
+  if(strlen(res[0]) < strlen(pdu + padding))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Encrypted ciphertext is too short to contain the encrypted token.");
+    return NULL;
+  }
+
+  var encrypted_pdu = substr(res[0], 0, strlen(pdu + padding) - 1);
+  var encrypted_token = substr(res[0], strlen(pdu + padding));
+  var ki = krb_dk_aes(basekey:key, outsize:strlen(key), const:usage + '\x55');
+
+  var hmac = HMAC_SHA1(key:ki, data:confounder + pdu_header + pdu + padding + auth_header + token4hash);
+  var authhash = substr(hmac, 0, 11);
+
+  return [tokenheader + encrypted_token + authhash + encrypted_confounder, encrypted_pdu];
+}
+
+##
+# Computes a SSH style GSSAPI message integrity checksum
+#
+# @param [data:bytes]   The protocol data to compute a checksum over
+# @param [key:bytes]    The GSSAPI subkey used by the server to encrypt.
+# @param [seqnum:int]   Expected server sequence number.
+# @param [enc_type:int] Encryption type (algo) code.
+# @param [flags:int]    Checksum token flags
+# @param [dcerpc:bool]  TRUE if this mic is for DCERPC, FALSE otherwise.
+#
+# @return [bytes] On success returns a GSSAPI mic token, returns NULL otherwise.
+##
+function gssapi_ssh_get_mic (data, key, seqnum, enc_type, flags, dcerpc)
+{
+  local_var hash, des_cksum, seq_num, crypted, mic;
+
+  if(! supported_encryption_type(type:enc_type))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+    return NULL;
+  }
+
+  if(enc_type == 23)
+  {
+    return gssapi_ssh_get_mic_rc4_hmac(data:data, key:key, seqnum:seqnum);
+  }
+  else if(enc_type == 17 || enc_type == 18)
+  {
+    return gssapi_ssh_get_mic_aes(data:data, key:key, seqnum:seqnum, flags:flags, dcerpc:dcerpc);
+  }
+  else if(enc_type == 19 || enc_type == 20)
+  {
+    return gssapi_ssh_get_mic_aes_sha2(data:data, key:key, seqnum:seqnum, flags:flags, dcerpc:dcerpc, enc_type:enc_type);
+  }
+  else if (enc_type == 3) # deprecated des-cbc-md5
+  {
+    hash = MD5 ( raw_string(0x01,0x01,0x00,0x00,0xFF,0xFF,0xFF,0xFF) +
+                 data );
+
+    des_cksum = des_cbc_checksum (key:key,data:hash,iv:raw_string(0,0,0,0,0,0,0,0));
+
+    seq_num = raw_dword (d:seqnum) + raw_dword (d:0);
+
+    crypted = des_cbc_encrypt (data:seq_num, key:key, iv:des_cksum, encrypt:1);
+
+    mic = der_encode (tag:0x60, data:der_encode_oid(oid:KERBEROS5_OID) +
+                                     raw_string (0x01,0x01,0x00,0x00,0xFF,0xFF,0xFF,0xFF) + crypted + des_cksum);
+
+    return mic;
+  }
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Failed to get MIC based on encryption type - this shouldn't happen.");
+  return NULL;
+}
+
+
+##
+# Computes a SSH style GSSAPI MIC based on RC4 encryption
+#
+# @param [data:bytes]   The protocol data to compute a checksum over
+# @param [key:bytes]    The GSSAPI subkey used by the server to encrypt.
+# @param [seqnum:int]   Expected server sequence number.
+#
+# @return [bytes] Returns a GSSAPI mic token based on RC4.
+# @remark See RFC 4757 for details.
+##
+function gssapi_ssh_get_mic_rc4_hmac(data, key, seqnum)
+{
+  local_var chksum, hdr, kseq, ksign, mic, token;
+
+  hdr = raw_string(0x01, 0x01) +            # Token ID
+        raw_string(0x11, 0x00) +            # SNG_ALG
+        raw_string(0xff, 0xff, 0xff, 0xff); # filler
+
+  seqnum = raw_dword (d:seqnum, be: TRUE) + crap(data:'\x00', length:4);
+
+  ksign = HMAC_MD5(key: key, data: 'signaturekey\x00');
+
+  chksum = MD5(raw_dword (d:15) + hdr + data);
+  chksum = HMAC_MD5(key: ksign, data:chksum);
+  chksum = substr(chksum, 0, 7);
+
+  kseq = HMAC_MD5(key: key, data: raw_dword (d:0));
+  kseq = HMAC_MD5(key: kseq, data: chksum);
+
+  arcfour_setkey (key: kseq);
+  seqnum = ARCFOUR (data:seqnum);
+
+  mic = hdr + seqnum + chksum;
+
+  # GSSAPI version 1 format
+  mic = der_encode (tag:0x60, data:der_encode_oid(oid:KERBEROS5_OID) + mic);
+
+  return mic;
+
+}
+
+
+##
+# Constructs a GSSAPI version 2 MIC header for AES encryption
+#
+# @param [seqnum:int]   Expected server sequence number.
+# @param [flags:int]    MIC token options
+# @param [dcerpc:bool]  TRUE if this mic is for DCERPC, FALSE otherwise.
+#
+# @return [bytes] Returns a GSSAPI MIC header for AES based tokens
+# @remark See RFC 4121 for details.
+##
+function get_gssapi_aes_mic_hdr(seqnum, flags, dcerpc)
+{
+  var hdr, seqno;
+
+  if(isnull(flags))
+    flags = '\x00';
+
+  if(!dcerpc)
+    seqno = raw_dword(d:seqnum, be:TRUE) + '\x00\x00\x00\x00';
+  else
+    seqno = '\x00\x00\x00\x00' + raw_dword(d:seqnum, be:TRUE);
+
+  hdr = '\x04\x04' +                # TOKEN ID
+        flags +                     # flags
+        '\xff\xff\xff\xff\xff' +    # filler
+         seqno;                     # sequence number
+
+  return hdr;
+}
+
+
+##
+# Computes a SSH style GSSAPI MIC for aes-cts-hmac-sha2 ciphers
+#
+# @param [data:bytes]   The protocol data to compute a checksum over
+# @param [key:bytes]    The GSSAPI subkey used by the server to encrypt.
+# @param [seqnum:int]   Expected server sequence number.
+# @param [flags:int]    Checksum token flags
+# @param [dcerpc:bool]  TRUE if this mic is for DCERPC, FALSE otherwise.
+# @param [enc_type:int] Encryption type (algo) code.
+#
+# @return [bytes] Returns a GSSAPI mic token for AES-CTS ciphers.
+# @remark See RFC-8009, section 6 for more details.
+##
+function gssapi_ssh_get_mic_aes_sha2(data, key, seqnum, flags, dcerpc, enc_type)
+{
+  var chksum, hdr, mic;
+
+  var keyusage = raw_dword(d:25, be:TRUE);
+
+  # Since AES is a "newer" encryption type per RFC 4121, Kerberos GSSAPI version 2 token format MUST be used
+  hdr = get_gssapi_aes_mic_hdr(seqnum:seqnum, flags:flags, dcerpc:dcerpc);
+  chksum = krb_aes_checksum_sha2(data:data + hdr, key:key, keyusage:keyusage, enc_type:enc_type);
+  mic = hdr + chksum;
+
+  return mic;
+}
+
+
+##
+# Computes a SSH style GSSAPI MIC for aes-cts-hmac-sha1 ciphers
+#
+# @param [data:bytes]   The protocol data to compute a checksum over
+# @param [key:bytes]    The GSSAPI subkey used by the server to encrypt.
+# @param [seqnum:int]   Expected server sequence number.
+# @param [flags:int]    Checksum token flags
+# @param [dcerpc:bool]  TRUE if this mic is for DCERPC, FALSE otherwise.
+#
+# @return [bytes] Returns a GSSAPI mic token for SHA1 AES-CTS ciphers.
+# @remark See RFC 4121, section 4.2.6.1 for more details
+##
+function gssapi_ssh_get_mic_aes(data, key, seqnum, flags, dcerpc)
+{
+  var chksum, hdr, mic;
+
+  var keyusage = raw_dword(d:25, be:TRUE);
+
+  # Since AES is a "newer" encryption type per RFC 4121, Kerberos GSSAPI version 2 token format MUST be used
+  hdr = get_gssapi_aes_mic_hdr(seqnum:seqnum, flags:flags, dcerpc:dcerpc);
+  chksum = krb_aes_checksum(data:data + hdr, key:key, keyusage:keyusage);
+  mic = hdr + chksum;
+
+  return mic;
+}
+
+##
+# Creates a GSSAPI wrap token header
+#
+# @param [seqnum:int]     Sequence number
+# @param [flags:int]      Flags
+# @param [dcerpc:boolean] TRUE if this is Kerberos over DCERPC, FALSE otherwise
+# @param [rrc:int]        Right rotation count (see RFC 4121)
+# @param [ec:int]         Extra count (see RFC 4121)
+#
+# @return [bytes] Returns a GSSAPI version 2 Wrap header
+# @remark See RFC 4121 for more detail.
+##
+function get_gssapi_wrap_hdr(seqnum, flags, dcerpc, rrc, ec)
+{
+  var hdr, seqno;
+
+  if(isnull(flags))
+    flags = '\x00';
+
+  #Sealed
+  flags = ord(flags) | 2;
+
+  if(!dcerpc)
+    seqno = raw_dword(d:seqnum, be:TRUE) + '\x00\x00\x00\x00';
+  else
+    seqno = '\x00\x00\x00\x00' + raw_dword(d:seqnum, be:TRUE);
+
+  ec = mkword(ec, order:BYTE_ORDER_BIG_ENDIAN);
+
+  rrc = mkword(rrc, order:BYTE_ORDER_BIG_ENDIAN);
+
+  hdr = '\x05\x04' +    # TOKEN ID
+        mkbyte(flags) + # flags
+        '\xff' +        # filler
+        ec +            # extra count
+        rrc +           # right rotation count
+        seqno;          # sequence number
+
+  return hdr;
+}
+
+
+##
+# Validates a GSSAPI token
+#
+# @param [data:bytes]       The token
+# @param [key:bytes]        Session key
+# @param [realm:string]     Kerberos realm name
+# @param [principal:string] User name
+#
+# @return [list] Returns ``[TRUE, subkey]`` if the token is trusted/accepted, NULL otherwise
+##
+function check_gssapi_token (data, key, realm, principal)
+{
+ var list, oid, seq, kid, aprep, pvno, msg_type, enc_part, enc_type;
+ var encrypted, decrypted, enc_key, kerberosblob, ret;
+
+ kerberosblob = der_parse_data (tag:0x60, data:data);
+ if (isnull (kerberosblob) || (strlen(kerberosblob)<14))
+   return NULL;
+
+ list = NULL;
+ list[1] = substr(kerberosblob,0,10);
+ list[2] = substr(kerberosblob,11,12);
+ list[3] = substr(kerberosblob,13,strlen(kerberosblob)-1);
+
+ oid = der_parse_oid (oid:list[1]);
+ if (!oid || (KERBEROS5_OID >!< oid))
+   return NULL;
+
+ kid = list[2];
+ if (ord(kid[0]) != 2) # AP-REP
+   return NULL;
+
+ aprep = der_parse_data (tag:0x6F, data:list[3]);
+ if (isnull (aprep))
+   return NULL;
+
+ seq = der_parse_sequence (seq:aprep, num:4, list:FALSE);
+ if (isnull (seq))
+   return NULL;
+
+ pvno = der_parse_int (i:seq[0]);
+ if (isnull (pvno) || (pvno != 5))
+   return NULL;
+
+ msg_type = der_parse_int (i:seq[1]);
+ if (isnull (msg_type) || (msg_type != 15)) # AP-REP
+   return NULL;
+
+ enc_part = der_parse_sequence (seq:seq[2], num:3, list:NULL);
+ if (isnull (enc_part))
+   return NULL;
+
+ enc_type = der_parse_int (i:enc_part[0]);
+ if (isnull (enc_type) || (supported_encryption_type(type:enc_type) == FALSE))
+   return NULL;
+
+ encrypted = der_parse_octet_string (string:enc_part[2]);
+ if (isnull (encrypted))
+   return NULL;
+
+ decrypted = kerberos_decrypt (key:key, type:12, data:encrypted,  enc_type:enc_type);
+ if (isnull (decrypted))
+   return NULL;
+
+ # we need to extract the subkey if present for SMB Signing
+ enc_part = der_parse_data (tag:0x7b, data:decrypted);
+ if (isnull (enc_part))
+   return NULL;
+
+ seq = der_parse_sequence (seq:enc_part, num:4, list:NULL);
+ if (isnull (seq))
+   return NULL;
+
+
+ ret = NULL;
+ ret [0] = 0;
+
+ if (seq[2] != NULL)
+ {
+  seq = der_parse_sequence (seq:seq[2], num:2, list:NULL);
+  if (isnull (seq))
+    return NULL;
+
+  enc_type = der_parse_int (i:seq[0]);
+  if (isnull (enc_type) || (supported_encryption_type(type:enc_type) == FALSE))
+    return NULL;
+
+  enc_key = der_parse_octet_string (string:seq[1]);
+  if (isnull (enc_key))
+   return NULL;
+
+  ret[0] = 1;
+  ret[1] = enc_key;
+ }
+
+ return ret;
+}
+
+
+##
+# Kerberos DK function for AES with SHA2
+#
+# @param [basekey:bytes] base key computed from the PBKDF2 function
+# @param [purpose:bytes] well-known Kerberos constant
+# @param [prf:string] name of SHA2 HMAC function to use, i.e. "SHA256", or "SHA384"
+# @param [key:bytes] length derived key size in bytes
+# @return [bytes] a SHA2 based key; NULL on error
+# @remark
+#   - See RFC 8009, section 3 for more details
+#
+##
+function krb_dk_hmac_sha2(basekey, purpose, prf, keylength)
+{
+  var prf_func;
+
+  var i = raw_dword(d:1, be:TRUE); #Big endian double-word one
+
+  if(prf == "SHA256")
+  {
+    prf_func = @HMAC_SHA256;
+  }
+  else if(prf == "SHA384")
+  {
+    prf_func = @HMAC_SHA384;
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported pseudo-random function: " + serialize(prf));
+    return NULL;
+  }
+
+  var k = raw_dword(d:keylength * 8, be:TRUE);
+
+  var ki = prf_func(key:basekey, data:i + purpose + '\x00' + k);
+  return substr(ki, 0, keylength - 1);
+
+}
+
+
+##
+# Kerberos DK function for AES
+#
+# @param [basekey:bytes] base key computed from the PBKDF2 function
+# @param [outsize:int] derived key size in bytes
+# @param [const:data] well-known constant
+# @return [bytes] a AES key; NULL on error
+# @remark
+#   - See RFC 3961, section 5.1 for more details
+#
+##
+function krb_dk_aes(basekey, outsize, const)
+{
+  local_var data, keymat, ret, total;
+
+  # Kerberos only support 128-bit and 256-bit AES keys
+  if(outsize != 16 && outsize != 32)
+    return NULL;
+
+  # Fold the well-known constant if it's less than a AES block
+  if(strlen(const) < 16)
+    const = nfold(data:const, flen:16);
+
+  keymat = NULL;
+  data = const;
+  while (strlen(keymat) < outsize)
+  {
+    ret = aes_cbc_encrypt(data:data, key:basekey, iv:crap(data:'\x00',length:16));
+    if(isnull(ret)) return NULL;
+    keymat += ret[0];
+    data = ret[0];
+  }
+
+  return substr(keymat, 0, outsize - 1);
+
+}
+
+##
+# Converts a password to a Kerberos AES key
+#
+# @param [password:string] user password
+# @param [salt:bytes] salt to feed into the PBDKF2 key derivation routine
+# @param [iter:int] iterations feed into the PBDKF2 key derivation routine
+# @param [key:bytes] size requested AES key size in bytes
+# @return [bytes] AES key; NULL on error
+#
+##
+function krb_string_to_key_aes(password, salt, iter, keysize)
+{
+  local_var tkey;
+
+  if(isnull(password) || isnull(salt)) return NULL;
+  if(keysize != 16 && keysize != 32)
+    return NULL;
+  if(isnull(iter))  iter = 4096;
+
+  tkey = pbkdf2_wrapper(message:password, salt:salt, iters:iter, keylen:keysize, digest_str:"SHA1");
+  return krb_dk_aes(basekey:tkey, outsize:keysize, const: 'kerberos');
+
+}
+
+##
+# Converts a password to a Kerberos AES key
+#
+# @param [password:string] user password
+# @param [salt:bytes] salt to feed into the PBDKF2 key derivation routine
+# @param [iter:int] iterations feed into the PBDKF2 key derivation routine
+# @param [key:bytes] size requested AES key size in bytes
+# @param [prf:string] name of hash function to use in key generation, i.e. "SHA256", "SHA384"
+# @return [bytes] AES key; NULL on error
+#
+##
+function krb_string_to_key_sha2(password, salt, iter, keysize, prf)
+{
+  var tkey, saltp;
+
+  if(isnull(password) || isnull(salt))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Password or salt argument is missing.");
+    return NULL;
+  }
+
+  if(keysize != 16 && keysize != 32)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported key size.");
+    return NULL;
+  }
+
+  if(isnull(iter))
+    iter = 32768;
+
+  if(prf == "SHA256")
+  {
+    saltp = "aes128-cts-hmac-sha256-128";
+  }
+  else if(prf == "SHA384")
+  {
+    saltp = "aes256-cts-hmac-sha384-192";
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported pseudo-random function: " + serialize(prf));
+    return NULL;
+  }
+
+  saltp += '\x00' + salt;
+
+  tkey = pbkdf2_wrapper(message:password, salt:saltp, iters:iter, keylen:keysize, digest_str:prf);
+
+  return krb_dk_hmac_sha2(basekey:tkey, purpose:"kerberos", prf:prf, keylength:keysize);
+}
+
+
+##
+# Makes a random confounder string.
+# @param [length:int] length of the confounder
+# @return [bytes] Returns string of random bytes of the indicated length.
+##
+function make_confounder(length)
+{
+  var test_confounder = get_kb_item("kerberos/TEST_confounder");
+  var conf;
+
+  if(isnull(test_confounder))
+  {
+    for(var i=0; i<length; i++)
+      conf += raw_byte(b:rand()%256);
+  }
+  else
+  {
+    conf = test_confounder;
+  }
+
+  return conf;
+}
+
+##
+# Encrypts data using AES in CBC-CS3 mode with SHA2
+#
+# @param [data:bytes] data to be encrypted
+# @param [key:bytes] base encryption key
+# @param [keyusage:int] key usage number
+# @param [enc_type:int] the encryption type
+# @return [bytes] encrypted data; NULL on error
+# @remark
+#   - See RFC 8009, section 5 for more details
+##
+function krb_aes_encrypt_sha2(data, key, keyusage, enc_type)
+{
+  var ke_length, ki_length, prf, hmac_func;
+
+  # Get a confounder of block size
+  var conf = make_confounder(length:16);
+
+  # Plaintext to the encryption and hmac routines
+  data = conf + data;
+
+  if(enc_type == 19)
+  {
+    ke_length = 16;
+    ki_length = 16;
+    prf = "SHA256";
+    hmac_func = @HMAC_SHA256;
+  }
+  else if(enc_type == 20)
+  {
+    ke_length = 32;
+    ki_length = 24;
+    prf = "SHA384";
+    hmac_func = @HMAC_SHA384;
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+    return NULL;
+  }
+
+  var ke = krb_dk_hmac_sha2(basekey:key, purpose:keyusage + '\xAA', prf:prf, keylength:ke_length);
+
+  # Encrypt plaintext
+  var iv = crap(data:'\x00', length:16);
+  var ret = aes_cbc_cts_encrypt(data:data, key:ke, iv:iv);
+  if(isnull(ret))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"aes-cbc-cts encryption failed!");
+    return NULL;
+  }
+
+  # Derive hmac key
+  var ki = krb_dk_hmac_sha2(basekey:key, purpose:keyusage + '\x55', prf:prf, keylength:ki_length);
+
+  # Compute hmac over cipherstate plus ciphertext
+  var hmac = hmac_func(data:iv + ret[0], key:ki);
+
+  # Append hmac to ciphertext
+  var out = ret[0] + substr(hmac, 0, ki_length - 1);
+
+  return out;
+}
+
+
+##
+# Encrypts data using AES
+#
+# @param [data:bytes] data to be encrypted
+# @param [key:bytes] base encryption key
+# @param [keyusage:int] key usage number
+# @return [bytes] encrypted data; NULL on error
+# @remark
+#   - See RFC 3961, section 5.3 for more details
+##
+function krb_aes_encrypt(data, key, keyusage)
+{
+  local_var conf, hmac, i, iv, ke, ki, out, ret;
+
+  # Get a confounder of block size
+  conf = NULL;
+  for (i=0; i<16; i++)
+    conf += raw_byte(b:rand()%256);
+
+  # Plaintext to the encryption and hmac routines
+  data = conf + data;
+
+  # Derive encryption key
+  ke = krb_dk_aes(basekey:key, outsize:strlen(key), const:keyusage + '\xAA');
+
+  # Encrypt plaintext
+  iv = crap(data:'\x00', length:16);
+  ret = aes_cbc_cts_encrypt(data: data, key:ke, iv:iv);
+  if(isnull(ret))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"aes-cbc-cts encryption failed!");
+    return NULL;
+  }
+
+  # Derive hmac key
+  ki = krb_dk_aes(basekey:key, outsize:strlen(key), const:keyusage + '\x55');
+
+  # Compute hmac over plaintext
+  hmac = HMAC_SHA1(data:data, key:ki);
+
+  # Append hmac to ciphertext
+  out = ret[0] + substr(hmac, 0, 11);
+
+  return out;
+}
+
+
+##
+# Decrypts data using AES in CBC-CS3 mode with SHA2
+#
+# @param [data:bytes] data to be decrypted
+# @param [key:bytes] base encryption key
+# @param [keyusage:int] key usage number
+# @param [enc_type:int] the encryption type
+# @return [bytes] decrypted data; NULL on error
+# @remark
+#   - See RFC 8009, section 5 for more details
+##
+function krb_aes_decrypt_sha2(data, key, keyusage, enc_type)
+{
+  var ciphertext, hmac, ke_length, ki_length, prf, hmac_func;
+
+  if(enc_type == 19)
+  {
+    ke_length = 16;
+    ki_length = 16;
+    prf = "SHA256";
+    hmac_func = @HMAC_SHA256;
+  }
+  else if(enc_type == 20)
+  {
+    ke_length = 32;
+    ki_length = 24;
+    prf = "SHA384";
+    hmac_func = @HMAC_SHA384;
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+    return NULL;
+  }
+
+  # Check ciphertext length
+  # confounder + data + hmac
+  if(strlen(data) < 16 + 1 + ki_length)
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Data provided is too short.");
+    return NULL;
+  }
+
+  var iv = crap(data:'\x00', length:16);
+
+  # Split data into ciphertext and hmac
+  ciphertext = substr(data, 0, strlen(data) - ki_length - 1);
+  hmac = substr(data, strlen(data) - ki_length);
+
+  # Derive hmac key
+  var ki = krb_dk_hmac_sha2(basekey:key, purpose:keyusage + '\x55', prf:prf, keylength:ki_length);
+
+  # Compute hmac over cipherstate plus ciphertext
+  var our_hmac = hmac_func(data:iv + ciphertext, key:ki);
+
+  # Compare received hmac with computed hmac
+  if(hmac != substr(our_hmac, 0, ki_length - 1))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Validation failure! HMACs do not match.");
+    return NULL;
+  }
+
+  var ke = krb_dk_hmac_sha2(basekey:key, purpose:keyusage + '\xAA', prf:prf, keylength:ke_length);
+
+  # Decrypt ciphertext
+  var ret = aes_cbc_cts_decrypt(data:ciphertext, key:ke, iv:iv);
+  if(isnull(ret))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"aes-cbc-cts decryption failed!");
+    return NULL;
+  }
+
+  # Extract plaintext if hmac check passed
+  var out = substr(ret[0], 16);
+  return out;
+}
+
+
+##
+# Decrypts data using AES
+#
+# @param [data:bytes] data to be decrypted
+# @param [key:bytes] base encryption key
+# @param [keyusage:int] key usage number
+# @return [bytes] decrypted data; NULL on error
+# @remark
+#   - See RFC 3961, section 5.3 for more details
+##
+function krb_aes_decrypt(data, key, keyusage)
+{
+  local_var c1, h1, hmac, iv, ke, ki, out, p1, ret;
+
+  # Check ciphertext length
+  # confounder + data + hmac
+  if(strlen(data) < 16 + 1 + 12) return NULL;
+
+  # Split data into ciphertext and hmac
+  c1 = substr(data, 0, strlen(data) - 13);
+  h1 = substr(data, strlen(data) - 12);
+
+  # Derive decryption key
+  ke = krb_dk_aes(basekey:key, outsize:strlen(key), const:keyusage + '\xAA');
+
+  # Decrypt ciphertext
+  iv = crap(data:'\x00', length:16);
+  ret = aes_cbc_cts_decrypt(data:c1, key:ke, iv:iv);
+  if(isnull(ret)) return NULL;
+  p1 = ret[0];
+
+  # Derive hmac key
+  ki = krb_dk_aes(basekey:key, outsize:strlen(key), const:keyusage + '\x55');
+
+  # Compute hmac
+  hmac = HMAC_SHA1(data:p1, key:ki);
+
+  # Compare received hmac with computed hmac
+  if(h1 != substr(hmac, 0, 11))
+    return NULL;
+
+  # Extract plaintext if hmac check passed
+  out = substr(p1, 16);
+  return out;
+}
+
+##
+# Computes checksum using Kerberos AES profile in CBC-CS3 mode with SHA2
+#
+# @param [data:bytes] data to be decrypted
+# @param [key:bytes] base encryption key
+# @param [keyusage:int] key usage number
+# @param [enc_type:int] the encryption type
+# @return [bytes] decrypted data; NULL on error
+# @remark
+#   - See RFC 8009, section 5 for more details
+##
+function krb_aes_checksum_sha2(data, key, keyusage, enc_type)
+{
+  var prf, kc_length, hmac_func;
+  if(enc_type == 19)
+  {
+    prf = "SHA256";
+    hmac_func = @HMAC_SHA256;
+    kc_length = 16;
+  }
+  else if(enc_type == 20)
+  {
+    prf = "SHA384";
+    hmac_func = @HMAC_SHA384;
+    kc_length = 24;
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+    return NULL;
+  }
+
+  var kc = krb_dk_hmac_sha2(basekey:key, purpose:keyusage + '\x99', prf:prf, keylength:kc_length);
+
+  # Compute chechksum
+  var hmac = hmac_func(data:data, key:kc);
+  return substr(hmac, 0, kc_length - 1);
+}
+
+##
+# Computes checksum using Kerberos AES profile
+#
+# @param [data:bytes] data to be decrypted
+# @param [key:bytes] base encryption key
+# @param [keyusage:int] key usage number
+# @return [bytes] encrypted data; NULL on error
+# @remark
+#   - See RFC 3961, section 5.3 for more details
+##
+function krb_aes_checksum(data, key, keyusage)
+{
+  local_var hmac, kc;
+
+  # Derive key for checksum computation
+  kc = krb_dk_aes(basekey:key, outsize:strlen(key), const:keyusage + '\x99');
+
+  # Compute chechksum
+  hmac = HMAC_SHA1(data:data, key:kc);
+  return substr(hmac, 0, 11);
+}
+
+##
+# Parses a list of PA-DATA objects
+#
+# @param [data:bytes] DER-encoded data representing a SEQUENCE OF PA-DATA
+# @return [list] a list of structures; or NULL on error
+# @remark
+# ```
+# Returned structures take the following form
+#       ret[i]['type']  - padata type
+#       ret[i]['value'] - padata value in raw bytes
+#
+# PA-DATA         ::= SEQUENCE {
+#      -- NOTE: first tag is [1], not [0]
+#      padata-type     [1] Int32,
+#      padata-value    [2] OCTET STRING -- might be encoded AP-REQ
+# }
+# ```
+##
+function krb_parse_padata(data)
+{
+  local_var i, list, padata, seq, ret;
+
+  # padata is SEQUENCE OF PA-DATA
+  list = der_parse_sequence (seq:data,list:TRUE);
+  if(isnull(list)) return NULL;
+
+  for (i = 0; i < list[0]; i++)
+  {
+    seq = der_parse_sequence (seq:list[i + 1],num:3, list:FALSE);
+    if(isnull(seq)) return NULL;
+
+    padata[0]  = der_parse_int(i:seq[1]);
+    padata[1] = der_parse_octet_string(string:seq[2]); # may or may not DER encoded
+    ret[i] = padata;
+  }
+
+  return ret;
+}
+
+##
+# Finds a particular padata type in a list of PA-DATA objects
+#
+# @param [data:bytes] DER-encoded data representing a SEQUENCE OF PA-DATA
+# @param [type:int] target padata type
+# @return [list] first instance of PA-DATA of type ``<type>;`` or NULL if not found or on error
+# @remark
+# ```
+#   ret[0] - padata-type
+#   ret[1] - padata-value
+# ```
+##
+function krb_padata_lookup(data, type)
+{
+  local_var padata;
+
+  # Parse it if padata sequence is raw data
+  if(typeof(data) == 'data')
+    data = krb_parse_padata(data:data);
+
+  if(isnull(data)) return NULL;
+
+  foreach padata (data)
+  {
+    if(padata[0] == type)
+      return padata;
+  }
+  return NULL;
+}
+
+##
+# Parses a ETYPE-INFO2-ENTRY object
+#
+# @param [data:bytes] DER-encoded data representing a ETYPE-INFO2-ENTRY object
+# @return [bytes] parsed ETYPE-INFO2-ENTRY; or NULL on error
+# @remark
+# Returned list has the following structure
+# ```
+#         ret[0] = encryption type ID
+#         ret[1] = optional salt to the string_to_key function for the encryption type
+#         ret[2] = optional s2kparams to the string_to_key function for the encryption type
+#
+# ETYPE-INFO2-ENTRY       ::= SEQUENCE {
+#        etype           [0] Int32,
+#        salt            [1] KerberosString OPTIONAL,
+#        s2kparams       [2] OCTET STRING OPTIONAL
+# }
+# ```
+##
+function krb_parse_etype_info2_entry(data)
+{
+  local_var seq, info;
+
+  seq = der_parse_sequence(seq: data, num: 3, list: FALSE);
+  if(isnull(seq)) return NULL;
+
+  # enc-type
+  if(isnull(seq[0])) return NULL;
+  info[0] = der_parse_int(i: seq[0]);
+
+  # salt, OPTIONAL
+  if(seq[1])
+    info[1] = der_parse_data(tag: 0x1b, data: seq[1]);
+
+  # s2kparams, OPTIONAL
+  if(seq[2])
+    info[2] = der_parse_octet_string(string:seq[0]);
+
+  return info;
+}
+
+##
+# Parses a ETYPE-INFO2 object
+#
+# @param [data:bytes] DER-encoded data representing a ETYPE-INFO2 object
+# @return [list] a list of parsed ETYPE-INFO2-ENTRYs; or NULL on error
+# @remark
+#   - See return value of krb_parse_etype_info2_entry()
+# ```
+# ETYPE-INFO2             ::= SEQUENCE SIZE (1..MAX) OF ETYPE-INFO2-ENTRY
+# ```
+##
+function krb_parse_etype_info2(data)
+{
+  local_var entry, i, list, ret;
+
+  list = der_parse_sequence(seq:data, list: TRUE);
+  if(isnull(list)) return NULL;
+  for(i = 0; i < list[0]; i++)
+  {
+    entry = krb_parse_etype_info2_entry(data: list[i+1]);
+    if(isnull(entry)) return NULL;
+    ret[i] = entry;
+  }
+  return ret;
+}
+
+##
+# Gets encryption types from a list of PA-DATA objects
+#
+# @param [data:bytes] DER-encoded data representing a SEQUENCE OF PA-DATA
+# @return [list] see krb_parse_etype_info2()
+#
+##
+function krb_get_enctypes_from_padata(data)
+{
+  local_var etype_info2;
+
+  etype_info2 = krb_padata_lookup(data:data, type: 19);
+  if(isnull(etype_info2)) return NULL;
+
+  return krb_parse_etype_info2(data:etype_info2[1]);
+}
+
+##
+# Encodes a principal name
+#
+# @param [type:int] name type
+# @param [name:string] name string in form of component_1/component_2/component_n or a list of components
+# @return [bytes] DER-encoded principal
+#
+##
+function krb_encode_principal (type, name)
+{
+ local_var i, list, names;
+
+ if (isnull (name))
+   return NULL;
+
+ # name in 'component1/component2...'
+ if(typeof(name) == 'data' || typeof(name) == 'string')
+ {
+   # single component
+   if ('/' >!< name) list[0] = name;
+   # multiple components
+   else
+    list = split(name, sep:'/', keep:FALSE);
+ }
+
+ names = NULL;
+ for (i = 0; i < max_index(list); i++)
+ {
+  names += der_encode_string (string:list[i]);
+ }
+
+ list = NULL;
+ list[0] = der_encode_int (i:type);
+ list[1] = der_encode_list (list:names);
+
+ return der_encode_sequence (seq:list);
+}
+
+##
+# Parses a Kerberos principal
+#
+# @param [data:bytes] DER-encoded PrincipalName
+# @param [concat:boolean] whether concatenate components in the name-string part of the PrincipalName
+# @return [list] a list or NULL on error
+# @remark
+# Structure of the returned list:
+# ```
+#   ret[0] - type of the principal name
+#   ret[1] - if concat is non-zero, it holds the name in form of 'component_1/component_2/.../component_n'
+#          - if concat is zero, it holds a list of components in the name
+#
+# PrincipalName is defined as:
+#   PrincipalName   ::= SEQUENCE {
+#           name-type       [0] Int32,
+#           name-string     [1] SEQUENCE OF KerberosString
+#   }
+# ```
+##
+function krb_parse_principal_name(data, concat)
+{
+  local_var i, comp, comp_list, fname, list, seq, ret, type;
+
+  seq = der_parse_sequence(seq:data, num:2, list:FALSE);
+  if(isnull(seq) || isnull(seq[0]) || isnull(seq[1]))
+    return NULL;
+
+  if(isnull(concat)) concat = TRUE;
+  # name type
+  type = seq[0];
+
+  # name string; SEQUENCE OF KerberosString
+  list = der_parse_sequence(seq:seq[1], list: TRUE);
+  if(isnull(list)) return NULL;
+
+  # process each component in the name
+  fname = NULL;
+  for(i = 0; i < list[0]; i++)
+  {
+    comp = der_parse_data(tag:0x1b, data: list[i + 1]);
+    if(isnull(comp))  return NULL;
+    if(concat)
+    {
+      if(i) fname += '/';
+      fname += comp;
+    }
+    else
+    {
+      comp_list[i] = comp;
+    }
+  }
+
+  ret[0] = type;
+  if(concat)  ret[1] = fname;
+  else        ret[1] = comp_list;
+
+  return ret;
+}
+
+##
+# Converts user password to key
+#
+# @param [enc_type:int] encryption type
+# @param [password:string] user password
+# @param [salt:bytes] salt used to derive key
+# @param [s2kparams:bytes] additional parameters used to derive key
+# @return [bytes] key or NULL on error
+# @remark salt and s2kparams are only applicable to enc_types that require them
+#
+##
+function krb_string_to_key(enc_type, password, salt, s2kparams)
+{
+  local_var i,keysize, pass;
+
+  # aes128-cts-hmac-sha256-128
+  if(enc_type == 19)
+    return krb_string_to_key_sha2(password:password, salt:salt, iter:s2kparams, keysize:16, prf:"SHA256");
+  # aes256-cts-hmac-sha384-192
+  else if(enc_type == 20)
+    return krb_string_to_key_sha2(password:password, salt:salt, iter:s2kparams, keysize:32, prf:"SHA384");
+
+  # rc4-hmac5
+  else if(enc_type == 23)
+  {
+    pass = NULL; for(i = 0; i < strlen(password); i++) pass += password[i] + '\x00';
+    return  rc4_hmac_string_to_key (string:pass);
+  }
+  # aes256-cts-hmac-sha1-96
+  else if (enc_type == 18)
+     return krb_string_to_key_aes(password:password, salt:salt, iter:s2kparams, keysize:32);
+  # aes128-cts-hmac-sha1-96
+  else if(enc_type == 17)
+     return krb_string_to_key_aes(password:password, salt:salt, iter:s2kparams, keysize:16);
+  # des-cbc-md5
+  else if (enc_type == 3)
+     return des_cbc_string_to_key (_string:password, salt:salt);
+
+  # Unsupported encryptions types
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unsupported encryption type: " + serialize(enc_type));
+  return NULL;
+}
+
+##
+# Gets a service ticket for principal ``'host/<host>'``
+#
+# @param [login:string] user login
+# @param [password:string] user password
+# @param [realm:string] kerberos realm
+# @param [sname:string] target service principal; can be in form 'component1/component2 ...' or a list of components
+# @return [list] a session credential or NULL on error
+# @remark Structure of the returned session credential
+# @remark
+# ```
+#   ret[0] = der-encoded service ticket
+#   ret[1] = session key to be used with the ticket
+#   ret[2] = der-encoded client realm
+#   ret[3] = der-encoded client name
+#   ret[4] = encryption type the session key is meant to be used with
+#   ret[5] = ticket expiration time
+#   ret[6] = der-encoded padata; can be NULL
+# ```
+##
+function krb_get_ticket(login, password, realm, sname, type)
+{
+  local_var enc_type, i, kdc_tcp, req, resp, session, soc2, supported, ret;
+  local_var key, request, padata, pa_enc, pa_pac, salt, s2kparams;
+  local_var kdc_enc, kdc_enctypes, match, tgs_session, reqbytes;
+
+  #
+  #  AS exchange
+  #
+  # Start AS-REQ without preauth padata
+  request = der_encode_request (req:raw_string (0xFF));
+  pa_pac = der_encode_padata (type:128, value:request);
+  padata =  pa_pac;
+  req = der_encode_asreq(principal:login, realm:realm, padata:padata);
+  session = NULL;
+  i = 0;
+  while(! session)
+  {
+    # Too many AS-REQ send
+    if (i++ > 10)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Too many AS-REQ send attempts");
+      return NULL;
+    }
+
+    # Open connection with KDC
+    soc2 = get_kdc_socket(type:type);
+    if (! soc2)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Failed to get KDC socket");
+      return NULL;
+    }
+
+    # Send AS-REQ
+    if(!req)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Failed to encode AS-REQ");
+      return NULL;
+    }
+
+    kdc_tcp = get_kb_item("Kerberos/" + type + "/kdc_use_tcp");
+    if(kdc_tcp) reqbytes = raw_dword(d:strlen(req) & 0x7fffffff, be: TRUE) + req;
+    else reqbytes = req;
+
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Sending AS-REQ");
+    send (socket:soc2, data:reqbytes);
+
+    # Check response, (48 * 1024), Microsoft recommends 48,000 and used to recommend 65536 thus 48K is used.
+    resp = recv_kdc(soc:soc2, use_tcp:kdc_tcp);
+    close (soc2);
+    if (!resp)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"The KDC did not return an AS-REP");
+      return NULL;
+    }
+    session = der_decode_asrep(password:password, data:resp);
+
+    # Got AS-REP
+    if(session) break;
+
+    # Got KRB-ERROR
+    ret = der_decode_krberror(data: resp);
+    if(isnull(ret))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME,
+                        msg:"Received a KRB-ERROR from the KDC, but we cannot decode it.",
+                        msg_details:{
+                          "Data":{"lvl":3, "value":resp}
+                        });
+      return NULL;
+    }
+
+    # Handle KDC_ERR_PREAUTH_REQUIRED
+    if (ret[0] == 25)
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"KDC pre-auth required.");
+
+      # Check if enc-timestamp pre-auth is supported
+      if (isnull(krb_padata_lookup(data: ret[2], type: 2)))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Error: enc-timestamp pre-auth not supported.");
+        return NULL;
+      }
+
+      # If so, get KDC supported enctypes
+      kdc_enctypes = krb_get_enctypes_from_padata(data:ret[2]);
+      if(isnull(kdc_enctypes))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Error: KDC did not return supported encryption types.");
+        return NULL;
+      }
+
+      # Find a KDC enctype we also support
+      match = FALSE;
+      foreach kdc_enc(kdc_enctypes)
+      {
+        if(supported_encryption_type(type: kdc_enc[0]))
+        {
+          match = TRUE;
+          break;
+        }
+      }
+
+      # No matching enctype
+      if(! match)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Error: Nessus supports none of the encryption types offered by the KDC.");
+        return NULL;
+      }
+
+      # Get enctype, and the optional salt and s2kparams associated with the enctype
+      enc_type  = kdc_enc[0];
+      salt      = kdc_enc[1];
+      s2kparams = kdc_enc[2];
+
+      # Convert password to key
+      if(isnull(salt)) salt = realm + login; # no salt = default salt
+      key = krb_string_to_key(enc_type: enc_type, password: password, salt: salt,  s2kparams: s2kparams);
+
+      # Encrypt timestamp
+      pa_enc = der_encode_paenc (time:kerberostime());
+      pa_enc = der_encode_crypt (data:pa_enc, key:key, type:1, enc_type:enc_type);
+      pa_enc = der_encode_padata (type:2, value:pa_enc);
+
+      # Send AS-REQ with pre-auth
+      padata =  pa_enc + pa_pac;
+      req = der_encode_asreq (principal:login, realm:realm,padata: padata);
+      continue;
+    }
+    # Handle KRB_ERR_RESPONSE_TOO_BIG; retry with TCP
+    else if (ret[0] ==  52)
+    {
+      if(! kdc_tcp)
+      {
+        kdc_tcp = TRUE;
+        replace_kb_item(name:"Kerberos/" + type + "/kdc_use_tcp", value: TRUE);
+        continue;
+      }
+    }
+    # Unhandled error
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Error: Unknown KDC error in response to AS-REQ: " + ret[0]);
+      return NULL;
+    }
+  }
+
+  if(isnull(session))
+  {
+     dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Error: Failed to get a session.");
+    return NULL;
+  }
+
+  #
+  # TGS exchange
+  #
+  tgs_session = NULL;
+  req = der_encode_tgsreq (session:session,name:sname);
+  i = 0;
+  while(! tgs_session)
+  {
+    # Too many TGS-REQ send
+    if (i++ > 10)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Too many TGS-REQ send attempts");
+      return NULL;
+    }
+
+    # Connect to KDC
+    soc2 = get_kdc_socket(type:type);
+    if (! soc2)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Failed to get KDC socket");
+      return NULL;
+    }
+
+    # Send TGS-REQ
+    if(! req)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Failed to encode TGS-REQ");
+      return NULL;
+    }
+
+    if(kdc_tcp) reqbytes = raw_dword(d:strlen(req) & 0x7fffffff, be: TRUE) + req;
+    else reqbytes = req;
+
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Sending TGS-REQ");
+    send (socket:soc2, data:reqbytes);
+
+    # Check response, (48 * 1024), Microsoft recommends 48,000 and used to recommend 65536 thus 48K is used.
+    resp = recv_kdc(soc:soc2, use_tcp:kdc_tcp);
+    close (soc2);
+    if (!resp)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"The KDC did not return an TGS-REP");
+      return NULL;
+    }
+
+    tgs_session = der_decode_tgsrep(session:session, data:resp);
+
+    # Got TGS-REP
+    if(tgs_session) break;
+
+    # Got KBR-ERROR
+    ret = der_decode_krberror(data: resp);
+    if(isnull(ret))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME,
+                        msg:"Received a KRB-ERROR from the KDC, but we cannot decode it.",
+                        msg_details:{
+                          "Data":{"lvl":3, "value":resp}
+                        });
+      return NULL;
+    }
+
+    # Handle KRB_ERR_RESPONSE_TOO_BIG/KRB_ERR_FIELD_TOOLONG
+    # Also seen MS-Kerberos returns KRB_ERR_FIELD_TOOLONG on if TGS-REQ UDP is larger than MaxDatagramReplySize
+    if(ret[0] == 52 || ret[0] == 61)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Received a KRB_ERR_RESPONSE_TOO_BIG/KRB_ERR_FIELD_TOOLONG error.");
+      if(! kdc_tcp)
+      {
+        kdc_tcp = TRUE;
+        replace_kb_item(name:"Kerberos/" + type + "/kdc_use_tcp", value: TRUE);
+        continue;
+      }
+    }
+    # Unhandled error
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Error: Unknown KDC error in response to TGS-REQ: " + ret[0]);
+      return NULL;
+    }
+  }
+
+  dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"Returning ticket.");
+  return tgs_session;
+}
+
+# minimizing warnings on scanners < 6.x
+global_var _SKTEX_KDC, _SKTEX_TCP, _SKTEX_UDP, _SKTEX_SSH, _SKTEX_SMB;
+
+_SKTEX_KDC = 0x01;
+_SKTEX_TCP = 0x04;
+_SKTEX_UDP = 0x08;
+_SKTEX_SSH = 0x20;
+_SKTEX_SMB = 0x40;
+
+##
+# Opens a socket to the KDC
+#
+# @param [type:int] Flag indicating whether to open a UDP or TCP socket
+# @return [int] Returns the opened socket
+##
+function get_kdc_socket(type)
+{
+  local_var valid_types, socket, flags, use_tcp;
+  valid_types = make_array(
+    "SSH", _SKTEX_KDC | _SKTEX_SSH,
+    "SMB", _SKTEX_KDC | _SKTEX_SMB
+  );
+
+  if (!defined_func("open_sock_ex") || isnull(type) || !valid_types[type])
+    socket = open_sock_kdc();
+  else
+  {
+    use_tcp = get_kb_item("Kerberos/" + type + "/kdc_use_tcp");
+    if (use_tcp)
+      flags = _SKTEX_TCP;
+    else
+      flags = _SKTEX_UDP;
+
+    flags = flags | valid_types[type];
+    socket = open_sock_ex(flags:flags);
+  }
+
+  return socket;
+}
+
+##
+# Receives a Kerberos message from the KDC.  For TCP
+# connections this function will read the number of bytes
+# indicated by a record mark header.  UDP is handled by
+# reading the maximum number of bytes in a Microsoft Kerberos
+# packet.
+#
+# @param [soc:int]      The KDC Socket
+# @param [use_tcp:bool] TRUE for TCP, FALSE for UDP
+#
+# @return [bytes] Returns bytes read from the KDC or NULL if there is
+#         an error, or no data.
+##
+function recv_kdc(soc, use_tcp)
+{
+  var msg_len, rec_mark;
+
+  if(use_tcp)
+  {
+    rec_mark = recv(socket:soc, length:4);
+
+    #This is a failure if the record mark is not present with TCP
+    if(strlen(rec_mark) < 4)
+      return NULL;
+
+    msg_len = getdword(blob:rec_mark, order:BYTE_ORDER_BIG_ENDIAN, pos:0) & 0x7fffffff;
+    return recv(socket:soc, length:msg_len);
+  }
+  else # UDP
+  {
+    # Check response, (48 * 1024), Microsoft recommends 48,000 and used to recommend 65536 thus 48K is used.
+    return recv (socket:soc, length:49152);
+  }
+
+  return NULL;
+}
+

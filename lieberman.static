@@ -1,0 +1,458 @@
+#TRUSTED 02bcf2c65437eff16689564bda35f75f0d1bbee8e10473a2a9a0345ecd23586f99b73b38d6c58e536a1a01e5522671c95173060e240f85d6b34e9b4d8661a5a9756200474c7792a7772f0345fdc3b4650ba4149687cf375a857aee336dddeb4ed8f262b82a5c4f0fd32f01502c2703d45ae8b4fd38484dec974442f8bce20e29bc9b68d36aaa22b67b38259c9413da00ab902b29c0c4ac13db3dafb1674a05bbe729a33a843f791d74745906628523277466c5db9c44967abc8bc6499d03e60a2d8a3887a8920bee93eb883ce0a6f85028a7e2c683c73bb994e9c3ffa4b95abf8fb253bf4b9f50f66cab4cf400f39c412ed9eb4d652e927a91624cde19cd26476fc90019301ab3ffc3114c873daec7af2ac67b9606e54e927185603848174a3b8e03046df2d7f6e303f1162801f39438f7249c1da29c0068e8f84a27d1c0d16a56751d7612fe0dc8776f303c8b88e19c316e6e589c6d476667b2600c98b468304057c05ea02f4c1f329b950743ad8d37b5b44555d4a3cf0a1816f4aaee74887a021299f3e335cb28df0b7cefe47b01fd78f3afd8fa95559ac8c1a7cdec5d9cb00c0d1b385da9ea99f0914e9d2633e54b564bd1b75bb238d841b7da2d81f3c34c4ae39f564c0c766c79aa8408b24fa834833e940c3dd10f00ab793f0ece0e4be87848c07df8bd6dccc523bbf86f646aa14b78e1df17653a8c72da881bff408808
+#TRUST-RSA-SHA256 a44b507bb9823958a2f9a7f4374112bf81c3f32fdd361682c692c2cb576f4fa4bd07a5bb2b2e9fd8079844f68ec64fefdbe09c30528cb8a1a941dd197c741dcae1e7ba26203262eae165479adbdcac533f7492048d3be588d415cf5676c182fadc79c8d449e4fde3245c7bda33386883196430e33974d57bacdd58d98d72da0d7c60ceebc5dcd93877df99c2fc8582fc427c351c1e41b44bafc17930da42cc880caf5f5eaefd69f099045d9a0c21310eeec83c5ec681367ccc4ccb003f29641c1c39b52eacbdec50173735e54c276ca6ceedfc0cb4480cad9d31894a2c2129354b856d61b7b1efe43d79edb9fbd51f1ff5a3d62429b8515eeb9560377a46b5518aaa4e330c6ffef652356e5361b7b96d6fdf13b5c8438ae2e95a4b8c5dad6ca985556378be6b3ceed6564c6208065d0cdba7c123e9ab84245813a942ea5eef016b5267d19826960b150ade8d59a25d24394c2ed2929c5b86d5f2dfa60dadbd2c53abb0ead5cdbcca4132d1d8ca65e7939c48b77ce3b77e529022010bd8e593b82c1784dfc6d3861fc98a040bafcdefa8399373f50b0dc29bba70f2faa7dc4ace60ba3e46d7d02767f2af5207f1b4b9cf4d66bd8b8a90b39ec75f31393166e9b6367a5e83ba72e99ac8e641cd1155d0dabb976f829a381d47c006fa33c82a172fc511f61266f3eca516fbe62c8637565ab4616cf20fe6e5c4e13943aa11110a7d
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.9
+###
+
+global_var LIEBERMAN_PREFIX = "ERPMWebService/JSON/V2/AuthService.svc/"; #Keep as default if nothing specified.
+
+##
+# Log a debug message
+# @param [msg:string] the message to log
+# @param [lvl:integer] The debug level to be passed to detailed_log() (optional, defaults to 3)
+##
+function lieberman_debug_message(msg, lvl)
+{
+  if (empty_or_null(lvl))
+    lvl = 3;
+
+  msg = ereg_replace(icase: TRUE, pattern: '("password"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"', replace: '\\1"***""', string: msg);
+  dbg::detailed_log(
+    name: SCRIPT_NAME + "~Lieberman",
+    lvl: lvl,
+    src: FUNCTION_NAME,
+    msg: msg);
+}
+
+##
+# Report an error with Nessus' error reporting function and
+# exit
+# @param [msg:string] the message to log
+##
+function lieberman_fatal_error(msg) {
+  dbg::detailed_log(
+    lvl: 1,
+    src: SCRIPT_NAME + ": " + "~Lieberman",
+    msg: msg);
+  return NULL;
+}
+
+##
+# Make a Lieberman RED API Call
+# @param [command:string] The API call to make, e.g. "QueryTargetInfo_SystemName"
+# @param [config:array] A config object as returned by _lieberman_login
+# @param [data:string] JSON body for the request
+# @return [array] an object with {header: http header, success: TRUE | FALSE, body: the json response}
+##
+function _lieberman_api_call(command, config, cert, key, password, data) {
+
+  local_var parsed_host, body, res, header;
+
+  parsed_host = pam_parse_url(url:config['host']);
+  if (empty_or_null(cert)){
+    res =  http_send_recv3(
+      target       : parsed_host.target,
+      method       : "POST",
+      item         : parsed_host['directory'] + config['url'] + command,
+      port         : config["port"],
+      data         : json_write(path_store(data)),
+      add_headers  : {"Content-Type": "application/json"},
+      transport    : ssl_transport(ssl:config.force_ssl || parsed_host.ssl, verify:config.ssl_verify),
+      exit_on_fail : FALSE
+    );
+
+    lieberman_debug_message(lvl:3, msg:'\nREQUEST:' +
+      '\nHOST: ' + config["host"] +
+      '\nPOST: ' + config['url'] + command +
+      '\nDATA: ' + json_write(path_store(data)) + '\n');
+  } else {
+    res =  http_send_recv3(
+      target       : parsed_host.target,
+      method       : "POST",
+      item         : parsed_host['directory'] + config['url'] + command,
+      port         : config["port"],
+      data         : json_write(path_store(data)),
+      add_headers  : {"Content-Type": "application/json"},
+      transport    : ssl_transport(ssl:config.force_ssl || parsed_host.ssl, verify:config.ssl_verify),
+      client_cert  : cert,
+      client_private_key : key,
+      client_private_key_password : password,
+      exit_on_fail : FALSE
+    );
+
+    lieberman_debug_message(lvl:3, msg:'\nREQUEST:' +
+      '\nHOST: ' + config["host"] +
+      '\nPOST: ' + config['url'] + command +
+      '\nDATA: ' + json_write(path_store(data)) +
+      '\nCERT: ' + cert +
+      '\nKEY: ' + key + 
+      '\nPASSWORD: ' + password + '\n');
+  }
+
+  if (isnull(res)) {
+    return {success: FALSE};
+  }
+
+  lieberman_debug_message(lvl:3, msg:'\nRESPONSE:' +
+    '\nCommand: ' + command + '\n' +
+    res[0] + '\n' +
+    res[1] + '\n' +
+    res[2] + '\n');
+  
+  header = pam_parse_header(header: res[0]);
+
+  if (header['code'] == 200)
+  {
+    body = json_read(res[2]);
+    body = body[0];
+  }
+  else
+  {
+    return {success: FALSE};
+  }
+
+  return {header: header, success: TRUE, body: body};
+}
+
+##
+# Reverse lookup a "System Name" from an IP address
+# @param [config:array] A config object as returned by _lieberman_login
+# @param [system_name:string] the IP to lookup, named poorly to follow the API convention
+# @param [name_type:string] unknown magic supplied by lieberman support, I think IP : name_type = 3
+# @return [array] an object with {header: http header, success: TRUE | FALSE, body: the json response}
+##
+function _lieberman_get_system_name(config, system_name, name_type) {
+  local_var result = _lieberman_api_call(command: "QueryTargetInfo_SystemName", config: config, data: {
+    "AuthenticationToken": config["authentication_token"],
+    "SystemName": system_name,
+    "NameType": name_type,
+  });
+
+  if (! result.success) {
+    return result;
+  }
+
+  result.success = result.header.code == 200;
+
+  return result;
+}
+
+##
+# Reverse lookup a "System Name" from an IP address
+# @param [config:array] A config object as returned by _lieberman_login
+# @param [system_name:string] the IP to lookup, named poorly to follow the API convention
+# @param [name_type:string] unknown magic supplied by lieberman support, I think IP : name_type = 3
+# @return [array] an object with {header: http header, success: TRUE | FALSE, body: the json response}
+# @ramark note that the json response will have body.Password = the password
+##
+function _lieberman_get_credential(config, account_name, target_name, type, cert, key, key_password) {
+  local_var result, cred;
+  cred = get_global_kb_item("Secret/lieberman/global/"+account_name+"/"+target_name+"/credentials");
+  if (!isnull(cred)){
+    result.success = TRUE;
+    result.body.Password = cred;
+    return result;
+  }
+  result = _lieberman_api_call(command: "AccountStoreOps_StoredCredential_GetIgnoreCheckout", config: config,cert:cert, key:key, password:key_password, data: {
+    "AuthenticationToken":config["authentication_token"],
+    "AccountIdentificationInfo":{
+      "AccountName":account_name,
+      "AccountStore":{
+        "TargetName":target_name,
+        "Type":type
+      }
+    }
+  });
+  if (! result.success) {
+    return result;
+  }
+  local_var password = result.body.Password;
+  set_global_kb_item(name:"Secret/lieberman/global/"+account_name+"/"+target_name+"/credentials", value:password);
+  return result;
+}
+
+##
+# Login to Lieberman API and get a AuthToken
+# @param [host:string] lieberman host to connect to
+# @param [port:int] port on lieberman host
+# @param [ssl:bool] use ssl?
+# @param [ssl_verify:bool] verify ssl?
+# @param [pam_user:string] username on lieberman server with API access
+# @param [pam_password:string] password on lieberman server with API access
+# @return a config object used for other API calls
+##
+function _lieberman_login(host, port, url, ssl, ssl_verify, pam_user, pam_password, pam_authenticator, lieberman_client_cert, lieberman_private_key, lieberman_private_key_password) {
+  local_var success_bool, config = {
+    host: host,
+    port: port,
+    url: url,
+    force_ssl: ssl,
+    ssl_verify: ssl_verify
+  };
+
+  lieberman_debug_message(lvl:3, msg:
+    'Lieberman Settings ~' +
+    '\nPAM_USERNAME : ' + pam_user +
+    '\nCERT : ' + lieberman_client_cert +
+    '\nHOST : ' + config.host +
+    '\nPAM_PORT : ' + config.port +
+    '\nAPI URL : ' + config.url +
+    '\nPAM_FORCE_SSL : ' + config.force_ssl +
+    '\nPAM_SSL_VERIFY : ' + config.ssl_verify
+  );
+
+  local_var result;
+
+  if (!isnull(lieberman_client_cert) || !isnull(lieberman_private_key))
+  {
+    lieberman_debug_message(lvl:2, msg:"Sending certificate based login request");
+    result = _lieberman_api_call(config: config, cert: lieberman_client_cert, key: lieberman_private_key, password: lieberman_private_key_password, command: "DoLogin", data: {
+      "LoginType":4
+    });
+
+  }
+  else
+  {
+    if(!empty_or_null(pam_authenticator)){
+      lieberman_debug_message(lvl:2, msg:"Sending fully qualified login request");
+      result = _lieberman_api_call(config: config, command: "DoLogin", data: {
+        "Authenticator":pam_authenticator,"Username":pam_user,"Password":pam_password,"LoginType":2
+      });
+
+    } else {
+      lieberman_debug_message(lvl:2, msg:"Sending standard login request");
+      result = _lieberman_api_call(config: config, command: "DoLogin", data: {
+        "Username":pam_user,"Password":pam_password,"LoginType":1
+      });
+    }
+  }
+  
+  if (! result.success) {
+    lieberman_debug_message(lvl:1, msg:"Login request failed");
+    return result;
+  }
+
+  config["authentication_token"] = result["body"];
+
+  success_bool = result.header.code == 200;
+  return {header: result["header"], config: config, success: success_bool};
+}
+
+# Lieberman's Enum for various kinds of credentials
+global_var LIEBERMAN_TYPES = {
+  "Unknown": 0,
+  "OS_Windows": 1,
+  "OS_UnixAndCompat": 2,
+  "OS_AS400": 3,
+  "OS_OS390": 4,
+  "CommType_TN3270": 5,
+  "BMC_IPMI_Generic": 6,
+  "BMC_DRAC": 7,
+  "Router_Cisco": 8,
+  "DB_SQLServer": 9,
+  "DB_Oracle": 10,
+  "DB_Sybase": 11,
+  "DB_MySql": 12,
+  "DB_DB2": 13,
+  "Directory_OracleInternetDirectory": 14,
+  "Directory_Novell_eDirectory": 15,
+  "Directory_IBM_Tivoli": 16,
+  "Directory_ViewDS": 17,
+  "Custom": 18,
+  "PasswordList": 19,
+  "DB_PostgreSQL": 20,
+  "DB_Teradata": 21,
+  "OS_XeroxPhaser": 22,
+  "External": 23,
+};
+
+LIEBERMAN_TYPES.PostgreSQL = LIEBERMAN_TYPES.DB_PostgreSQL;
+LIEBERMAN_TYPES.DB2 = LIEBERMAN_TYPES.DB_DB2;
+LIEBERMAN_TYPES.MySQL = LIEBERMAN_TYPES.DB_MySql;
+LIEBERMAN_TYPES["SQL Server"] = LIEBERMAN_TYPES.DB_SQLServer;
+LIEBERMAN_TYPES.Oracle = LIEBERMAN_TYPES.DB_Oracle;
+
+##
+# Get the password by querying the Lieberman API
+# @param [login:string] login of the credentials to retrieve
+# @param [domain:string] domain of the credentials to retrieve
+# @param [type:string] kind of credential to lookup, can be anything in LIEBERMAN_TYPES
+# @param [prefix:string] prefix to use when getting script preferences
+# @param [postfix:string] postfix to use when getting script preferences
+# @return [array] The gathered credentials and success status
+##
+function lieberman_get_password(login, domain, type, prefix, postfix)
+{
+  http_disable_keep_alive();
+
+  local_var host, port, url, pam_user, pam_password, pam_authenticator,use_ssl, ssl_verify, password, locked;
+  local_var login_result, credential, lieberman_type, target_name, result, cred;
+  local_var lieberman_client_cert, lieberman_private_key, lieberman_private_key_password, tmp_file;
+  local_var sid = script_get_preference(prefix+"SID"+postfix);
+
+  locked = FALSE;
+
+  prefix = prefix + "Lieberman ";
+
+  host = script_get_preference(prefix+"Host"+postfix);
+  port = script_get_preference(prefix+"Port"+postfix);
+  url = script_get_preference(prefix+"API URL"+postfix);
+  pam_user = script_get_preference(prefix+"User"+postfix);
+  pam_password = script_get_preference(prefix+"Password"+postfix);
+  pam_authenticator = script_get_preference(prefix+"Authenticator"+postfix);
+  use_ssl = pam_from_boolean(script_get_preference(prefix+"SSL"+postfix));
+  ssl_verify = pam_from_boolean(script_get_preference(prefix+"Verify SSL Certificate"+postfix));
+  target_name = script_get_preference(prefix+"System Name"+postfix);
+  lieberman_type = LIEBERMAN_TYPES[type];
+
+  http_set_read_timeout(20);
+
+  if(!empty_or_null(url))
+  {
+    LIEBERMAN_PREFIX = url;
+  }
+  
+  if (domain) {
+    login = domain + '\\' + login;
+  }
+
+  if (!empty_or_null(target_name))
+  {
+    cred = get_global_kb_item("Secret/lieberman/global/"+login+"/"+target_name+"/credentials");
+
+    if (isnull(cred)){
+      mutex_lock(SCRIPT_NAME); #locking with ssh_settings.nasl or logins.nasl in order to keep multiple targets from stepping on each other.
+      locked = TRUE;
+      cred = get_global_kb_item("Secret/lieberman/global/"+login+"/"+target_name+"/credentials");
+    }
+
+    if (!isnull(cred)){
+      result.success = TRUE;
+      result.body.Password = cred;
+      lieberman_debug_message(lvl:2, msg:"Returning CACHED credential for Target:"+target_name+" Account:"+login);
+      if (locked)
+      {
+        mutex_unlock(SCRIPT_NAME);
+      }
+      return result;
+    }
+  }
+  
+  if(!isnull(script_get_preference(prefix+"client certificate to use"+postfix)))
+  {
+    lieberman_client_cert = script_get_preference_file_location(prefix+"client certificate to use"+postfix);
+    lieberman_private_key = script_get_preference_file_location(prefix+"private key to use"+postfix);
+    lieberman_private_key_password = script_get_preference(prefix+"Passphrase for private key"+postfix);
+    if(isnull(lieberman_private_key_password))
+    {
+      lieberman_private_key_password = "";
+    }
+
+    # The Raw cert uploads need to be processed. ref: global_settings.nasl
+    if (file_stat(lieberman_client_cert))
+    {
+      tmp_file = fread(lieberman_client_cert);
+      unlink(lieberman_client_cert);
+      fwrite(data:tmp_file, file:lieberman_client_cert);
+    }
+
+    if (file_stat(lieberman_private_key))
+    {
+      tmp_file = fread(lieberman_private_key);
+      unlink(lieberman_private_key);
+      fwrite(data:tmp_file, file:lieberman_private_key);
+    }
+  }
+
+  login_result = _lieberman_login(
+    host: host,
+    port: port,
+    url: LIEBERMAN_PREFIX,
+    ssl: use_ssl,
+    ssl_verify: ssl_verify,
+    pam_user: pam_user,
+    pam_password: pam_password,
+    pam_authenticator: pam_authenticator,
+    lieberman_client_cert: lieberman_client_cert,
+    lieberman_private_key: lieberman_private_key,
+    lieberman_private_key_password: lieberman_private_key_password
+  );
+
+  if (!login_result.success) {
+    if (locked)
+    {
+      mutex_unlock(SCRIPT_NAME);
+    }
+    return lieberman_fatal_error(msg: "Failed to login to lieberman server");
+  }
+
+  if (!strlen(target_name) > 0)
+  {
+    target_name = _lieberman_get_system_name(config: login_result.config, system_name: get_host_ip(), name_type: 3);
+
+    if (!target_name.success)
+    {
+      lieberman_debug_message(lvl:2, msg: "Lookup system name unsuccessful reverting to ip lookup");
+      target_name = get_host_ip();
+    }
+    else
+    {
+      target_name = target_name.body;
+    }
+  }
+
+  if (lieberman_type == LIEBERMAN_TYPES.DB_SQLServer) {
+    target_name = target_name + '\\' + sid;
+  }
+  if (lieberman_type == LIEBERMAN_TYPES.DB_Oracle) {
+    target_name = target_name + '\\' + sid;
+  }
+  if (lieberman_type == LIEBERMAN_TYPES.DB_Sybase) {
+    target_name = target_name + '\\';
+  }
+  if (lieberman_type == LIEBERMAN_TYPES.DB_MySql) {
+    target_name = target_name + '\\';
+  }
+  if (lieberman_type == LIEBERMAN_TYPES.DB_DB2) {
+    target_name = target_name + '\\';
+  }
+  if (lieberman_type == LIEBERMAN_TYPES.DB_PostgreSQL) {
+    target_name = target_name + '\\';
+  }
+  if (lieberman_type == LIEBERMAN_TYPES.DB_Teradata) {
+    target_name = target_name + '\\';
+  }
+
+  credential = _lieberman_get_credential(
+    config:login_result.config,
+    account_name: login,
+    target_name: target_name,
+    type: lieberman_type,
+    cert: lieberman_client_cert,
+    key: lieberman_private_key,
+    key_password: lieberman_private_key_password
+  );
+
+  if (!credential.success) {
+    if (locked)
+    {
+      mutex_unlock(SCRIPT_NAME);
+    }
+    return lieberman_fatal_error(msg: "failed to get credential");
+  }
+  
+  lieberman_debug_message(lvl:2, msg:"Returning credential for Target:"+target_name+" Account:"+login);
+  if (locked)
+  {
+    mutex_unlock(SCRIPT_NAME);
+  }
+  return credential;
+}

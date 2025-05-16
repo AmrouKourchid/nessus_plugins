@@ -1,0 +1,2753 @@
+#TRUSTED 622ea50e6cf22a131d3b75f72ca75bd510d94db0e47db02506bdb307b6f23cc810165bfc4360c4166f2c1d4954f56394c1ada86e846567151ef321a48332e8b28497d65817f8ca0782b706138a6c66be906708a7b901b21c0012db625f3519ed170c9cd16a061d554beed7d78c1b3a00c57ffd02acaa65ffb0507c7d2101f3c8747a6f53f0570b4d6743b0e207a5037d1a7cac528f02b72cbb3f760359773e1cb18e1f6b9e0d380629147a2e5b4d11be650657da6383beaf405dca20ff5aca99ead76ce6268a39825cad94625a318754cb59db63289e1365c121727fe51de657387d98f8d67f8775b98d4c1d06afec8f522302234c2e8d03d6e879b166b13d4d39c027bbd76aebbeb93723c206fefaaba37994cf9210fc1d24e09c835dd7b48a6afeae47db3c5489182be6f0ad0b6d394b4c0676ff8bb3032f8bd8492ec17690f7aa501593f94a834f3d6bf7b688ab8d189cd51bb1a18654b2fe56a42cc489436925829790ad4b24c23cb382e5c9656bb47d99f0aeeccdee79029cad0977273997834e9cf6c4d3b78dfc09adadf7668a67f9820d7b5ff9ec836e75b1be949d8b0d8da6472d84e4e390286a92a825b1d7466cd1750afbea1613fcad31fac75e843fb8b1e348aa976dc73cfeb495b76c0d095617a4d6d27421f51c2fa8c7846ab9ed5bda19c49b4203cbe1bd72b3dba1c9590391dbcbd7cbdc7558876fe2155781
+#TRUST-RSA-SHA256 077b69d5a492ab8ec180c6d8d0ecf6a11048ea31b6847cfc3e2c3e928fc47cdd1248a823a47f60100d57c3d7be56e8b52b970304fe9b6b8875f9d1ccbae2e596c560827a1bba573ba2727c24e72e25fae325e72b4429dec69155fef888d7e5f64f9a9977be547e6d6bab0ba915faeea3db9f2bc56636b5dcd3341b21841f4860cda2cfc3a2471eb651f38bf944f2c0d7ea40e64681f852a00c39f00d3b4c526203e7690bf2d58349b9c112d1aec3fb6ff8364574fd728d4bee4d0339a8629a2cb0223b31e1d24876dcfc6582cd86aac2b997761927a765ab69936e8d8a6fdca8ff16b3989c709d5f1da9fd7bb3dc44feaeb35da82d7373e70089d2345d8ac4095f32b17a791c72c16aa699c0440e9eda677c03cec47a7495fb0a11d6d646c2661a0a46838552791d129328b012733d3cd7b62d4a14d5a5a736c6cbb1a9fbcff1a683dd717a6b5af149d7f4464be0afa210e40b02451c1a7cfeb076c606f335971385a7bb0cd5c71fa3434cc57dcf1d600232ed61ee888decaa0403c6d0da0d3a45dc5e64541eeeebed0f7317d689d18811ba05e9df09e8dc581243996a87bf10b72938e6e6e1e02af74dd4b7a271290bc11bfefff13a1b43605d96755debb20bc2a2210b1e227bda335eaab080b7191b687ce068644837aed1e90f70e9b88d58179eb0aac5830b455d950211f974224d74d559b725126011abb154db7b59a334
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# smb_header.static
+# Revision: 1.35
+#
+
+# Supported Protocol
+global_var supported_protocol = 8;
+
+global_var protocol = [];
+protocol[0] = "PC NETWORK PROGRAM 1.0";
+protocol[1] = "LANMAN1.0";
+protocol[2] = "Windows for Workgroups 3.1a";
+protocol[3] = "LM1.2X002";
+protocol[4] = "LANMAN2.1";
+protocol[5] = "NT LM 0.12";
+protocol[6] = "SMB 2.002";
+protocol[7] = "SMB 2.???";
+
+
+global_var nes_native_os = "Windows 2002 Service Pack 2 2600";
+global_var nes_native_lanman = "Windows 2002 5.1";
+
+
+#---------------------------------------------------------#
+# SMBv3 NEGOTIATE_CONTEXT types                           #
+#---------------------------------------------------------#
+
+global_var SMB2_PREAUTH_INTEGRITY_CAPABILITIES   = 0x0001;
+global_var SMB2_ENCRYPTION_CAPABILITIES          = 0x0002;
+
+# SMB2_PREAUTH_INTEGRITY_CAPABILITIES
+global_var SMB2_HASH_ALGORITHM_SHA_512 = 0x0001;
+
+# SMB2_ENCRYPTION_CAPABILITIES
+global_var SMB2_CIPHER_AES_128_CCM = 0x0001;
+global_var SMB2_CIPHER_AES_128_GCM = 0x0002;
+
+global_var SMB2_TRANSFORM = '\xfd'+'SMB';
+
+global_var SMB_DIALECT_0202 = 0x0202; #SMB 2.0.2 dialect revision number.
+global_var SMB_DIALECT_0210 = 0x0210; #SMB 2.1 dialect revision number.<10>
+global_var SMB_DIALECT_0300 = 0x0300; #SMB 3.0 dialect revision number. <11>
+global_var SMB_DIALECT_0302 = 0x0302; #SMB 3.0.2 dialect revision number.<12>
+global_var SMB_DIALECT_0311 = 0x0311; #SMB 3.1.1 dialect revision number
+
+#---------------------------------------------------------#
+# SMBv2 HEADER                                            #
+#---------------------------------------------------------#
+
+# SMBv2 Header Size : 64 bytes
+global_var SMB2_HDR_SIZE = 64;
+
+# SMBv2 Commands
+global_var SMB2_NEGOTIATE       = 0x00;
+global_var SMB2_SESSION_SETUP   = 0x01;
+global_var SMB2_LOGOFF          = 0x02;
+global_var SMB2_TREE_CONNECT    = 0x03;
+global_var SMB2_TREE_DISCONNECT = 0x04;
+global_var SMB2_CREATE          = 0x05;
+global_var SMB2_CLOSE           = 0x06;
+global_var SMB2_FLUSH           = 0x07;
+global_var SMB2_READ            = 0x08;
+global_var SMB2_WRITE           = 0x09;
+global_var SMB2_LOCK            = 0x0A;
+global_var SMB2_IOCTL           = 0x0B;
+global_var SMB2_CANCEL          = 0x0C;
+global_var SMB2_ECHO            = 0x0D;
+global_var SMB2_QUERY_DIRECTORY = 0x0E;
+global_var SMB2_CHANGE_NOTIFY   = 0x0F;
+global_var SMB2_QUERY_INFO      = 0x10;
+global_var SMB2_SET_INFO        = 0x11;
+global_var SMB2_OPLOCK_BREAK    = 0x12;
+
+# SMBv2 Flags
+global_var SMB2_FLAGS_SERVER_TO_REDIR    = 0x00000001;
+global_var SMB2_FLAGS_ASYNC_COMMAND      = 0x00000002;
+global_var SMB2_FLAGS_RELATED_OPERATIONS = 0x00000004;
+global_var SMB2_FLAGS_SIGNED             = 0x00000008;
+global_var SMB2_FLAGS_PRIORITY_MASK      = 0x00000070;
+global_var SMB2_FLAGS_DFS_OPERATIONS     = 0x10000000;
+global_var SMB2_FLAGS_REPLAY_OPERATION   = 0x20000000;
+
+# SMBv2 Protocol Negotiation Flags
+global_var SMB2_NEGOTIATE_SIGNING_ENABLED  = 0x01;
+global_var SMB2_NEGOTIATE_SIGNING_REQUIRED = 0x02;
+
+# SMBv2 Capabilities Flags
+global_var SMB2_GLOBAL_CAP_DFS                = 0x01;
+global_var SMB2_GLOBAL_CAP_LEASING            = 0x02;
+global_var SMB2_GLOBAL_CAP_LARGE_MTU          = 0x04;
+global_var SMB2_GLOBAL_CAP_MULTI_CHANNEL      = 0x08;
+global_var SMB2_GLOBAL_CAP_PERSISTENT_HANDLES = 0x10;
+global_var SMB2_GLOBAL_CAP_DIRECTORY_LEASING  = 0x20;
+global_var SMB2_GLOBAL_CAP_ENCRYPTION         = 0x40;
+
+# SMBv2 Session Setup Request Flags
+global_var SMB2_SESSION_FLAG_BINDING = 0x01;
+
+# SMBv2 Session Setup Response Flags
+global_var SMB2_SESSION_FLAG_IS_GUEST     = 0x01;
+global_var SMB2_SESSION_FLAG_IS_NULL      = 0x02;
+global_var SMB2_SESSION_FLAG_ENCRYPT_DATA = 0x04;
+
+# SMBv2 Share Flags
+global_var SMB2_SHAREFLAG_MANUAL_CACHING              = 0x00000000;
+global_var SMB2_SHAREFLAG_AUTO_CACHING                = 0x00000010;
+global_var SMB2_SHAREFLAG_VDO_CACHING                 = 0x00000020;
+global_var SMB2_SHAREFLAG_NO_CACHING                  = 0x00000030;
+global_var SMB2_SHAREFLAG_DFS                         = 0x00000001;
+global_var SMB2_SHAREFLAG_DFS_ROOT                    = 0x00000002;
+global_var SMB2_SHAREFLAG_RESTRICT_EXCLUSIVE_OPENS    = 0x00000100;
+global_var SMB2_SHAREFLAG_FORCE_SHARED_DELETE         = 0x00000200;
+global_var SMB2_SHAREFLAG_ALLOW_NAMESPACE_CACHING     = 0x00000400;
+global_var SMB2_SHAREFLAG_ACCESS_BASED_DIRECTORY_ENUM = 0x00000800;
+global_var SMB2_SHAREFLAG_FORCE_LEVELII_OPLOCK        = 0x00001000;
+global_var SMB2_SHAREFLAG_ENABLE_HASH_V1              = 0x00002000;
+global_var SMB2_SHAREFLAG_ENABLE_HASH_V2              = 0x00004000;
+global_var SMB2_SHAREFLAG_ENCRYPT_DATA                = 0x00008000;
+
+#---------------------------------------------------------#
+# SMBv1 HEADER                                            #
+#---------------------------------------------------------#
+
+# SMB Header size : 32 bytes
+global_var SMB_HDR_SIZE = 32;
+
+# FLAGS field bitmasks.
+global_var SMB_FLAGS_SERVER_TO_REDIR       = 0x80;
+global_var SMB_FLAGS_REQUEST_BATCH_OPLOCK  = 0x40;
+global_var SMB_FLAGS_REQUEST_OPLOCK        = 0x20;
+global_var SMB_FLAGS_CANONICAL_PATHNAMES   = 0x10;
+global_var SMB_FLAGS_CASELESS_PATHNAMES    = 0x08;
+global_var SMB_FLAGS_RESERVED              = 0x04;
+global_var SMB_FLAGS_CLIENT_BUF_AVAIL      = 0x02;
+global_var SMB_FLAGS_SUPPORT_LOCKREAD      = 0x01;
+global_var SMB_FLAGS_MASK                  = 0xFB;
+
+# FLAGS2 field bitmasks.
+global_var SMB_FLAGS2_UNICODE_STRINGS      = 0x8000;
+global_var SMB_FLAGS2_32BIT_STATUS         = 0x4000;
+global_var SMB_FLAGS2_READ_IF_EXECUTE      = 0x2000;
+global_var SMB_FLAGS2_DFS_PATHNAME         = 0x1000;
+global_var SMB_FLAGS2_EXTENDED_SECURITY    = 0x0800;
+global_var SMB_FLAGS2_RESERVED_01          = 0x0400;
+global_var SMB_FLAGS2_RESERVED_02          = 0x0200;
+global_var SMB_FLAGS2_RESERVED_03          = 0x0100;
+global_var SMB_FLAGS2_RESERVED_04          = 0x0080;
+global_var SMB_FLAGS2_IS_LONG_NAME         = 0x0040;
+global_var SMB_FLAGS2_RESERVED_05          = 0x0020;
+global_var SMB_FLAGS2_RESERVED_06          = 0x0010;
+global_var SMB_FLAGS2_RESERVED_07          = 0x0008;
+global_var SMB_FLAGS2_SECURITY_SIGNATURE   = 0x0004;
+global_var SMB_FLAGS2_EAS                  = 0x0002;
+global_var SMB_FLAGS2_KNOWS_LONG_NAMES     = 0x0001;
+global_var SMB_FLAGS2_MASK                 = 0xF847;
+
+
+# Capabilities bitmasks.
+global_var CAP_UNICODE           = 0x00000004;
+global_var CAP_STATUS32          = 0x00000040;
+global_var CAP_LEVEL_II_OPLOCKS  = 0x00000080;
+global_var CAP_NT_FIND           = 0x00000200;
+global_var CAP_NT_SMBS           = 0x00000010;
+global_var CAP_LARGE_FILES       = 0x00000008;
+global_var CAP_EXTENDED_SECURITY = 0x80000000;
+
+# Security Mode
+global_var NEGOTIATE_SECURITY_SIGNATURES_REQUIRED = 0x08;
+global_var NEGOTIATE_SECURITY_SIGNATURES_ENABLED = 0x04;
+global_var NEGOTIATE_SECURITY_CHALLENGE_RESPONSE = 0x02;
+
+# SMB commands
+global_var SMB_COM_CREATE_DIRECTORY        = 0x00;
+global_var SMB_COM_DELETE_DIRECTORY        = 0x01;
+global_var SMB_COM_OPEN                    = 0x02;
+global_var SMB_COM_CREATE                  = 0x03;
+global_var SMB_COM_CLOSE                   = 0x04;
+global_var SMB_COM_FLUSH                   = 0x05;
+global_var SMB_COM_DELETE                  = 0x06;
+global_var SMB_COM_RENAME                  = 0x07;
+global_var SMB_COM_QUERY_INFORMATION       = 0x08;
+global_var SMB_COM_SET_INFORMATION         = 0x09;
+global_var SMB_COM_READ                    = 0x0A;
+global_var SMB_COM_WRITE                   = 0x0B;
+global_var SMB_COM_LOCK_BYTE_RANGE         = 0x0C;
+global_var SMB_COM_UNLOCK_BYTE_RANGE       = 0x0D;
+global_var SMB_COM_CREATE_TEMPORARY        = 0x0E;
+global_var SMB_COM_CREATE_NEW              = 0x0F;
+global_var SMB_COM_CHECK_DIRECTORY         = 0x10;
+global_var SMB_COM_PROCESS_EXIT            = 0x11;
+global_var SMB_COM_SEEK                    = 0x12;
+global_var SMB_COM_LOCK_AND_READ           = 0x13;
+global_var SMB_COM_WRITE_AND_UNLOCK        = 0x14;
+global_var SMB_COM_READ_RAW                = 0x1A;
+global_var SMB_COM_READ_MPX                = 0x1B;
+global_var SMB_COM_READ_MPX_SECONDARY      = 0x1C;
+global_var SMB_COM_WRITE_RAW               = 0x1D;
+global_var SMB_COM_WRITE_MPX               = 0x1E;
+global_var SMB_COM_WRITE_COMPLETE          = 0x20;
+global_var SMB_COM_SET_INFORMATION2        = 0x22;
+global_var SMB_COM_QUERY_INFORMATION2      = 0x23;
+global_var SMB_COM_LOCKING_ANDX            = 0x24;
+global_var SMB_COM_TRANSACTION             = 0x25;
+global_var SMB_COM_TRANSACTION_SECONDARY   = 0x26;
+global_var SMB_COM_IOCTL                   = 0x27;
+global_var SMB_COM_IOCTL_SECONDARY         = 0x28;
+global_var SMB_COM_COPY                    = 0x29;
+global_var SMB_COM_MOVE                    = 0x2A;
+global_var SMB_COM_ECHO                    = 0x2B;
+global_var SMB_COM_WRITE_AND_CLOSE         = 0x2C;
+global_var SMB_COM_OPEN_ANDX               = 0x2D;
+global_var SMB_COM_READ_ANDX               = 0x2E;
+global_var SMB_COM_WRITE_ANDX              = 0x2F;
+global_var SMB_COM_CLOSE_AND_TREE_DISC     = 0x31;
+global_var SMB_COM_TRANSACTION2            = 0x32;
+global_var SMB_COM_TRANSACTION2_SECONDARY  = 0x33;
+global_var SMB_COM_FIND_CLOSE2             = 0x34;
+global_var SMB_COM_FIND_NOTIFY_CLOSE       = 0x35;
+global_var SMB_COM_TREE_CONNECT            = 0x70;
+global_var SMB_COM_TREE_DISCONNECT         = 0x71;
+global_var SMB_COM_NEGOTIATE               = 0x72;
+global_var SMB_COM_SESSION_SETUP_ANDX      = 0x73;
+global_var SMB_COM_LOGOFF_ANDX             = 0x74;
+global_var SMB_COM_TREE_CONNECT_ANDX       = 0x75;
+global_var SMB_COM_QUERY_INFORMATION_DISK  = 0x80;
+global_var SMB_COM_SEARCH                  = 0x81;
+global_var SMB_COM_FIND                    = 0x82;
+global_var SMB_COM_FIND_UNIQUE             = 0x83;
+global_var SMB_COM_NT_TRANSACT             = 0xA0;
+global_var SMB_COM_NT_TRANSACT_SECONDARY   = 0xA1;
+global_var SMB_COM_NT_CREATE_ANDX          = 0xA2;
+global_var SMB_COM_NT_CANCEL               = 0xA4;
+global_var SMB_COM_OPEN_PRINT_FILE         = 0xC0;
+global_var SMB_COM_WRITE_PRINT_FILE        = 0xC1;
+global_var SMB_COM_CLOSE_PRINT_FILE        = 0xC2;
+global_var SMB_COM_GET_PRINT_QUEUE         = 0xC3;
+global_var SMB_COM_READ_BULK               = 0xD8;
+global_var SMB_COM_WRITE_BULK              = 0xD9;
+global_var SMB_COM_WRITE_BULK_DATA         = 0xDA;
+
+
+# ERROR code
+global_var NO_ERROR                                     = 0;
+#          ERROR_SUCCESS                                = 0; Defined in debug.inc
+global_var ERROR_INVALID_FUNCTION                       = 1;
+global_var ERROR_FILE_NOT_FOUND                         = 2;
+global_var ERROR_PATH_NOT_FOUND                         = 3;
+global_var ERROR_TOO_MANY_OPEN_FILES                    = 4;
+global_var ERROR_ACCESS_DENIED                          = 5;
+global_var ERROR_INVALID_HANDLE                         = 6;
+global_var ERROR_ARENA_TRASHED                          = 7;
+global_var ERROR_NOT_ENOUGH_MEMORY                      = 8;
+global_var ERROR_INVALID_BLOCK                          = 9;
+global_var ERROR_BAD_ENVIRONMENT                        = 10;
+global_var ERROR_BAD_FORMAT                             = 11;
+global_var ERROR_INVALID_ACCESS                         = 12;
+global_var ERROR_INVALID_DATA                           = 13;
+global_var ERROR_OUTOFMEMORY                            = 14;
+global_var ERROR_INVALID_DRIVE                          = 15;
+global_var ERROR_CURRENT_DIRECTORY                      = 16;
+global_var ERROR_NOT_SAME_DEVICE                        = 17;
+global_var ERROR_NO_MORE_FILES                          = 18;
+global_var ERROR_WRITE_PROTECT                          = 19;
+global_var ERROR_BAD_UNIT                               = 20;
+global_var ERROR_NOT_READY                              = 21;
+global_var ERROR_BAD_COMMAND                            = 22;
+global_var ERROR_CRC                                    = 23;
+global_var ERROR_BAD_LENGTH                             = 24;
+global_var ERROR_SEEK                                   = 25;
+global_var ERROR_NOT_DOS_DISK                           = 26;
+global_var ERROR_SECTOR_NOT_FOUND                       = 27;
+global_var ERROR_OUT_OF_PAPER                           = 28;
+global_var ERROR_WRITE_FAULT                            = 29;
+global_var ERROR_READ_FAULT                             = 30;
+global_var ERROR_GEN_FAILURE                            = 31;
+global_var ERROR_SHARING_VIOLATION                      = 32;
+global_var ERROR_LOCK_VIOLATION                         = 33;
+global_var ERROR_WRONG_DISK                             = 34;
+global_var ERROR_SHARING_BUFFER_EXCEEDED                = 36;
+global_var ERROR_HANDLE_EOF                             = 38;
+global_var ERROR_HANDLE_DISK_FULL                       = 39;
+global_var ERROR_NOT_SUPPORTED                          = 50;
+global_var ERROR_REM_NOT_LIST                           = 51;
+global_var ERROR_DUP_NAME                               = 52;
+global_var ERROR_BAD_NETPATH                            = 53;
+global_var ERROR_NETWORK_BUSY                           = 54;
+global_var ERROR_DEV_NOT_EXIST                          = 55;
+global_var ERROR_TOO_MANY_CMDS                          = 56;
+global_var ERROR_ADAP_HDW_ERR                           = 57;
+global_var ERROR_BAD_NET_RESP                           = 58;
+global_var ERROR_UNEXP_NET_ERR                          = 59;
+global_var ERROR_BAD_REM_ADAP                           = 60;
+global_var ERROR_PRINTQ_FULL                            = 61;
+global_var ERROR_NO_SPOOL_SPACE                         = 62;
+global_var ERROR_PRINT_CANCELLED                        = 63;
+global_var ERROR_NETNAME_DELETED                        = 64;
+global_var ERROR_NETWORK_ACCESS_DENIED                  = 65;
+global_var ERROR_BAD_DEV_TYPE                           = 66;
+global_var ERROR_BAD_NET_NAME                           = 67;
+global_var ERROR_TOO_MANY_NAMES                         = 68;
+global_var ERROR_TOO_MANY_SESS                          = 69;
+global_var ERROR_SHARING_PAUSED                         = 70;
+global_var ERROR_REQ_NOT_ACCEP                          = 71;
+global_var ERROR_REDIR_PAUSED                           = 72;
+global_var ERROR_FILE_EXISTS                            = 80;
+global_var ERROR_CANNOT_MAKE                            = 82;
+global_var ERROR_FAIL_I24                               = 83;
+global_var ERROR_OUT_OF_STRUCTURES                      = 84;
+global_var ERROR_ALREADY_ASSIGNED                       = 85;
+global_var ERROR_INVALID_PASSWORD                       = 86;
+global_var ERROR_INVALID_PARAMETER                      = 87;
+global_var ERROR_NET_WRITE_FAULT                        = 88;
+global_var ERROR_NO_PROC_SLOTS                          = 89;
+global_var ERROR_TOO_MANY_SEMAPHORES                    = 100;
+global_var ERROR_EXCL_SEM_ALREADY_OWNED                 = 101;
+global_var ERROR_SEM_IS_SET                             = 102;
+global_var ERROR_TOO_MANY_SEM_REQUESTS                  = 103;
+global_var ERROR_INVALID_AT_INTERRUPT_TIME              = 104;
+global_var ERROR_SEM_OWNER_DIED                         = 105;
+global_var ERROR_SEM_USER_LIMIT                         = 106;
+global_var ERROR_DISK_CHANGE                            = 107;
+global_var ERROR_DRIVE_LOCKED                           = 108;
+global_var ERROR_BROKEN_PIPE                            = 109;
+global_var ERROR_OPEN_FAILED                            = 110;
+global_var ERROR_BUFFER_OVERFLOW                        = 111;
+global_var ERROR_DISK_FULL                              = 112;
+global_var ERROR_NO_MORE_SEARCH_HANDLES                 = 113;
+global_var ERROR_INVALID_TARGET_HANDLE                  = 114;
+global_var ERROR_INVALID_CATEGORY                       = 117;
+global_var ERROR_INVALID_VERIFY_SWITCH                  = 118;
+global_var ERROR_BAD_DRIVER_LEVEL                       = 119;
+global_var ERROR_CALL_NOT_IMPLEMENTED                   = 120;
+global_var ERROR_SEM_TIMEOUT                            = 121;
+global_var ERROR_INSUFFICIENT_BUFFER                    = 122;
+global_var ERROR_INVALID_NAME                           = 123;
+global_var ERROR_INVALID_LEVEL                          = 124;
+global_var ERROR_NO_VOLUME_LABEL                        = 125;
+global_var ERROR_MOD_NOT_FOUND                          = 126;
+global_var ERROR_PROC_NOT_FOUND                         = 127;
+global_var ERROR_WAIT_NO_CHILDREN                       = 128;
+global_var ERROR_CHILD_NOT_COMPLETE                     = 129;
+global_var ERROR_DIRECT_ACCESS_HANDLE                   = 130;
+global_var ERROR_NEGATIVE_SEEK                          = 131;
+global_var ERROR_SEEK_ON_DEVICE                         = 132;
+global_var ERROR_IS_JOIN_TARGET                         = 133;
+global_var ERROR_IS_JOINED                              = 134;
+global_var ERROR_IS_SUBSTED                             = 135;
+global_var ERROR_NOT_JOINED                             = 136;
+global_var ERROR_NOT_SUBSTED                            = 137;
+global_var ERROR_JOIN_TO_JOIN                           = 138;
+global_var ERROR_SUBST_TO_SUBST                         = 139;
+global_var ERROR_JOIN_TO_SUBST                          = 140;
+global_var ERROR_SUBST_TO_JOIN                          = 141;
+global_var ERROR_BUSY_DRIVE                             = 142;
+global_var ERROR_SAME_DRIVE                             = 143;
+global_var ERROR_DIR_NOT_ROOT                           = 144;
+global_var ERROR_DIR_NOT_EMPTY                          = 145;
+global_var ERROR_IS_SUBST_PATH                          = 146;
+global_var ERROR_IS_JOIN_PATH                           = 147;
+global_var ERROR_PATH_BUSY                              = 148;
+global_var ERROR_IS_SUBST_TARGET                        = 149;
+global_var ERROR_SYSTEM_TRACE                           = 150;
+global_var ERROR_INVALID_EVENT_COUNT                    = 151;
+global_var ERROR_TOO_MANY_MUXWAITERS                    = 152;
+global_var ERROR_INVALID_LIST_FORMAT                    = 153;
+global_var ERROR_LABEL_TOO_LONG                         = 154;
+global_var ERROR_TOO_MANY_TCBS                          = 155;
+global_var ERROR_SIGNAL_REFUSED                         = 156;
+global_var ERROR_DISCARDED                              = 157;
+global_var ERROR_NOT_LOCKED                             = 158;
+global_var ERROR_BAD_THREADID_ADDR                      = 159;
+global_var ERROR_BAD_ARGUMENTS                          = 160;
+global_var ERROR_BAD_PATHNAME                           = 161;
+global_var ERROR_SIGNAL_PENDING                         = 162;
+global_var ERROR_MAX_THRDS_REACHED                      = 164;
+global_var ERROR_LOCK_FAILED                            = 167;
+global_var ERROR_BUSY                                   = 170;
+global_var ERROR_CANCEL_VIOLATION                       = 173;
+global_var ERROR_ATOMIC_LOCKS_NOT_SUPPORTED             = 174;
+global_var ERROR_INVALID_SEGMENT_NUMBER                 = 180;
+global_var ERROR_INVALID_ORDINAL                        = 182;
+global_var ERROR_ALREADY_EXISTS                         = 183;
+global_var ERROR_INVALID_FLAG_NUMBER                    = 186;
+global_var ERROR_SEM_NOT_FOUND                          = 187;
+global_var ERROR_INVALID_STARTING_CODESEG               = 188;
+global_var ERROR_INVALID_STACKSEG                       = 189;
+global_var ERROR_INVALID_MODULETYPE                     = 190;
+global_var ERROR_INVALID_EXE_SIGNATURE                  = 191;
+global_var ERROR_EXE_MARKED_INVALID                     = 192;
+global_var ERROR_BAD_EXE_FORMAT                         = 193;
+global_var ERROR_ITERATED_DATA_EXCEEDS_64k              = 194;
+global_var ERROR_INVALID_MINALLOCSIZE                   = 195;
+global_var ERROR_DYNLINK_FROM_INVALID_RING              = 196;
+global_var ERROR_IOPL_NOT_ENABLED                       = 197;
+global_var ERROR_INVALID_SEGDPL                         = 198;
+global_var ERROR_AUTODATASEG_EXCEEDS_64k                = 199;
+global_var ERROR_RING2SEG_MUST_BE_MOVABLE               = 200;
+global_var ERROR_RELOC_CHAIN_XEEDS_SEGLIM               = 201;
+global_var ERROR_INFLOOP_IN_RELOC_CHAIN                 = 202;
+global_var ERROR_ENVVAR_NOT_FOUND                       = 203;
+global_var ERROR_NO_SIGNAL_SENT                         = 205;
+global_var ERROR_FILENAME_EXCED_RANGE                   = 206;
+global_var ERROR_RING2_STACK_IN_USE                     = 207;
+global_var ERROR_META_EXPANSION_TOO_LONG                = 208;
+global_var ERROR_INVALID_SIGNAL_NUMBER                  = 209;
+global_var ERROR_THREAD_1_INACTIVE                      = 210;
+global_var ERROR_LOCKED                                 = 212;
+global_var ERROR_TOO_MANY_MODULES                       = 214;
+global_var ERROR_NESTING_NOT_ALLOWED                    = 215;
+global_var ERROR_BAD_PIPE                               = 230;
+global_var ERROR_PIPE_BUSY                              = 231;
+global_var ERROR_NO_DATA                                = 232;
+global_var ERROR_PIPE_NOT_CONNECTED                     = 233;
+global_var ERROR_MORE_DATA                              = 234;
+global_var ERROR_VC_DISCONNECTED                        = 240;
+global_var ERROR_INVALID_EA_NAME                        = 254;
+global_var ERROR_EA_LIST_INCONSISTENT                   = 255;
+global_var ERROR_NO_MORE_ITEMS                          = 259;
+global_var ERROR_CANNOT_COPY                            = 266;
+global_var ERROR_DIRECTORY                              = 267;
+global_var ERROR_EAS_DIDNT_FIT                          = 275;
+global_var ERROR_EA_FILE_CORRUPT                        = 276;
+global_var ERROR_EA_TABLE_FULL                          = 277;
+global_var ERROR_INVALID_EA_HANDLE                      = 278;
+global_var ERROR_EAS_NOT_SUPPORTED                      = 282;
+global_var ERROR_NOT_OWNER                              = 288;
+global_var ERROR_TOO_MANY_POSTS                         = 298;
+global_var ERROR_MR_MID_NOT_FOUND                       = 317;
+global_var ERROR_INVALID_ADDRESS                        = 487;
+global_var ERROR_ARITHMETIC_OVERFLOW                    = 534;
+global_var ERROR_PIPE_CONNECTED                         = 535;
+global_var ERROR_PIPE_LISTENING                         = 536;
+global_var ERROR_EA_ACCESS_DENIED                       = 994;
+global_var ERROR_OPERATION_ABORTED                      = 995;
+global_var ERROR_IO_INCOMPLETE                          = 996;
+global_var ERROR_IO_PENDING                             = 997;
+global_var ERROR_NOACCESS                               = 998;
+global_var ERROR_SWAPERROR                              = 999;
+global_var ERROR_STACK_OVERFLOW                         = 1001;
+global_var ERROR_INVALID_MESSAGE                        = 1002;
+global_var ERROR_CAN_NOT_COMPLETE                       = 1003;
+global_var ERROR_INVALID_FLAGS                          = 1004;
+global_var ERROR_UNRECOGNIZED_VOLUME                    = 1005;
+global_var ERROR_FILE_INVALID                           = 1006;
+global_var ERROR_FULLSCREEN_MODE                        = 1007;
+global_var ERROR_NO_TOKEN                               = 1008;
+global_var ERROR_BADDB                                  = 1009;
+global_var ERROR_BADKEY                                 = 1010;
+global_var ERROR_CANTOPEN                               = 1011;
+global_var ERROR_CANTREAD                               = 1012;
+global_var ERROR_CANTWRITE                              = 1013;
+global_var ERROR_REGISTRY_RECOVERED                     = 1014;
+global_var ERROR_REGISTRY_CORRUPT                       = 1015;
+global_var ERROR_REGISTRY_IO_FAILED                     = 1016;
+global_var ERROR_NOT_REGISTRY_FILE                      = 1017;
+global_var ERROR_KEY_DELETED                            = 1018;
+global_var ERROR_NO_LOG_SPACE                           = 1019;
+global_var ERROR_KEY_HAS_CHILDREN                       = 1020;
+global_var ERROR_CHILD_MUST_BE_VOLATILE                 = 1021;
+global_var ERROR_NOTIFY_ENUM_DIR                        = 1022;
+global_var ERROR_DEPENDENT_SERVICES_RUNNING             = 1051;
+global_var ERROR_INVALID_SERVICE_CONTROL                = 1052;
+global_var ERROR_SERVICE_REQUEST_TIMEOUT                = 1053;
+global_var ERROR_SERVICE_NO_THREAD                      = 1054;
+global_var ERROR_SERVICE_DATABASE_LOCKED                = 1055;
+global_var ERROR_SERVICE_ALREADY_RUNNING                = 1056;
+global_var ERROR_INVALID_SERVICE_ACCOUNT                = 1057;
+global_var ERROR_SERVICE_DISABLED                       = 1058;
+global_var ERROR_CIRCULAR_DEPENDENCY                    = 1059;
+global_var ERROR_SERVICE_DOES_NOT_EXIST                 = 1060;
+global_var ERROR_SERVICE_CANNOT_ACCEPT_CTRL             = 1061;
+global_var ERROR_SERVICE_NOT_ACTIVE                     = 1062;
+global_var ERROR_FAILED_SERVICE_CONTROLLER_CONNECT      = 1063;
+global_var ERROR_EXCEPTION_IN_SERVICE                   = 1064;
+global_var ERROR_DATABASE_DOES_NOT_EXIST                = 1065;
+global_var ERROR_SERVICE_SPECIFIC_ERROR                 = 1066;
+global_var ERROR_PROCESS_ABORTED                        = 1067;
+global_var ERROR_SERVICE_DEPENDENCY_FAIL                = 1068;
+global_var ERROR_SERVICE_LOGON_FAILED                   = 1069;
+global_var ERROR_SERVICE_START_HANG                     = 1070;
+global_var ERROR_INVALID_SERVICE_LOCK                   = 1071;
+global_var ERROR_SERVICE_MARKED_FOR_DELETE              = 1072;
+global_var ERROR_SERVICE_EXISTS                         = 1073;
+global_var ERROR_ALREADY_RUNNING_LKG                    = 1074;
+global_var ERROR_SERVICE_DEPENDENCY_DELETED             = 1075;
+global_var ERROR_BOOT_ALREADY_ACCEPTED                  = 1076;
+global_var ERROR_SERVICE_NEVER_STARTED                  = 1077;
+global_var ERROR_DUPLICATE_SERVICE_NAME                 = 1078;
+global_var ERROR_END_OF_MEDIA                           = 1100;
+global_var ERROR_FILEMARK_DETECTED                      = 1101;
+global_var ERROR_BEGINNING_OF_MEDIA                     = 1102;
+global_var ERROR_SETMARK_DETECTED                       = 1103;
+global_var ERROR_NO_DATA_DETECTED                       = 1104;
+global_var ERROR_PARTITION_FAILURE                      = 1105;
+global_var ERROR_INVALID_BLOCK_LENGTH                   = 1106;
+global_var ERROR_DEVICE_NOT_PARTITIONED                 = 1107;
+global_var ERROR_UNABLE_TO_LOCK_MEDIA                   = 1108;
+global_var ERROR_UNABLE_TO_UNLOAD_MEDIA                 = 1109;
+global_var ERROR_MEDIA_CHANGED                          = 1110;
+global_var ERROR_BUS_RESET                              = 1111;
+global_var ERROR_NO_MEDIA_IN_DRIVE                      = 1112;
+global_var ERROR_NO_UNICODE_TRANSLATION                 = 1113;
+global_var ERROR_DLL_INIT_FAILED                        = 1114;
+global_var ERROR_SHUTDOWN_IN_PROGRESS                   = 1115;
+global_var ERROR_NO_SHUTDOWN_IN_PROGRESS                = 1116;
+global_var ERROR_IO_DEVICE                              = 1117;
+global_var ERROR_SERIAL_NO_DEVICE                       = 1118;
+global_var ERROR_IRQ_BUSY                               = 1119;
+global_var ERROR_MORE_WRITES                            = 1120;
+global_var ERROR_COUNTER_TIMEOUT                        = 1121;
+global_var ERROR_FLOPPY_ID_MARK_NOT_FOUND               = 1122;
+global_var ERROR_FLOPPY_WRONG_CYLINDER                  = 1123;
+global_var ERROR_FLOPPY_UNKNOWN_ERROR                   = 1124;
+global_var ERROR_FLOPPY_BAD_REGISTERS                   = 1125;
+global_var ERROR_DISK_RECALIBRATE_FAILED                = 1126;
+global_var ERROR_DISK_OPERATION_FAILED                  = 1127;
+global_var ERROR_DISK_RESET_FAILED                      = 1128;
+global_var ERROR_EOM_OVERFLOW                           = 1129;
+global_var ERROR_NOT_ENOUGH_SERVER_MEMORY               = 1130;
+global_var ERROR_POSSIBLE_DEADLOCK                      = 1131;
+global_var ERROR_MAPPED_ALIGNMENT                       = 1132;
+
+#Nessus Error code
+global_var ERROR_SOCKET                                 = 1133;
+
+
+#Status code
+global_var STATUS_SUCCESS = 0x00000000;
+global_var FACILITY_DEBUGGER = 0x1;
+global_var FACILITY_RPC_RUNTIME = 0x2;
+global_var FACILITY_RPC_STUBS = 0x3;
+global_var FACILITY_IO_ERROR_CODE = 0x4;
+global_var FACILITY_TERMINAL_SERVER = 0xA;
+global_var FACILITY_USB_ERROR_CODE = 0x10;
+global_var FACILITY_HID_ERROR_CODE = 0x11;
+global_var FACILITY_FIREWIRE_ERROR_CODE = 0x12;
+global_var FACILITY_CLUSTER_ERROR_CODE = 0x13;
+global_var FACILITY_ACPI_ERROR_CODE = 0x14;
+global_var FACILITY_SXS_ERROR_CODE = 0x15;
+global_var STATUS_SEVERITY_SUCCESS = 0x0;
+global_var STATUS_SEVERITY_INFORMATIONAL = 0x1;
+global_var STATUS_SEVERITY_WARNING = 0x2;
+global_var STATUS_SEVERITY_ERROR = 0x3;
+global_var STATUS_WAIT_0 = 0x00000000;
+global_var STATUS_WAIT_1 = 0x00000001;
+global_var STATUS_WAIT_2 = 0x00000002;
+global_var STATUS_WAIT_3 = 0x00000003;
+global_var STATUS_WAIT_63 = 0x0000003F;
+global_var STATUS_ABANDONED = 0x00000080;
+global_var STATUS_ABANDONED_WAIT_0 = 0x00000080;
+global_var STATUS_ABANDONED_WAIT_63 = 0x000000BF;
+global_var STATUS_USER_APC = 0x000000C0;
+global_var STATUS_KERNEL_APC = 0x00000100;
+global_var STATUS_ALERTED = 0x00000101;
+global_var STATUS_TIMEOUT = 0x00000102;
+global_var STATUS_PENDING = 0x00000103;
+global_var STATUS_REPARSE = 0x00000104;
+global_var STATUS_MORE_ENTRIES = 0x00000105;
+global_var STATUS_NOT_ALL_ASSIGNED = 0x00000106;
+global_var STATUS_SOME_NOT_MAPPED = 0x00000107;
+global_var STATUS_OPLOCK_BREAK_IN_PROGRESS = 0x00000108;
+global_var STATUS_VOLUME_MOUNTED = 0x00000109;
+global_var STATUS_RXACT_COMMITTED = 0x0000010A;
+global_var STATUS_NOTIFY_CLEANUP = 0x0000010B;
+global_var STATUS_NOTIFY_ENUM_DIR = 0x0000010C;
+global_var STATUS_NO_QUOTAS_FOR_ACCOUNT = 0x0000010D;
+global_var STATUS_PRIMARY_TRANSPORT_CONNECT_FAILED = 0x0000010E;
+global_var STATUS_PAGE_FAULT_TRANSITION = 0x00000110;
+global_var STATUS_PAGE_FAULT_DEMAND_ZERO = 0x00000111;
+global_var STATUS_PAGE_FAULT_COPY_ON_WRITE = 0x00000112;
+global_var STATUS_PAGE_FAULT_GUARD_PAGE = 0x00000113;
+global_var STATUS_PAGE_FAULT_PAGING_FILE = 0x00000114;
+global_var STATUS_CACHE_PAGE_LOCKED = 0x00000115;
+global_var STATUS_CRASH_DUMP = 0x00000116;
+global_var STATUS_BUFFER_ALL_ZEROS = 0x00000117;
+global_var STATUS_REPARSE_OBJECT = 0x00000118;
+global_var STATUS_RESOURCE_REQUIREMENTS_CHANGED = 0x00000119;
+global_var STATUS_TRANSLATION_COMPLETE = 0x00000120;
+global_var STATUS_DS_MEMBERSHIP_EVALUATED_LOCALLY = 0x00000121;
+global_var STATUS_NOTHING_TO_TERMINATE = 0x00000122;
+global_var STATUS_PROCESS_NOT_IN_JOB = 0x00000123;
+global_var STATUS_PROCESS_IN_JOB = 0x00000124;
+global_var STATUS_OBJECT_NAME_EXISTS = 0x40000000;
+global_var STATUS_THREAD_WAS_SUSPENDED = 0x40000001;
+global_var STATUS_WORKING_SET_LIMIT_RANGE = 0x40000002;
+global_var STATUS_IMAGE_NOT_AT_BASE = 0x40000003;
+global_var STATUS_RXACT_STATE_CREATED = 0x40000004;
+global_var STATUS_SEGMENT_NOTIFICATION = 0x40000005;
+global_var STATUS_LOCAL_USER_SESSION_KEY = 0x40000006;
+global_var STATUS_BAD_CURRENT_DIRECTORY = 0x40000007;
+global_var STATUS_SERIAL_MORE_WRITES = 0x40000008;
+global_var STATUS_REGISTRY_RECOVERED = 0x40000009;
+global_var STATUS_FT_READ_RECOVERY_FROM_BACKUP = 0x4000000A;
+global_var STATUS_FT_WRITE_RECOVERY = 0x4000000B;
+global_var STATUS_SERIAL_COUNTER_TIMEOUT = 0x4000000C;
+global_var STATUS_NULL_LM_PASSWORD = 0x4000000D;
+global_var STATUS_IMAGE_MACHINE_TYPE_MISMATCH = 0x4000000E;
+global_var STATUS_RECEIVE_PARTIAL = 0x4000000F;
+global_var STATUS_RECEIVE_EXPEDITED = 0x40000010;
+global_var STATUS_RECEIVE_PARTIAL_EXPEDITED = 0x40000011;
+global_var STATUS_EVENT_DONE = 0x40000012;
+global_var STATUS_EVENT_PENDING = 0x40000013;
+global_var STATUS_CHECKING_FILE_SYSTEM = 0x40000014;
+global_var STATUS_FATAL_APP_EXIT = 0x40000015;
+global_var STATUS_PREDEFINED_HANDLE = 0x40000016;
+global_var STATUS_WAS_UNLOCKED = 0x40000017;
+global_var STATUS_SERVICE_NOTIFICATION = 0x40000018;
+global_var STATUS_WAS_LOCKED = 0x40000019;
+global_var STATUS_LOG_HARD_ERROR = 0x4000001A;
+global_var STATUS_ALREADY_WIN32 = 0x4000001B;
+global_var STATUS_WX86_UNSIMULATE = 0x4000001C;
+global_var STATUS_WX86_CONTINUE = 0x4000001D;
+global_var STATUS_WX86_SINGLE_STEP = 0x4000001E;
+global_var STATUS_WX86_BREAKPOINT = 0x4000001F;
+global_var STATUS_WX86_EXCEPTION_CONTINUE = 0x40000020;
+global_var STATUS_WX86_EXCEPTION_LASTCHANCE = 0x40000021;
+global_var STATUS_WX86_EXCEPTION_CHAIN = 0x40000022;
+global_var STATUS_IMAGE_MACHINE_TYPE_MISMATCH_EXE = 0x40000023;
+global_var STATUS_NO_YIELD_PERFORMED = 0x40000024;
+global_var STATUS_TIMER_RESUME_IGNORED = 0x40000025;
+global_var STATUS_ARBITRATION_UNHANDLED = 0x40000026;
+global_var STATUS_CARDBUS_NOT_SUPPORTED = 0x40000027;
+global_var STATUS_WX86_CREATEWX86TIB = 0x40000028;
+global_var STATUS_MP_PROCESSOR_MISMATCH = 0x40000029;
+global_var STATUS_HIBERNATED = 0x4000002A;
+global_var STATUS_RESUME_HIBERNATION = 0x4000002B;
+global_var STATUS_GUARD_PAGE_VIOLATION = 0x80000001;
+global_var STATUS_DATATYPE_MISALIGNMENT = 0x80000002;
+global_var STATUS_BREAKPOINT = 0x80000003;
+global_var STATUS_SINGLE_STEP = 0x80000004;
+global_var STATUS_BUFFER_OVERFLOW = 0x80000005;
+global_var STATUS_NO_MORE_FILES = 0x80000006;
+global_var STATUS_WAKE_SYSTEM_DEBUGGER = 0x80000007;
+global_var STATUS_HANDLES_CLOSED = 0x8000000A;
+global_var STATUS_NO_INHERITANCE = 0x8000000B;
+global_var STATUS_GUID_SUBSTITUTION_MADE = 0x8000000C;
+global_var STATUS_PARTIAL_COPY = 0x8000000D;
+global_var STATUS_DEVICE_PAPER_EMPTY = 0x8000000E;
+global_var STATUS_DEVICE_POWERED_OFF = 0x8000000F;
+global_var STATUS_DEVICE_OFF_LINE = 0x80000010;
+global_var STATUS_DEVICE_BUSY = 0x80000011;
+global_var STATUS_NO_MORE_EAS = 0x80000012;
+global_var STATUS_INVALID_EA_NAME = 0x80000013;
+global_var STATUS_EA_LIST_INCONSISTENT = 0x80000014;
+global_var STATUS_INVALID_EA_FLAG = 0x80000015;
+global_var STATUS_VERIFY_REQUIRED = 0x80000016;
+global_var STATUS_EXTRANEOUS_INFORMATION = 0x80000017;
+global_var STATUS_RXACT_COMMIT_NECESSARY = 0x80000018;
+global_var STATUS_NO_MORE_ENTRIES = 0x8000001A;
+global_var STATUS_FILEMARK_DETECTED = 0x8000001B;
+global_var STATUS_MEDIA_CHANGED = 0x8000001C;
+global_var STATUS_BUS_RESET = 0x8000001D;
+global_var STATUS_END_OF_MEDIA = 0x8000001E;
+global_var STATUS_BEGINNING_OF_MEDIA = 0x8000001F;
+global_var STATUS_MEDIA_CHECK = 0x80000020;
+global_var STATUS_SETMARK_DETECTED = 0x80000021;
+global_var STATUS_NO_DATA_DETECTED = 0x80000022;
+global_var STATUS_REDIRECTOR_HAS_OPEN_HANDLES = 0x80000023;
+global_var STATUS_SERVER_HAS_OPEN_HANDLES = 0x80000024;
+global_var STATUS_ALREADY_DISCONNECTED = 0x80000025;
+global_var STATUS_LONGJUMP = 0x80000026;
+global_var STATUS_CLEANER_CARTRIDGE_INSTALLED = 0x80000027;
+global_var STATUS_PLUGPLAY_QUERY_VETOED = 0x80000028;
+global_var STATUS_UNWIND_CONSOLIDATE = 0x80000029;
+global_var STATUS_CLUSTER_NODE_ALREADY_UP = 0x80130001;
+global_var STATUS_CLUSTER_NODE_ALREADY_DOWN = 0x80130002;
+global_var STATUS_CLUSTER_NETWORK_ALREADY_ONLINE = 0x80130003;
+global_var STATUS_CLUSTER_NETWORK_ALREADY_OFFLINE = 0x80130004;
+global_var STATUS_CLUSTER_NODE_ALREADY_MEMBER = 0x80130005;
+global_var STATUS_UNSUCCESSFUL = 0xC0000001;
+global_var STATUS_NOT_IMPLEMENTED = 0xC0000002;
+global_var STATUS_INVALID_INFO_CLASS = 0xC0000003;
+global_var STATUS_INFO_LENGTH_MISMATCH = 0xC0000004;
+global_var STATUS_ACCESS_VIOLATION = 0xC0000005;
+global_var STATUS_IN_PAGE_ERROR = 0xC0000006;
+global_var STATUS_PAGEFILE_QUOTA = 0xC0000007;
+global_var STATUS_INVALID_HANDLE = 0xC0000008;
+global_var STATUS_BAD_INITIAL_STACK = 0xC0000009;
+global_var STATUS_BAD_INITIAL_PC = 0xC000000A;
+global_var STATUS_INVALID_CID = 0xC000000B;
+global_var STATUS_TIMER_NOT_CANCELED = 0xC000000C;
+global_var STATUS_INVALID_PARAMETER = 0xC000000D;
+global_var STATUS_NO_SUCH_DEVICE = 0xC000000E;
+global_var STATUS_NO_SUCH_FILE = 0xC000000F;
+global_var STATUS_INVALID_DEVICE_REQUEST = 0xC0000010;
+global_var STATUS_END_OF_FILE = 0xC0000011;
+global_var STATUS_WRONG_VOLUME = 0xC0000012;
+global_var STATUS_NO_MEDIA_IN_DEVICE = 0xC0000013;
+global_var STATUS_UNRECOGNIZED_MEDIA = 0xC0000014;
+global_var STATUS_NONEXISTENT_SECTOR = 0xC0000015;
+global_var STATUS_MORE_PROCESSING_REQUIRED = 0xC0000016;
+global_var STATUS_NO_MEMORY = 0xC0000017;
+global_var STATUS_CONFLICTING_ADDRESSES = 0xC0000018;
+global_var STATUS_NOT_MAPPED_VIEW = 0xC0000019;
+global_var STATUS_UNABLE_TO_FREE_VM = 0xC000001A;
+global_var STATUS_UNABLE_TO_DELETE_SECTION = 0xC000001B;
+global_var STATUS_INVALID_SYSTEM_SERVICE = 0xC000001C;
+global_var STATUS_ILLEGAL_INSTRUCTION = 0xC000001D;
+global_var STATUS_INVALID_LOCK_SEQUENCE = 0xC000001E;
+global_var STATUS_INVALID_VIEW_SIZE = 0xC000001F;
+global_var STATUS_INVALID_FILE_FOR_SECTION = 0xC0000020;
+global_var STATUS_ALREADY_COMMITTED = 0xC0000021;
+global_var STATUS_ACCESS_DENIED = 0xC0000022;
+global_var STATUS_BUFFER_TOO_SMALL = 0xC0000023;
+global_var STATUS_OBJECT_TYPE_MISMATCH = 0xC0000024;
+global_var STATUS_NONCONTINUABLE_EXCEPTION = 0xC0000025;
+global_var STATUS_INVALID_DISPOSITION = 0xC0000026;
+global_var STATUS_UNWIND = 0xC0000027;
+global_var STATUS_BAD_STACK = 0xC0000028;
+global_var STATUS_INVALID_UNWIND_TARGET = 0xC0000029;
+global_var STATUS_NOT_LOCKED = 0xC000002A;
+global_var STATUS_PARITY_ERROR = 0xC000002B;
+global_var STATUS_UNABLE_TO_DECOMMIT_VM = 0xC000002C;
+global_var STATUS_NOT_COMMITTED = 0xC000002D;
+global_var STATUS_INVALID_PORT_ATTRIBUTES = 0xC000002E;
+global_var STATUS_PORT_MESSAGE_TOO_LONG = 0xC000002F;
+global_var STATUS_INVALID_PARAMETER_MIX = 0xC0000030;
+global_var STATUS_INVALID_QUOTA_LOWER = 0xC0000031;
+global_var STATUS_DISK_CORRUPT_ERROR = 0xC0000032;
+global_var STATUS_OBJECT_NAME_INVALID = 0xC0000033;
+global_var STATUS_OBJECT_NAME_NOT_FOUND = 0xC0000034;
+global_var STATUS_OBJECT_NAME_COLLISION = 0xC0000035;
+global_var STATUS_PORT_DISCONNECTED = 0xC0000037;
+global_var STATUS_DEVICE_ALREADY_ATTACHED = 0xC0000038;
+global_var STATUS_OBJECT_PATH_INVALID = 0xC0000039;
+global_var STATUS_OBJECT_PATH_NOT_FOUND = 0xC000003A;
+global_var STATUS_OBJECT_PATH_SYNTAX_BAD = 0xC000003B;
+global_var STATUS_DATA_OVERRUN = 0xC000003C;
+global_var STATUS_DATA_LATE_ERROR = 0xC000003D;
+global_var STATUS_DATA_ERROR = 0xC000003E;
+global_var STATUS_CRC_ERROR = 0xC000003F;
+global_var STATUS_SECTION_TOO_BIG = 0xC0000040;
+global_var STATUS_PORT_CONNECTION_REFUSED = 0xC0000041;
+global_var STATUS_INVALID_PORT_HANDLE = 0xC0000042;
+global_var STATUS_SHARING_VIOLATION = 0xC0000043;
+global_var STATUS_QUOTA_EXCEEDED = 0xC0000044;
+global_var STATUS_INVALID_PAGE_PROTECTION = 0xC0000045;
+global_var STATUS_MUTANT_NOT_OWNED = 0xC0000046;
+global_var STATUS_SEMAPHORE_LIMIT_EXCEEDED = 0xC0000047;
+global_var STATUS_PORT_ALREADY_SET = 0xC0000048;
+global_var STATUS_SECTION_NOT_IMAGE = 0xC0000049;
+global_var STATUS_SUSPEND_COUNT_EXCEEDED = 0xC000004A;
+global_var STATUS_THREAD_IS_TERMINATING = 0xC000004B;
+global_var STATUS_BAD_WORKING_SET_LIMIT = 0xC000004C;
+global_var STATUS_INCOMPATIBLE_FILE_MAP = 0xC000004D;
+global_var STATUS_SECTION_PROTECTION = 0xC000004E;
+global_var STATUS_EAS_NOT_SUPPORTED = 0xC000004F;
+global_var STATUS_EA_TOO_LARGE = 0xC0000050;
+global_var STATUS_NONEXISTENT_EA_ENTRY = 0xC0000051;
+global_var STATUS_NO_EAS_ON_FILE = 0xC0000052;
+global_var STATUS_EA_CORRUPT_ERROR = 0xC0000053;
+global_var STATUS_FILE_LOCK_CONFLICT = 0xC0000054;
+global_var STATUS_LOCK_NOT_GRANTED = 0xC0000055;
+global_var STATUS_DELETE_PENDING = 0xC0000056;
+global_var STATUS_CTL_FILE_NOT_SUPPORTED = 0xC0000057;
+global_var STATUS_UNKNOWN_REVISION = 0xC0000058;
+global_var STATUS_REVISION_MISMATCH = 0xC0000059;
+global_var STATUS_INVALID_OWNER = 0xC000005A;
+global_var STATUS_INVALID_PRIMARY_GROUP = 0xC000005B;
+global_var STATUS_NO_IMPERSONATION_TOKEN = 0xC000005C;
+global_var STATUS_CANT_DISABLE_MANDATORY = 0xC000005D;
+global_var STATUS_NO_LOGON_SERVERS = 0xC000005E;
+global_var STATUS_NO_SUCH_LOGON_SESSION = 0xC000005F;
+global_var STATUS_NO_SUCH_PRIVILEGE = 0xC0000060;
+global_var STATUS_PRIVILEGE_NOT_HELD = 0xC0000061;
+global_var STATUS_INVALID_ACCOUNT_NAME = 0xC0000062;
+global_var STATUS_USER_EXISTS = 0xC0000063;
+global_var STATUS_NO_SUCH_USER = 0xC0000064;
+global_var STATUS_GROUP_EXISTS = 0xC0000065;
+global_var STATUS_NO_SUCH_GROUP = 0xC0000066;
+global_var STATUS_MEMBER_IN_GROUP = 0xC0000067;
+global_var STATUS_MEMBER_NOT_IN_GROUP = 0xC0000068;
+global_var STATUS_LAST_ADMIN = 0xC0000069;
+global_var STATUS_WRONG_PASSWORD = 0xC000006A;
+global_var STATUS_ILL_FORMED_PASSWORD = 0xC000006B;
+global_var STATUS_PASSWORD_RESTRICTION = 0xC000006C;
+global_var STATUS_LOGON_FAILURE = 0xC000006D;
+global_var STATUS_ACCOUNT_RESTRICTION = 0xC000006E;
+global_var STATUS_INVALID_LOGON_HOURS = 0xC000006F;
+global_var STATUS_INVALID_WORKSTATION = 0xC0000070;
+global_var STATUS_PASSWORD_EXPIRED = 0xC0000071;
+global_var STATUS_ACCOUNT_DISABLED = 0xC0000072;
+global_var STATUS_NONE_MAPPED = 0xC0000073;
+global_var STATUS_TOO_MANY_LUIDS_REQUESTED = 0xC0000074;
+global_var STATUS_LUIDS_EXHAUSTED = 0xC0000075;
+global_var STATUS_INVALID_SUB_AUTHORITY = 0xC0000076;
+global_var STATUS_INVALID_ACL = 0xC0000077;
+global_var STATUS_INVALID_SID = 0xC0000078;
+global_var STATUS_INVALID_SECURITY_DESCR = 0xC0000079;
+global_var STATUS_PROCEDURE_NOT_FOUND = 0xC000007A;
+global_var STATUS_INVALID_IMAGE_FORMAT = 0xC000007B;
+global_var STATUS_NO_TOKEN = 0xC000007C;
+global_var STATUS_BAD_INHERITANCE_ACL = 0xC000007D;
+global_var STATUS_RANGE_NOT_LOCKED = 0xC000007E;
+global_var STATUS_DISK_FULL = 0xC000007F;
+global_var STATUS_SERVER_DISABLED = 0xC0000080;
+global_var STATUS_SERVER_NOT_DISABLED = 0xC0000081;
+global_var STATUS_TOO_MANY_GUIDS_REQUESTED = 0xC0000082;
+global_var STATUS_GUIDS_EXHAUSTED = 0xC0000083;
+global_var STATUS_INVALID_ID_AUTHORITY = 0xC0000084;
+global_var STATUS_AGENTS_EXHAUSTED = 0xC0000085;
+global_var STATUS_INVALID_VOLUME_LABEL = 0xC0000086;
+global_var STATUS_SECTION_NOT_EXTENDED = 0xC0000087;
+global_var STATUS_NOT_MAPPED_DATA = 0xC0000088;
+global_var STATUS_RESOURCE_DATA_NOT_FOUND = 0xC0000089;
+global_var STATUS_RESOURCE_TYPE_NOT_FOUND = 0xC000008A;
+global_var STATUS_RESOURCE_NAME_NOT_FOUND = 0xC000008B;
+global_var STATUS_ARRAY_BOUNDS_EXCEEDED = 0xC000008C;
+global_var STATUS_FLOAT_DENORMAL_OPERAND = 0xC000008D;
+global_var STATUS_FLOAT_DIVIDE_BY_ZERO = 0xC000008E;
+global_var STATUS_FLOAT_INEXACT_RESULT = 0xC000008F;
+global_var STATUS_FLOAT_INVALID_OPERATION = 0xC0000090;
+global_var STATUS_FLOAT_OVERFLOW = 0xC0000091;
+global_var STATUS_FLOAT_STACK_CHECK = 0xC0000092;
+global_var STATUS_FLOAT_UNDERFLOW = 0xC0000093;
+global_var STATUS_INTEGER_DIVIDE_BY_ZERO = 0xC0000094;
+global_var STATUS_INTEGER_OVERFLOW = 0xC0000095;
+global_var STATUS_PRIVILEGED_INSTRUCTION = 0xC0000096;
+global_var STATUS_TOO_MANY_PAGING_FILES = 0xC0000097;
+global_var STATUS_FILE_INVALID = 0xC0000098;
+global_var STATUS_ALLOTTED_SPACE_EXCEEDED = 0xC0000099;
+global_var STATUS_INSUFFICIENT_RESOURCES = 0xC000009A;
+global_var STATUS_DFS_EXIT_PATH_FOUND = 0xC000009B;
+global_var STATUS_DEVICE_DATA_ERROR = 0xC000009C;
+global_var STATUS_DEVICE_NOT_CONNECTED = 0xC000009D;
+global_var STATUS_DEVICE_POWER_FAILURE = 0xC000009E;
+global_var STATUS_FREE_VM_NOT_AT_BASE = 0xC000009F;
+global_var STATUS_MEMORY_NOT_ALLOCATED = 0xC00000A0;
+global_var STATUS_WORKING_SET_QUOTA = 0xC00000A1;
+global_var STATUS_MEDIA_WRITE_PROTECTED = 0xC00000A2;
+global_var STATUS_DEVICE_NOT_READY = 0xC00000A3;
+global_var STATUS_INVALID_GROUP_ATTRIBUTES = 0xC00000A4;
+global_var STATUS_BAD_IMPERSONATION_LEVEL = 0xC00000A5;
+global_var STATUS_CANT_OPEN_ANONYMOUS = 0xC00000A6;
+global_var STATUS_BAD_VALIDATION_CLASS = 0xC00000A7;
+global_var STATUS_BAD_TOKEN_TYPE = 0xC00000A8;
+global_var STATUS_BAD_MASTER_BOOT_RECORD = 0xC00000A9;
+global_var STATUS_INSTRUCTION_MISALIGNMENT = 0xC00000AA;
+global_var STATUS_INSTANCE_NOT_AVAILABLE = 0xC00000AB;
+global_var STATUS_PIPE_NOT_AVAILABLE = 0xC00000AC;
+global_var STATUS_INVALID_PIPE_STATE = 0xC00000AD;
+global_var STATUS_PIPE_BUSY = 0xC00000AE;
+global_var STATUS_ILLEGAL_FUNCTION = 0xC00000AF;
+global_var STATUS_PIPE_DISCONNECTED = 0xC00000B0;
+global_var STATUS_PIPE_CLOSING = 0xC00000B1;
+global_var STATUS_PIPE_CONNECTED = 0xC00000B2;
+global_var STATUS_PIPE_LISTENING = 0xC00000B3;
+global_var STATUS_INVALID_READ_MODE = 0xC00000B4;
+global_var STATUS_IO_TIMEOUT = 0xC00000B5;
+global_var STATUS_FILE_FORCED_CLOSED = 0xC00000B6;
+global_var STATUS_PROFILING_NOT_STARTED = 0xC00000B7;
+global_var STATUS_PROFILING_NOT_STOPPED = 0xC00000B8;
+global_var STATUS_COULD_NOT_INTERPRET = 0xC00000B9;
+global_var STATUS_FILE_IS_A_DIRECTORY = 0xC00000BA;
+global_var STATUS_NOT_SUPPORTED = 0xC00000BB;
+global_var STATUS_REMOTE_NOT_LISTENING = 0xC00000BC;
+global_var STATUS_DUPLICATE_NAME = 0xC00000BD;
+global_var STATUS_BAD_NETWORK_PATH = 0xC00000BE;
+global_var STATUS_NETWORK_BUSY = 0xC00000BF;
+global_var STATUS_DEVICE_DOES_NOT_EXIST = 0xC00000C0;
+global_var STATUS_TOO_MANY_COMMANDS = 0xC00000C1;
+global_var STATUS_ADAPTER_HARDWARE_ERROR = 0xC00000C2;
+global_var STATUS_INVALID_NETWORK_RESPONSE = 0xC00000C3;
+global_var STATUS_UNEXPECTED_NETWORK_ERROR = 0xC00000C4;
+global_var STATUS_BAD_REMOTE_ADAPTER = 0xC00000C5;
+global_var STATUS_PRINT_QUEUE_FULL = 0xC00000C6;
+global_var STATUS_NO_SPOOL_SPACE = 0xC00000C7;
+global_var STATUS_PRINT_CANCELLED = 0xC00000C8;
+global_var STATUS_NETWORK_NAME_DELETED = 0xC00000C9;
+global_var STATUS_NETWORK_ACCESS_DENIED = 0xC00000CA;
+global_var STATUS_BAD_DEVICE_TYPE = 0xC00000CB;
+global_var STATUS_BAD_NETWORK_NAME = 0xC00000CC;
+global_var STATUS_TOO_MANY_NAMES = 0xC00000CD;
+global_var STATUS_TOO_MANY_SESSIONS = 0xC00000CE;
+global_var STATUS_SHARING_PAUSED = 0xC00000CF;
+global_var STATUS_REQUEST_NOT_ACCEPTED = 0xC00000D0;
+global_var STATUS_REDIRECTOR_PAUSED = 0xC00000D1;
+global_var STATUS_NET_WRITE_FAULT = 0xC00000D2;
+global_var STATUS_PROFILING_AT_LIMIT = 0xC00000D3;
+global_var STATUS_NOT_SAME_DEVICE = 0xC00000D4;
+global_var STATUS_FILE_RENAMED = 0xC00000D5;
+global_var STATUS_VIRTUAL_CIRCUIT_CLOSED = 0xC00000D6;
+global_var STATUS_NO_SECURITY_ON_OBJECT = 0xC00000D7;
+global_var STATUS_CANT_WAIT = 0xC00000D8;
+global_var STATUS_PIPE_EMPTY = 0xC00000D9;
+global_var STATUS_CANT_ACCESS_DOMAIN_INFO = 0xC00000DA;
+global_var STATUS_CANT_TERMINATE_SELF = 0xC00000DB;
+global_var STATUS_INVALID_SERVER_STATE = 0xC00000DC;
+global_var STATUS_INVALID_DOMAIN_STATE = 0xC00000DD;
+global_var STATUS_INVALID_DOMAIN_ROLE = 0xC00000DE;
+global_var STATUS_NO_SUCH_DOMAIN = 0xC00000DF;
+global_var STATUS_DOMAIN_EXISTS = 0xC00000E0;
+global_var STATUS_DOMAIN_LIMIT_EXCEEDED = 0xC00000E1;
+global_var STATUS_OPLOCK_NOT_GRANTED = 0xC00000E2;
+global_var STATUS_INVALID_OPLOCK_PROTOCOL = 0xC00000E3;
+global_var STATUS_INTERNAL_DB_CORRUPTION = 0xC00000E4;
+global_var STATUS_INTERNAL_ERROR = 0xC00000E5;
+global_var STATUS_GENERIC_NOT_MAPPED = 0xC00000E6;
+global_var STATUS_BAD_DESCRIPTOR_FORMAT = 0xC00000E7;
+global_var STATUS_INVALID_USER_BUFFER = 0xC00000E8;
+global_var STATUS_UNEXPECTED_IO_ERROR = 0xC00000E9;
+global_var STATUS_UNEXPECTED_MM_CREATE_ERR = 0xC00000EA;
+global_var STATUS_UNEXPECTED_MM_MAP_ERROR = 0xC00000EB;
+global_var STATUS_UNEXPECTED_MM_EXTEND_ERR = 0xC00000EC;
+global_var STATUS_NOT_LOGON_PROCESS = 0xC00000ED;
+global_var STATUS_LOGON_SESSION_EXISTS = 0xC00000EE;
+global_var STATUS_INVALID_PARAMETER_1 = 0xC00000EF;
+global_var STATUS_INVALID_PARAMETER_2 = 0xC00000F0;
+global_var STATUS_INVALID_PARAMETER_3 = 0xC00000F1;
+global_var STATUS_INVALID_PARAMETER_4 = 0xC00000F2;
+global_var STATUS_INVALID_PARAMETER_5 = 0xC00000F3;
+global_var STATUS_INVALID_PARAMETER_6 = 0xC00000F4;
+global_var STATUS_INVALID_PARAMETER_7 = 0xC00000F5;
+global_var STATUS_INVALID_PARAMETER_8 = 0xC00000F6;
+global_var STATUS_INVALID_PARAMETER_9 = 0xC00000F7;
+global_var STATUS_INVALID_PARAMETER_10 = 0xC00000F8;
+global_var STATUS_INVALID_PARAMETER_11 = 0xC00000F9;
+global_var STATUS_INVALID_PARAMETER_12 = 0xC00000FA;
+global_var STATUS_REDIRECTOR_NOT_STARTED = 0xC00000FB;
+global_var STATUS_REDIRECTOR_STARTED = 0xC00000FC;
+global_var STATUS_STACK_OVERFLOW = 0xC00000FD;
+global_var STATUS_NO_SUCH_PACKAGE = 0xC00000FE;
+global_var STATUS_BAD_FUNCTION_TABLE = 0xC00000FF;
+global_var STATUS_VARIABLE_NOT_FOUND = 0xC0000100;
+global_var STATUS_DIRECTORY_NOT_EMPTY = 0xC0000101;
+global_var STATUS_FILE_CORRUPT_ERROR = 0xC0000102;
+global_var STATUS_NOT_A_DIRECTORY = 0xC0000103;
+global_var STATUS_BAD_LOGON_SESSION_STATE = 0xC0000104;
+global_var STATUS_LOGON_SESSION_COLLISION = 0xC0000105;
+global_var STATUS_NAME_TOO_LONG = 0xC0000106;
+global_var STATUS_FILES_OPEN = 0xC0000107;
+global_var STATUS_CONNECTION_IN_USE = 0xC0000108;
+global_var STATUS_MESSAGE_NOT_FOUND = 0xC0000109;
+global_var STATUS_PROCESS_IS_TERMINATING = 0xC000010A;
+global_var STATUS_INVALID_LOGON_TYPE = 0xC000010B;
+global_var STATUS_NO_GUID_TRANSLATION = 0xC000010C;
+global_var STATUS_CANNOT_IMPERSONATE = 0xC000010D;
+global_var STATUS_IMAGE_ALREADY_LOADED = 0xC000010E;
+global_var STATUS_ABIOS_NOT_PRESENT = 0xC000010F;
+global_var STATUS_ABIOS_LID_NOT_EXIST = 0xC0000110;
+global_var STATUS_ABIOS_LID_ALREADY_OWNED = 0xC0000111;
+global_var STATUS_ABIOS_NOT_LID_OWNER = 0xC0000112;
+global_var STATUS_ABIOS_INVALID_COMMAND = 0xC0000113;
+global_var STATUS_ABIOS_INVALID_LID = 0xC0000114;
+global_var STATUS_ABIOS_SELECTOR_NOT_AVAILABLE = 0xC0000115;
+global_var STATUS_ABIOS_INVALID_SELECTOR = 0xC0000116;
+global_var STATUS_NO_LDT = 0xC0000117;
+global_var STATUS_INVALID_LDT_SIZE = 0xC0000118;
+global_var STATUS_INVALID_LDT_OFFSET = 0xC0000119;
+global_var STATUS_INVALID_LDT_DESCRIPTOR = 0xC000011A;
+global_var STATUS_INVALID_IMAGE_NE_FORMAT = 0xC000011B;
+global_var STATUS_RXACT_INVALID_STATE = 0xC000011C;
+global_var STATUS_RXACT_COMMIT_FAILURE = 0xC000011D;
+global_var STATUS_MAPPED_FILE_SIZE_ZERO = 0xC000011E;
+global_var STATUS_TOO_MANY_OPENED_FILES = 0xC000011F;
+global_var STATUS_CANCELLED = 0xC0000120;
+global_var STATUS_CANNOT_DELETE = 0xC0000121;
+global_var STATUS_INVALID_COMPUTER_NAME = 0xC0000122;
+global_var STATUS_FILE_DELETED = 0xC0000123;
+global_var STATUS_SPECIAL_ACCOUNT = 0xC0000124;
+global_var STATUS_SPECIAL_GROUP = 0xC0000125;
+global_var STATUS_SPECIAL_USER = 0xC0000126;
+global_var STATUS_MEMBERS_PRIMARY_GROUP = 0xC0000127;
+global_var STATUS_FILE_CLOSED = 0xC0000128;
+global_var STATUS_TOO_MANY_THREADS = 0xC0000129;
+global_var STATUS_THREAD_NOT_IN_PROCESS = 0xC000012A;
+global_var STATUS_TOKEN_ALREADY_IN_USE = 0xC000012B;
+global_var STATUS_PAGEFILE_QUOTA_EXCEEDED = 0xC000012C;
+global_var STATUS_COMMITMENT_LIMIT = 0xC000012D;
+global_var STATUS_INVALID_IMAGE_LE_FORMAT = 0xC000012E;
+global_var STATUS_INVALID_IMAGE_NOT_MZ = 0xC000012F;
+global_var STATUS_INVALID_IMAGE_PROTECT = 0xC0000130;
+global_var STATUS_INVALID_IMAGE_WIN_16 = 0xC0000131;
+global_var STATUS_LOGON_SERVER_CONFLICT = 0xC0000132;
+global_var STATUS_TIME_DIFFERENCE_AT_DC = 0xC0000133;
+global_var STATUS_SYNCHRONIZATION_REQUIRED = 0xC0000134;
+global_var STATUS_DLL_NOT_FOUND = 0xC0000135;
+global_var STATUS_OPEN_FAILED = 0xC0000136;
+global_var STATUS_IO_PRIVILEGE_FAILED = 0xC0000137;
+global_var STATUS_ORDINAL_NOT_FOUND = 0xC0000138;
+global_var STATUS_ENTRYPOINT_NOT_FOUND = 0xC0000139;
+global_var STATUS_CONTROL_C_EXIT = 0xC000013A;
+global_var STATUS_LOCAL_DISCONNECT = 0xC000013B;
+global_var STATUS_REMOTE_DISCONNECT = 0xC000013C;
+global_var STATUS_REMOTE_RESOURCES = 0xC000013D;
+global_var STATUS_LINK_FAILED = 0xC000013E;
+global_var STATUS_LINK_TIMEOUT = 0xC000013F;
+global_var STATUS_INVALID_CONNECTION = 0xC0000140;
+global_var STATUS_INVALID_ADDRESS = 0xC0000141;
+global_var STATUS_DLL_INIT_FAILED = 0xC0000142;
+global_var STATUS_MISSING_SYSTEMFILE = 0xC0000143;
+global_var STATUS_UNHANDLED_EXCEPTION = 0xC0000144;
+global_var STATUS_APP_INIT_FAILURE = 0xC0000145;
+global_var STATUS_PAGEFILE_CREATE_FAILED = 0xC0000146;
+global_var STATUS_NO_PAGEFILE = 0xC0000147;
+global_var STATUS_INVALID_LEVEL = 0xC0000148;
+global_var STATUS_WRONG_PASSWORD_CORE = 0xC0000149;
+global_var STATUS_ILLEGAL_FLOAT_CONTEXT = 0xC000014A;
+global_var STATUS_PIPE_BROKEN = 0xC000014B;
+global_var STATUS_REGISTRY_CORRUPT = 0xC000014C;
+global_var STATUS_REGISTRY_IO_FAILED = 0xC000014D;
+global_var STATUS_NO_EVENT_PAIR = 0xC000014E;
+global_var STATUS_UNRECOGNIZED_VOLUME = 0xC000014F;
+global_var STATUS_SERIAL_NO_DEVICE_INITED = 0xC0000150;
+global_var STATUS_NO_SUCH_ALIAS = 0xC0000151;
+global_var STATUS_MEMBER_NOT_IN_ALIAS = 0xC0000152;
+global_var STATUS_MEMBER_IN_ALIAS = 0xC0000153;
+global_var STATUS_ALIAS_EXISTS = 0xC0000154;
+global_var STATUS_LOGON_NOT_GRANTED = 0xC0000155;
+global_var STATUS_TOO_MANY_SECRETS = 0xC0000156;
+global_var STATUS_SECRET_TOO_LONG = 0xC0000157;
+global_var STATUS_INTERNAL_DB_ERROR = 0xC0000158;
+global_var STATUS_FULLSCREEN_MODE = 0xC0000159;
+global_var STATUS_TOO_MANY_CONTEXT_IDS = 0xC000015A;
+global_var STATUS_LOGON_TYPE_NOT_GRANTED = 0xC000015B;
+global_var STATUS_NOT_REGISTRY_FILE = 0xC000015C;
+global_var STATUS_NT_CROSS_ENCRYPTION_REQUIRED = 0xC000015D;
+global_var STATUS_DOMAIN_CTRLR_CONFIG_ERROR = 0xC000015E;
+global_var STATUS_FT_MISSING_MEMBER = 0xC000015F;
+global_var STATUS_ILL_FORMED_SERVICE_ENTRY = 0xC0000160;
+global_var STATUS_ILLEGAL_CHARACTER = 0xC0000161;
+global_var STATUS_UNMAPPABLE_CHARACTER = 0xC0000162;
+global_var STATUS_UNDEFINED_CHARACTER = 0xC0000163;
+global_var STATUS_FLOPPY_VOLUME = 0xC0000164;
+global_var STATUS_FLOPPY_ID_MARK_NOT_FOUND = 0xC0000165;
+global_var STATUS_FLOPPY_WRONG_CYLINDER = 0xC0000166;
+global_var STATUS_FLOPPY_UNKNOWN_ERROR = 0xC0000167;
+global_var STATUS_FLOPPY_BAD_REGISTERS = 0xC0000168;
+global_var STATUS_DISK_RECALIBRATE_FAILED = 0xC0000169;
+global_var STATUS_DISK_OPERATION_FAILED = 0xC000016A;
+global_var STATUS_DISK_RESET_FAILED = 0xC000016B;
+global_var STATUS_SHARED_IRQ_BUSY = 0xC000016C;
+global_var STATUS_FT_ORPHANING = 0xC000016D;
+global_var STATUS_BIOS_FAILED_TO_CONNECT_INTERRUPT = 0xC000016E;
+global_var STATUS_PARTITION_FAILURE = 0xC0000172;
+global_var STATUS_INVALID_BLOCK_LENGTH = 0xC0000173;
+global_var STATUS_DEVICE_NOT_PARTITIONED = 0xC0000174;
+global_var STATUS_UNABLE_TO_LOCK_MEDIA = 0xC0000175;
+global_var STATUS_UNABLE_TO_UNLOAD_MEDIA = 0xC0000176;
+global_var STATUS_EOM_OVERFLOW = 0xC0000177;
+global_var STATUS_NO_MEDIA = 0xC0000178;
+global_var STATUS_NO_SUCH_MEMBER = 0xC000017A;
+global_var STATUS_INVALID_MEMBER = 0xC000017B;
+global_var STATUS_KEY_DELETED = 0xC000017C;
+global_var STATUS_NO_LOG_SPACE = 0xC000017D;
+global_var STATUS_TOO_MANY_SIDS = 0xC000017E;
+global_var STATUS_LM_CROSS_ENCRYPTION_REQUIRED = 0xC000017F;
+global_var STATUS_KEY_HAS_CHILDREN = 0xC0000180;
+global_var STATUS_CHILD_MUST_BE_VOLATILE = 0xC0000181;
+global_var STATUS_DEVICE_CONFIGURATION_ERROR = 0xC0000182;
+global_var STATUS_DRIVER_INTERNAL_ERROR = 0xC0000183;
+global_var STATUS_INVALID_DEVICE_STATE = 0xC0000184;
+global_var STATUS_IO_DEVICE_ERROR = 0xC0000185;
+global_var STATUS_DEVICE_PROTOCOL_ERROR = 0xC0000186;
+global_var STATUS_BACKUP_CONTROLLER = 0xC0000187;
+global_var STATUS_LOG_FILE_FULL = 0xC0000188;
+global_var STATUS_TOO_LATE = 0xC0000189;
+global_var STATUS_NO_TRUST_LSA_SECRET = 0xC000018A;
+global_var STATUS_NO_TRUST_SAM_ACCOUNT = 0xC000018B;
+global_var STATUS_TRUSTED_DOMAIN_FAILURE = 0xC000018C;
+global_var STATUS_TRUSTED_RELATIONSHIP_FAILURE = 0xC000018D;
+global_var STATUS_EVENTLOG_FILE_CORRUPT = 0xC000018E;
+global_var STATUS_EVENTLOG_CANT_START = 0xC000018F;
+global_var STATUS_TRUST_FAILURE = 0xC0000190;
+global_var STATUS_MUTANT_LIMIT_EXCEEDED = 0xC0000191;
+global_var STATUS_NETLOGON_NOT_STARTED = 0xC0000192;
+global_var STATUS_ACCOUNT_EXPIRED = 0xC0000193;
+global_var STATUS_POSSIBLE_DEADLOCK = 0xC0000194;
+global_var STATUS_NETWORK_CREDENTIAL_CONFLICT = 0xC0000195;
+global_var STATUS_REMOTE_SESSION_LIMIT = 0xC0000196;
+global_var STATUS_EVENTLOG_FILE_CHANGED = 0xC0000197;
+global_var STATUS_NOLOGON_INTERDOMAIN_TRUST_ACCOUNT = 0xC0000198;
+global_var STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT = 0xC0000199;
+global_var STATUS_NOLOGON_SERVER_TRUST_ACCOUNT = 0xC000019A;
+global_var STATUS_DOMAIN_TRUST_INCONSISTENT = 0xC000019B;
+global_var STATUS_FS_DRIVER_REQUIRED = 0xC000019C;
+global_var STATUS_NO_USER_SESSION_KEY = 0xC0000202;
+global_var STATUS_USER_SESSION_DELETED = 0xC0000203;
+global_var STATUS_RESOURCE_LANG_NOT_FOUND = 0xC0000204;
+global_var STATUS_INSUFF_SERVER_RESOURCES = 0xC0000205;
+global_var STATUS_INVALID_BUFFER_SIZE = 0xC0000206;
+global_var STATUS_INVALID_ADDRESS_COMPONENT = 0xC0000207;
+global_var STATUS_INVALID_ADDRESS_WILDCARD = 0xC0000208;
+global_var STATUS_TOO_MANY_ADDRESSES = 0xC0000209;
+global_var STATUS_ADDRESS_ALREADY_EXISTS = 0xC000020A;
+global_var STATUS_ADDRESS_CLOSED = 0xC000020B;
+global_var STATUS_CONNECTION_DISCONNECTED = 0xC000020C;
+global_var STATUS_CONNECTION_RESET = 0xC000020D;
+global_var STATUS_TOO_MANY_NODES = 0xC000020E;
+global_var STATUS_TRANSACTION_ABORTED = 0xC000020F;
+global_var STATUS_TRANSACTION_TIMED_OUT = 0xC0000210;
+global_var STATUS_TRANSACTION_NO_RELEASE = 0xC0000211;
+global_var STATUS_TRANSACTION_NO_MATCH = 0xC0000212;
+global_var STATUS_TRANSACTION_RESPONDED = 0xC0000213;
+global_var STATUS_TRANSACTION_INVALID_ID = 0xC0000214;
+global_var STATUS_TRANSACTION_INVALID_TYPE = 0xC0000215;
+global_var STATUS_NOT_SERVER_SESSION = 0xC0000216;
+global_var STATUS_NOT_CLIENT_SESSION = 0xC0000217;
+global_var STATUS_CANNOT_LOAD_REGISTRY_FILE = 0xC0000218;
+global_var STATUS_DEBUG_ATTACH_FAILED = 0xC0000219;
+global_var STATUS_SYSTEM_PROCESS_TERMINATED = 0xC000021A;
+global_var STATUS_DATA_NOT_ACCEPTED = 0xC000021B;
+global_var STATUS_NO_BROWSER_SERVERS_FOUND = 0xC000021C;
+global_var STATUS_VDM_HARD_ERROR = 0xC000021D;
+global_var STATUS_DRIVER_CANCEL_TIMEOUT = 0xC000021E;
+global_var STATUS_REPLY_MESSAGE_MISMATCH = 0xC000021F;
+global_var STATUS_MAPPED_ALIGNMENT = 0xC0000220;
+global_var STATUS_IMAGE_CHECKSUM_MISMATCH = 0xC0000221;
+global_var STATUS_LOST_WRITEBEHIND_DATA = 0xC0000222;
+global_var STATUS_CLIENT_SERVER_PARAMETERS_INVALID = 0xC0000223;
+global_var STATUS_PASSWORD_MUST_CHANGE = 0xC0000224;
+global_var STATUS_NOT_FOUND = 0xC0000225;
+global_var STATUS_NOT_TINY_STREAM = 0xC0000226;
+global_var STATUS_RECOVERY_FAILURE = 0xC0000227;
+global_var STATUS_STACK_OVERFLOW_READ = 0xC0000228;
+global_var STATUS_FAIL_CHECK = 0xC0000229;
+global_var STATUS_DUPLICATE_OBJECTID = 0xC000022A;
+global_var STATUS_OBJECTID_EXISTS = 0xC000022B;
+global_var STATUS_CONVERT_TO_LARGE = 0xC000022C;
+global_var STATUS_RETRY = 0xC000022D;
+global_var STATUS_FOUND_OUT_OF_SCOPE = 0xC000022E;
+global_var STATUS_ALLOCATE_BUCKET = 0xC000022F;
+global_var STATUS_PROPSET_NOT_FOUND = 0xC0000230;
+global_var STATUS_MARSHALL_OVERFLOW = 0xC0000231;
+global_var STATUS_INVALID_VARIANT = 0xC0000232;
+global_var STATUS_DOMAIN_CONTROLLER_NOT_FOUND = 0xC0000233;
+global_var STATUS_ACCOUNT_LOCKED_OUT = 0xC0000234;
+global_var STATUS_HANDLE_NOT_CLOSABLE = 0xC0000235;
+global_var STATUS_CONNECTION_REFUSED = 0xC0000236;
+global_var STATUS_GRACEFUL_DISCONNECT = 0xC0000237;
+global_var STATUS_ADDRESS_ALREADY_ASSOCIATED = 0xC0000238;
+global_var STATUS_ADDRESS_NOT_ASSOCIATED = 0xC0000239;
+global_var STATUS_CONNECTION_INVALID = 0xC000023A;
+global_var STATUS_CONNECTION_ACTIVE = 0xC000023B;
+global_var STATUS_NETWORK_UNREACHABLE = 0xC000023C;
+global_var STATUS_HOST_UNREACHABLE = 0xC000023D;
+global_var STATUS_PROTOCOL_UNREACHABLE = 0xC000023E;
+global_var STATUS_PORT_UNREACHABLE = 0xC000023F;
+global_var STATUS_REQUEST_ABORTED = 0xC0000240;
+global_var STATUS_CONNECTION_ABORTED = 0xC0000241;
+global_var STATUS_BAD_COMPRESSION_BUFFER = 0xC0000242;
+global_var STATUS_USER_MAPPED_FILE = 0xC0000243;
+global_var STATUS_AUDIT_FAILED = 0xC0000244;
+global_var STATUS_TIMER_RESOLUTION_NOT_SET = 0xC0000245;
+global_var STATUS_CONNECTION_COUNT_LIMIT = 0xC0000246;
+global_var STATUS_LOGIN_TIME_RESTRICTION = 0xC0000247;
+global_var STATUS_LOGIN_WKSTA_RESTRICTION = 0xC0000248;
+global_var STATUS_IMAGE_MP_UP_MISMATCH = 0xC0000249;
+global_var STATUS_INSUFFICIENT_LOGON_INFO = 0xC0000250;
+global_var STATUS_BAD_DLL_ENTRYPOINT = 0xC0000251;
+global_var STATUS_BAD_SERVICE_ENTRYPOINT = 0xC0000252;
+global_var STATUS_LPC_REPLY_LOST = 0xC0000253;
+global_var STATUS_IP_ADDRESS_CONFLICT1 = 0xC0000254;
+global_var STATUS_IP_ADDRESS_CONFLICT2 = 0xC0000255;
+global_var STATUS_REGISTRY_QUOTA_LIMIT = 0xC0000256;
+global_var STATUS_PATH_NOT_COVERED = 0xC0000257;
+global_var STATUS_NO_CALLBACK_ACTIVE = 0xC0000258;
+global_var STATUS_LICENSE_QUOTA_EXCEEDED = 0xC0000259;
+global_var STATUS_PWD_TOO_SHORT = 0xC000025A;
+global_var STATUS_PWD_TOO_RECENT = 0xC000025B;
+global_var STATUS_PWD_HISTORY_CONFLICT = 0xC000025C;
+global_var STATUS_PLUGPLAY_NO_DEVICE = 0xC000025E;
+global_var STATUS_UNSUPPORTED_COMPRESSION = 0xC000025F;
+global_var STATUS_INVALID_HW_PROFILE = 0xC0000260;
+global_var STATUS_INVALID_PLUGPLAY_DEVICE_PATH = 0xC0000261;
+global_var STATUS_DRIVER_ORDINAL_NOT_FOUND = 0xC0000262;
+global_var STATUS_DRIVER_ENTRYPOINT_NOT_FOUND = 0xC0000263;
+global_var STATUS_RESOURCE_NOT_OWNED = 0xC0000264;
+global_var STATUS_TOO_MANY_LINKS = 0xC0000265;
+global_var STATUS_QUOTA_LIST_INCONSISTENT = 0xC0000266;
+global_var STATUS_FILE_IS_OFFLINE = 0xC0000267;
+global_var STATUS_EVALUATION_EXPIRATION = 0xC0000268;
+global_var STATUS_ILLEGAL_DLL_RELOCATION = 0xC0000269;
+global_var STATUS_LICENSE_VIOLATION = 0xC000026A;
+global_var STATUS_DLL_INIT_FAILED_LOGOFF = 0xC000026B;
+global_var STATUS_DRIVER_UNABLE_TO_LOAD = 0xC000026C;
+global_var STATUS_DFS_UNAVAILABLE = 0xC000026D;
+global_var STATUS_VOLUME_DISMOUNTED = 0xC000026E;
+global_var STATUS_WX86_INTERNAL_ERROR = 0xC000026F;
+global_var STATUS_WX86_FLOAT_STACK_CHECK = 0xC0000270;
+global_var STATUS_VALIDATE_CONTINUE = 0xC0000271;
+global_var STATUS_NO_MATCH = 0xC0000272;
+global_var STATUS_NO_MORE_MATCHES = 0xC0000273;
+global_var STATUS_NOT_A_REPARSE_POINT = 0xC0000275;
+global_var STATUS_IO_REPARSE_TAG_INVALID = 0xC0000276;
+global_var STATUS_IO_REPARSE_TAG_MISMATCH = 0xC0000277;
+global_var STATUS_IO_REPARSE_DATA_INVALID = 0xC0000278;
+global_var STATUS_IO_REPARSE_TAG_NOT_HANDLED = 0xC0000279;
+global_var STATUS_REPARSE_POINT_NOT_RESOLVED = 0xC0000280;
+global_var STATUS_DIRECTORY_IS_A_REPARSE_POINT = 0xC0000281;
+global_var STATUS_RANGE_LIST_CONFLICT = 0xC0000282;
+global_var STATUS_SOURCE_ELEMENT_EMPTY = 0xC0000283;
+global_var STATUS_DESTINATION_ELEMENT_FULL = 0xC0000284;
+global_var STATUS_ILLEGAL_ELEMENT_ADDRESS = 0xC0000285;
+global_var STATUS_MAGAZINE_NOT_PRESENT = 0xC0000286;
+global_var STATUS_REINITIALIZATION_NEEDED = 0xC0000287;
+global_var STATUS_DEVICE_REQUIRES_CLEANING = 0x80000288;
+global_var STATUS_DEVICE_DOOR_OPEN = 0x80000289;
+global_var STATUS_ENCRYPTION_FAILED = 0xC000028A;
+global_var STATUS_DECRYPTION_FAILED = 0xC000028B;
+global_var STATUS_RANGE_NOT_FOUND = 0xC000028C;
+global_var STATUS_NO_RECOVERY_POLICY = 0xC000028D;
+global_var STATUS_NO_EFS = 0xC000028E;
+global_var STATUS_WRONG_EFS = 0xC000028F;
+global_var STATUS_NO_USER_KEYS = 0xC0000290;
+global_var STATUS_FILE_NOT_ENCRYPTED = 0xC0000291;
+global_var STATUS_NOT_EXPORT_FORMAT = 0xC0000292;
+global_var STATUS_FILE_ENCRYPTED = 0xC0000293;
+global_var STATUS_WAKE_SYSTEM = 0x40000294;
+global_var STATUS_WMI_GUID_NOT_FOUND = 0xC0000295;
+global_var STATUS_WMI_INSTANCE_NOT_FOUND = 0xC0000296;
+global_var STATUS_WMI_ITEMID_NOT_FOUND = 0xC0000297;
+global_var STATUS_WMI_TRY_AGAIN = 0xC0000298;
+global_var STATUS_SHARED_POLICY = 0xC0000299;
+global_var STATUS_POLICY_OBJECT_NOT_FOUND = 0xC000029A;
+global_var STATUS_POLICY_ONLY_IN_DS = 0xC000029B;
+global_var STATUS_VOLUME_NOT_UPGRADED = 0xC000029C;
+global_var STATUS_REMOTE_STORAGE_NOT_ACTIVE = 0xC000029D;
+global_var STATUS_REMOTE_STORAGE_MEDIA_ERROR = 0xC000029E;
+global_var STATUS_NO_TRACKING_SERVICE = 0xC000029F;
+global_var STATUS_SERVER_SID_MISMATCH = 0xC00002A0;
+global_var STATUS_DS_NO_ATTRIBUTE_OR_VALUE = 0xC00002A1;
+global_var STATUS_DS_INVALID_ATTRIBUTE_SYNTAX = 0xC00002A2;
+global_var STATUS_DS_ATTRIBUTE_TYPE_UNDEFINED = 0xC00002A3;
+global_var STATUS_DS_ATTRIBUTE_OR_VALUE_EXISTS = 0xC00002A4;
+global_var STATUS_DS_BUSY = 0xC00002A5;
+global_var STATUS_DS_UNAVAILABLE = 0xC00002A6;
+global_var STATUS_DS_NO_RIDS_ALLOCATED = 0xC00002A7;
+global_var STATUS_DS_NO_MORE_RIDS = 0xC00002A8;
+global_var STATUS_DS_INCORRECT_ROLE_OWNER = 0xC00002A9;
+global_var STATUS_DS_RIDMGR_INIT_ERROR = 0xC00002AA;
+global_var STATUS_DS_OBJ_CLASS_VIOLATION = 0xC00002AB;
+global_var STATUS_DS_CANT_ON_NON_LEAF = 0xC00002AC;
+global_var STATUS_DS_CANT_ON_RDN = 0xC00002AD;
+global_var STATUS_DS_CANT_MOD_OBJ_CLASS = 0xC00002AE;
+global_var STATUS_DS_CROSS_DOM_MOVE_FAILED = 0xC00002AF;
+global_var STATUS_DS_GC_NOT_AVAILABLE = 0xC00002B0;
+global_var STATUS_DIRECTORY_SERVICE_REQUIRED = 0xC00002B1;
+global_var STATUS_REPARSE_ATTRIBUTE_CONFLICT = 0xC00002B2;
+global_var STATUS_CANT_ENABLE_DENY_ONLY = 0xC00002B3;
+global_var STATUS_FLOAT_MULTIPLE_FAULTS = 0xC00002B4;
+global_var STATUS_FLOAT_MULTIPLE_TRAPS = 0xC00002B5;
+global_var STATUS_DEVICE_REMOVED = 0xC00002B6;
+global_var STATUS_JOURNAL_DELETE_IN_PROGRESS = 0xC00002B7;
+global_var STATUS_JOURNAL_NOT_ACTIVE = 0xC00002B8;
+global_var STATUS_NOINTERFACE = 0xC00002B9;
+global_var STATUS_DS_ADMIN_LIMIT_EXCEEDED = 0xC00002C1;
+global_var STATUS_DRIVER_FAILED_SLEEP = 0xC00002C2;
+global_var STATUS_MUTUAL_AUTHENTICATION_FAILED = 0xC00002C3;
+global_var STATUS_CORRUPT_SYSTEM_FILE = 0xC00002C4;
+global_var STATUS_DATATYPE_MISALIGNMENT_ERROR = 0xC00002C5;
+global_var STATUS_WMI_READ_ONLY = 0xC00002C6;
+global_var STATUS_WMI_SET_FAILURE = 0xC00002C7;
+global_var STATUS_COMMITMENT_MINIMUM = 0xC00002C8;
+global_var STATUS_REG_NAT_CONSUMPTION = 0xC00002C9;
+global_var STATUS_TRANSPORT_FULL = 0xC00002CA;
+global_var STATUS_DS_SAM_INIT_FAILURE = 0xC00002CB;
+global_var STATUS_ONLY_IF_CONNECTED = 0xC00002CC;
+global_var STATUS_DS_SENSITIVE_GROUP_VIOLATION = 0xC00002CD;
+global_var STATUS_PNP_RESTART_ENUMERATION = 0xC00002CE;
+global_var STATUS_JOURNAL_ENTRY_DELETED = 0xC00002CF;
+global_var STATUS_DS_CANT_MOD_PRIMARYGROUPID = 0xC00002D0;
+global_var STATUS_SYSTEM_IMAGE_BAD_SIGNATURE = 0xC00002D1;
+global_var STATUS_PNP_REBOOT_REQUIRED = 0xC00002D2;
+global_var STATUS_POWER_STATE_INVALID = 0xC00002D3;
+global_var STATUS_DS_INVALID_GROUP_TYPE = 0xC00002D4;
+global_var STATUS_DS_NO_NEST_GLOBALGROUP_IN_MIXEDDOMAIN = 0xC00002D5;
+global_var STATUS_DS_NO_NEST_LOCALGROUP_IN_MIXEDDOMAIN = 0xC00002D6;
+global_var STATUS_DS_GLOBAL_CANT_HAVE_LOCAL_MEMBER = 0xC00002D7;
+global_var STATUS_DS_GLOBAL_CANT_HAVE_UNIVERSAL_MEMBER = 0xC00002D8;
+global_var STATUS_DS_UNIVERSAL_CANT_HAVE_LOCAL_MEMBER = 0xC00002D9;
+global_var STATUS_DS_GLOBAL_CANT_HAVE_CROSSDOMAIN_MEMBER = 0xC00002DA;
+global_var STATUS_DS_LOCAL_CANT_HAVE_CROSSDOMAIN_LOCAL_MEMBER = 0xC00002DB;
+global_var STATUS_DS_HAVE_PRIMARY_MEMBERS = 0xC00002DC;
+global_var STATUS_WMI_NOT_SUPPORTED = 0xC00002DD;
+global_var STATUS_INSUFFICIENT_POWER = 0xC00002DE;
+global_var STATUS_SAM_NEED_BOOTKEY_PASSWORD = 0xC00002DF;
+global_var STATUS_SAM_NEED_BOOTKEY_FLOPPY = 0xC00002E0;
+global_var STATUS_DS_CANT_START = 0xC00002E1;
+global_var STATUS_DS_INIT_FAILURE = 0xC00002E2;
+global_var STATUS_SAM_INIT_FAILURE = 0xC00002E3;
+global_var STATUS_DS_GC_REQUIRED = 0xC00002E4;
+global_var STATUS_DS_LOCAL_MEMBER_OF_LOCAL_ONLY = 0xC00002E5;
+global_var STATUS_DS_NO_FPO_IN_UNIVERSAL_GROUPS = 0xC00002E6;
+global_var STATUS_DS_MACHINE_ACCOUNT_QUOTA_EXCEEDED = 0xC00002E7;
+global_var STATUS_MULTIPLE_FAULT_VIOLATION = 0xC00002E8;
+global_var STATUS_CURRENT_DOMAIN_NOT_ALLOWED = 0xC00002E9;
+global_var STATUS_CANNOT_MAKE = 0xC00002EA;
+global_var STATUS_SYSTEM_SHUTDOWN = 0xC00002EB;
+global_var STATUS_DS_INIT_FAILURE_CONSOLE = 0xC00002EC;
+global_var STATUS_DS_SAM_INIT_FAILURE_CONSOLE = 0xC00002ED;
+global_var STATUS_UNFINISHED_CONTEXT_DELETED = 0xC00002EE;
+global_var STATUS_NO_TGT_REPLY = 0xC00002EF;
+global_var STATUS_OBJECTID_NOT_FOUND = 0xC00002F0;
+global_var STATUS_NO_IP_ADDRESSES = 0xC00002F1;
+global_var STATUS_WRONG_CREDENTIAL_HANDLE = 0xC00002F2;
+global_var STATUS_CRYPTO_SYSTEM_INVALID = 0xC00002F3;
+global_var STATUS_MAX_REFERRALS_EXCEEDED = 0xC00002F4;
+global_var STATUS_MUST_BE_KDC = 0xC00002F5;
+global_var STATUS_STRONG_CRYPTO_NOT_SUPPORTED = 0xC00002F6;
+global_var STATUS_TOO_MANY_PRINCIPALS = 0xC00002F7;
+global_var STATUS_NO_PA_DATA = 0xC00002F8;
+global_var STATUS_PKINIT_NAME_MISMATCH = 0xC00002F9;
+global_var STATUS_SMARTCARD_LOGON_REQUIRED = 0xC00002FA;
+global_var STATUS_KDC_INVALID_REQUEST = 0xC00002FB;
+global_var STATUS_KDC_UNABLE_TO_REFER = 0xC00002FC;
+global_var STATUS_KDC_UNKNOWN_ETYPE = 0xC00002FD;
+global_var STATUS_SHUTDOWN_IN_PROGRESS = 0xC00002FE;
+global_var STATUS_SERVER_SHUTDOWN_IN_PROGRESS = 0xC00002FF;
+global_var STATUS_NOT_SUPPORTED_ON_SBS = 0xC0000300;
+global_var STATUS_WMI_GUID_DISCONNECTED = 0xC0000301;
+global_var STATUS_WMI_ALREADY_DISABLED = 0xC0000302;
+global_var STATUS_WMI_ALREADY_ENABLED = 0xC0000303;
+global_var STATUS_MFT_TOO_FRAGMENTED = 0xC0000304;
+global_var STATUS_COPY_PROTECTION_FAILURE = 0xC0000305;
+global_var STATUS_CSS_AUTHENTICATION_FAILURE = 0xC0000306;
+global_var STATUS_CSS_KEY_NOT_PRESENT = 0xC0000307;
+global_var STATUS_CSS_KEY_NOT_ESTABLISHED = 0xC0000308;
+global_var STATUS_CSS_SCRAMBLED_SECTOR = 0xC0000309;
+global_var STATUS_CSS_REGION_MISMATCH = 0xC000030A;
+global_var STATUS_CSS_RESETS_EXHAUSTED = 0xC000030B;
+global_var STATUS_PKINIT_FAILURE = 0xC0000320;
+global_var STATUS_SMARTCARD_SUBSYSTEM_FAILURE = 0xC0000321;
+global_var STATUS_NO_KERB_KEY = 0xC0000322;
+global_var STATUS_HOST_DOWN = 0xC0000350;
+global_var STATUS_UNSUPPORTED_PREAUTH = 0xC0000351;
+global_var STATUS_EFS_ALG_BLOB_TOO_BIG = 0xC0000352;
+global_var STATUS_PORT_NOT_SET = 0xC0000353;
+global_var STATUS_DEBUGGER_INACTIVE = 0xC0000354;
+global_var STATUS_DS_VERSION_CHECK_FAILURE = 0xC0000355;
+global_var STATUS_AUDITING_DISABLED = 0xC0000356;
+global_var STATUS_PRENT4_MACHINE_ACCOUNT = 0xC0000357;
+global_var STATUS_DS_AG_CANT_HAVE_UNIVERSAL_MEMBER = 0xC0000358;
+global_var STATUS_INVALID_IMAGE_WIN_32 = 0xC0000359;
+global_var STATUS_INVALID_IMAGE_WIN_64 = 0xC000035A;
+global_var STATUS_BAD_BINDINGS = 0xC000035B;
+global_var STATUS_NETWORK_SESSION_EXPIRED = 0xC000035C;
+global_var STATUS_APPHELP_BLOCK = 0xC000035D;
+global_var STATUS_ALL_SIDS_FILTERED = 0xC000035E;
+global_var STATUS_NOT_SAFE_MODE_DRIVER = 0xC000035F;
+global_var STATUS_ACCESS_DISABLED_BY_POLICY_DEFAULT = 0xC0000361;
+global_var STATUS_ACCESS_DISABLED_BY_POLICY_PATH = 0xC0000362;
+global_var STATUS_ACCESS_DISABLED_BY_POLICY_PUBLISHER = 0xC0000363;
+global_var STATUS_ACCESS_DISABLED_BY_POLICY_OTHER = 0xC0000364;
+global_var STATUS_FAILED_DRIVER_ENTRY = 0xC0000365;
+global_var STATUS_DEVICE_ENUMERATION_ERROR = 0xC0000366;
+global_var STATUS_WAIT_FOR_OPLOCK = 0x00000367;
+global_var STATUS_MOUNT_POINT_NOT_RESOLVED = 0xC0000368;
+global_var STATUS_INVALID_DEVICE_OBJECT_PARAMETER = 0xC0000369;
+global_var STATUS_MCA_OCCURED = 0xC000036A;
+global_var STATUS_DRIVER_BLOCKED_CRITICAL = 0xC000036B;
+global_var STATUS_DRIVER_BLOCKED = 0xC000036C;
+global_var STATUS_DRIVER_DATABASE_ERROR = 0xC000036D;
+global_var STATUS_SYSTEM_HIVE_TOO_LARGE = 0xC000036E;
+global_var STATUS_INVALID_IMPORT_OF_NON_DLL = 0xC000036F;
+global_var STATUS_DS_SHUTTING_DOWN = 0x40000370;
+global_var STATUS_SMARTCARD_WRONG_PIN = 0xC0000380;
+global_var STATUS_SMARTCARD_CARD_BLOCKED = 0xC0000381;
+global_var STATUS_SMARTCARD_CARD_NOT_AUTHENTICATED = 0xC0000382;
+global_var STATUS_SMARTCARD_NO_CARD = 0xC0000383;
+global_var STATUS_SMARTCARD_NO_KEY_CONTAINER = 0xC0000384;
+global_var STATUS_SMARTCARD_NO_CERTIFICATE = 0xC0000385;
+global_var STATUS_SMARTCARD_NO_KEYSET = 0xC0000386;
+global_var STATUS_SMARTCARD_IO_ERROR = 0xC0000387;
+global_var STATUS_DOWNGRADE_DETECTED = 0xC0000388;
+global_var STATUS_SMARTCARD_CERT_REVOKED = 0xC0000389;
+global_var STATUS_ISSUING_CA_UNTRUSTED = 0xC000038A;
+global_var STATUS_REVOCATION_OFFLINE_C = 0xC000038B;
+global_var STATUS_PKINIT_CLIENT_FAILURE = 0xC000038C;
+global_var STATUS_SMARTCARD_CERT_EXPIRED = 0xC000038D;
+global_var STATUS_DRIVER_FAILED_PRIOR_UNLOAD = 0xC000038E;
+global_var STATUS_WOW_ASSERTION = 0xC0009898;
+global_var RPC_NT_INVALID_STRING_BINDING = 0xC0020001;
+global_var RPC_NT_WRONG_KIND_OF_BINDING = 0xC0020002;
+global_var RPC_NT_INVALID_BINDING = 0xC0020003;
+global_var RPC_NT_PROTSEQ_NOT_SUPPORTED = 0xC0020004;
+global_var RPC_NT_INVALID_RPC_PROTSEQ = 0xC0020005;
+global_var RPC_NT_INVALID_STRING_UUID = 0xC0020006;
+global_var RPC_NT_INVALID_ENDPOINT_FORMAT = 0xC0020007;
+global_var RPC_NT_INVALID_NET_ADDR = 0xC0020008;
+global_var RPC_NT_NO_ENDPOINT_FOUND = 0xC0020009;
+global_var RPC_NT_INVALID_TIMEOUT = 0xC002000A;
+global_var RPC_NT_OBJECT_NOT_FOUND = 0xC002000B;
+global_var RPC_NT_ALREADY_REGISTERED = 0xC002000C;
+global_var RPC_NT_TYPE_ALREADY_REGISTERED = 0xC002000D;
+global_var RPC_NT_ALREADY_LISTENING = 0xC002000E;
+global_var RPC_NT_NO_PROTSEQS_REGISTERED = 0xC002000F;
+global_var RPC_NT_NOT_LISTENING = 0xC0020010;
+global_var RPC_NT_UNKNOWN_MGR_TYPE = 0xC0020011;
+global_var RPC_NT_UNKNOWN_IF = 0xC0020012;
+global_var RPC_NT_NO_BINDINGS = 0xC0020013;
+global_var RPC_NT_NO_PROTSEQS = 0xC0020014;
+global_var RPC_NT_CANT_CREATE_ENDPOINT = 0xC0020015;
+global_var RPC_NT_OUT_OF_RESOURCES = 0xC0020016;
+global_var RPC_NT_SERVER_UNAVAILABLE = 0xC0020017;
+global_var RPC_NT_SERVER_TOO_BUSY = 0xC0020018;
+global_var RPC_NT_INVALID_NETWORK_OPTIONS = 0xC0020019;
+global_var RPC_NT_NO_CALL_ACTIVE = 0xC002001A;
+global_var RPC_NT_CALL_FAILED = 0xC002001B;
+global_var RPC_NT_CALL_FAILED_DNE = 0xC002001C;
+global_var RPC_NT_PROTOCOL_ERROR = 0xC002001D;
+global_var RPC_NT_UNSUPPORTED_TRANS_SYN = 0xC002001F;
+global_var RPC_NT_UNSUPPORTED_TYPE = 0xC0020021;
+global_var RPC_NT_INVALID_TAG = 0xC0020022;
+global_var RPC_NT_INVALID_BOUND = 0xC0020023;
+global_var RPC_NT_NO_ENTRY_NAME = 0xC0020024;
+global_var RPC_NT_INVALID_NAME_SYNTAX = 0xC0020025;
+global_var RPC_NT_UNSUPPORTED_NAME_SYNTAX = 0xC0020026;
+global_var RPC_NT_UUID_NO_ADDRESS = 0xC0020028;
+global_var RPC_NT_DUPLICATE_ENDPOINT = 0xC0020029;
+global_var RPC_NT_UNKNOWN_AUTHN_TYPE = 0xC002002A;
+global_var RPC_NT_MAX_CALLS_TOO_SMALL = 0xC002002B;
+global_var RPC_NT_STRING_TOO_LONG = 0xC002002C;
+global_var RPC_NT_PROTSEQ_NOT_FOUND = 0xC002002D;
+global_var RPC_NT_PROCNUM_OUT_OF_RANGE = 0xC002002E;
+global_var RPC_NT_BINDING_HAS_NO_AUTH = 0xC002002F;
+global_var RPC_NT_UNKNOWN_AUTHN_SERVICE = 0xC0020030;
+global_var RPC_NT_UNKNOWN_AUTHN_LEVEL = 0xC0020031;
+global_var RPC_NT_INVALID_AUTH_IDENTITY = 0xC0020032;
+global_var RPC_NT_UNKNOWN_AUTHZ_SERVICE = 0xC0020033;
+global_var EPT_NT_INVALID_ENTRY = 0xC0020034;
+global_var EPT_NT_CANT_PERFORM_OP = 0xC0020035;
+global_var EPT_NT_NOT_REGISTERED = 0xC0020036;
+global_var RPC_NT_NOTHING_TO_EXPORT = 0xC0020037;
+global_var RPC_NT_INCOMPLETE_NAME = 0xC0020038;
+global_var RPC_NT_INVALID_VERS_OPTION = 0xC0020039;
+global_var RPC_NT_NO_MORE_MEMBERS = 0xC002003A;
+global_var RPC_NT_NOT_ALL_OBJS_UNEXPORTED = 0xC002003B;
+global_var RPC_NT_INTERFACE_NOT_FOUND = 0xC002003C;
+global_var RPC_NT_ENTRY_ALREADY_EXISTS = 0xC002003D;
+global_var RPC_NT_ENTRY_NOT_FOUND = 0xC002003E;
+global_var RPC_NT_NAME_SERVICE_UNAVAILABLE = 0xC002003F;
+global_var RPC_NT_INVALID_NAF_ID = 0xC0020040;
+global_var RPC_NT_CANNOT_SUPPORT = 0xC0020041;
+global_var RPC_NT_NO_CONTEXT_AVAILABLE = 0xC0020042;
+global_var RPC_NT_INTERNAL_ERROR = 0xC0020043;
+global_var RPC_NT_ZERO_DIVIDE = 0xC0020044;
+global_var RPC_NT_ADDRESS_ERROR = 0xC0020045;
+global_var RPC_NT_FP_DIV_ZERO = 0xC0020046;
+global_var RPC_NT_FP_UNDERFLOW = 0xC0020047;
+global_var RPC_NT_FP_OVERFLOW = 0xC0020048;
+global_var RPC_NT_NO_MORE_ENTRIES = 0xC0030001;
+global_var RPC_NT_SS_CHAR_TRANS_OPEN_FAIL = 0xC0030002;
+global_var RPC_NT_SS_CHAR_TRANS_SHORT_FILE = 0xC0030003;
+global_var RPC_NT_SS_IN_NULL_CONTEXT = 0xC0030004;
+global_var RPC_NT_SS_CONTEXT_MISMATCH = 0xC0030005;
+global_var RPC_NT_SS_CONTEXT_DAMAGED = 0xC0030006;
+global_var RPC_NT_SS_HANDLES_MISMATCH = 0xC0030007;
+global_var RPC_NT_SS_CANNOT_GET_CALL_HANDLE = 0xC0030008;
+global_var RPC_NT_NULL_REF_POINTER = 0xC0030009;
+global_var RPC_NT_ENUM_VALUE_OUT_OF_RANGE = 0xC003000A;
+global_var RPC_NT_BYTE_COUNT_TOO_SMALL = 0xC003000B;
+global_var RPC_NT_BAD_STUB_DATA = 0xC003000C;
+global_var RPC_NT_CALL_IN_PROGRESS = 0xC0020049;
+global_var RPC_NT_NO_MORE_BINDINGS = 0xC002004A;
+global_var RPC_NT_GROUP_MEMBER_NOT_FOUND = 0xC002004B;
+global_var EPT_NT_CANT_CREATE = 0xC002004C;
+global_var RPC_NT_INVALID_OBJECT = 0xC002004D;
+global_var RPC_NT_NO_INTERFACES = 0xC002004F;
+global_var RPC_NT_CALL_CANCELLED = 0xC0020050;
+global_var RPC_NT_BINDING_INCOMPLETE = 0xC0020051;
+global_var RPC_NT_COMM_FAILURE = 0xC0020052;
+global_var RPC_NT_UNSUPPORTED_AUTHN_LEVEL = 0xC0020053;
+global_var RPC_NT_NO_PRINC_NAME = 0xC0020054;
+global_var RPC_NT_NOT_RPC_ERROR = 0xC0020055;
+global_var RPC_NT_UUID_LOCAL_ONLY = 0x40020056;
+global_var RPC_NT_SEC_PKG_ERROR = 0xC0020057;
+global_var RPC_NT_NOT_CANCELLED = 0xC0020058;
+global_var RPC_NT_INVALID_ES_ACTION = 0xC0030059;
+global_var RPC_NT_WRONG_ES_VERSION = 0xC003005A;
+global_var RPC_NT_WRONG_STUB_VERSION = 0xC003005B;
+global_var RPC_NT_INVALID_PIPE_OBJECT = 0xC003005C;
+global_var RPC_NT_INVALID_PIPE_OPERATION = 0xC003005D;
+global_var RPC_NT_WRONG_PIPE_VERSION = 0xC003005E;
+global_var RPC_NT_PIPE_CLOSED = 0xC003005F;
+global_var RPC_NT_PIPE_DISCIPLINE_ERROR = 0xC0030060;
+global_var RPC_NT_PIPE_EMPTY = 0xC0030061;
+global_var RPC_NT_INVALID_ASYNC_HANDLE = 0xC0020062;
+global_var RPC_NT_INVALID_ASYNC_CALL = 0xC0020063;
+global_var RPC_NT_SEND_INCOMPLETE = 0x400200AF;
+global_var STATUS_ACPI_INVALID_OPCODE = 0xC0140001;
+global_var STATUS_ACPI_STACK_OVERFLOW = 0xC0140002;
+global_var STATUS_ACPI_ASSERT_FAILED = 0xC0140003;
+global_var STATUS_ACPI_INVALID_INDEX = 0xC0140004;
+global_var STATUS_ACPI_INVALID_ARGUMENT = 0xC0140005;
+global_var STATUS_ACPI_FATAL = 0xC0140006;
+global_var STATUS_ACPI_INVALID_SUPERNAME = 0xC0140007;
+global_var STATUS_ACPI_INVALID_ARGTYPE = 0xC0140008;
+global_var STATUS_ACPI_INVALID_OBJTYPE = 0xC0140009;
+global_var STATUS_ACPI_INVALID_TARGETTYPE = 0xC014000A;
+global_var STATUS_ACPI_INCORRECT_ARGUMENT_COUNT = 0xC014000B;
+global_var STATUS_ACPI_ADDRESS_NOT_MAPPED = 0xC014000C;
+global_var STATUS_ACPI_INVALID_EVENTTYPE = 0xC014000D;
+global_var STATUS_ACPI_HANDLER_COLLISION = 0xC014000E;
+global_var STATUS_ACPI_INVALID_DATA = 0xC014000F;
+global_var STATUS_ACPI_INVALID_REGION = 0xC0140010;
+global_var STATUS_ACPI_INVALID_ACCESS_SIZE = 0xC0140011;
+global_var STATUS_ACPI_ACQUIRE_GLOBAL_LOCK = 0xC0140012;
+global_var STATUS_ACPI_ALREADY_INITIALIZED = 0xC0140013;
+global_var STATUS_ACPI_NOT_INITIALIZED = 0xC0140014;
+global_var STATUS_ACPI_INVALID_MUTEX_LEVEL = 0xC0140015;
+global_var STATUS_ACPI_MUTEX_NOT_OWNED = 0xC0140016;
+global_var STATUS_ACPI_MUTEX_NOT_OWNER = 0xC0140017;
+global_var STATUS_ACPI_RS_ACCESS = 0xC0140018;
+global_var STATUS_ACPI_INVALID_TABLE = 0xC0140019;
+global_var STATUS_ACPI_REG_HANDLER_FAILED = 0xC0140020;
+global_var STATUS_ACPI_POWER_REQUEST_FAILED = 0xC0140021;
+global_var STATUS_CTX_WINSTATION_NAME_INVALID = 0xC00A0001;
+global_var STATUS_CTX_INVALID_PD = 0xC00A0002;
+global_var STATUS_CTX_PD_NOT_FOUND = 0xC00A0003;
+global_var STATUS_CTX_CDM_CONNECT = 0x400A0004;
+global_var STATUS_CTX_CDM_DISCONNECT = 0x400A0005;
+global_var STATUS_CTX_CLOSE_PENDING = 0xC00A0006;
+global_var STATUS_CTX_NO_OUTBUF = 0xC00A0007;
+global_var STATUS_CTX_MODEM_INF_NOT_FOUND = 0xC00A0008;
+global_var STATUS_CTX_INVALID_MODEMNAME = 0xC00A0009;
+global_var STATUS_CTX_RESPONSE_ERROR = 0xC00A000A;
+global_var STATUS_CTX_MODEM_RESPONSE_TIMEOUT = 0xC00A000B;
+global_var STATUS_CTX_MODEM_RESPONSE_NO_CARRIER = 0xC00A000C;
+global_var STATUS_CTX_MODEM_RESPONSE_NO_DIALTONE = 0xC00A000D;
+global_var STATUS_CTX_MODEM_RESPONSE_BUSY = 0xC00A000E;
+global_var STATUS_CTX_MODEM_RESPONSE_VOICE = 0xC00A000F;
+global_var STATUS_CTX_TD_ERROR = 0xC00A0010;
+global_var STATUS_CTX_LICENSE_CLIENT_INVALID = 0xC00A0012;
+global_var STATUS_CTX_LICENSE_NOT_AVAILABLE = 0xC00A0013;
+global_var STATUS_CTX_LICENSE_EXPIRED = 0xC00A0014;
+global_var STATUS_CTX_WINSTATION_NOT_FOUND = 0xC00A0015;
+global_var STATUS_CTX_WINSTATION_NAME_COLLISION = 0xC00A0016;
+global_var STATUS_CTX_WINSTATION_BUSY = 0xC00A0017;
+global_var STATUS_CTX_BAD_VIDEO_MODE = 0xC00A0018;
+global_var STATUS_CTX_GRAPHICS_INVALID = 0xC00A0022;
+global_var STATUS_CTX_NOT_CONSOLE = 0xC00A0024;
+global_var STATUS_CTX_CLIENT_QUERY_TIMEOUT = 0xC00A0026;
+global_var STATUS_CTX_CONSOLE_DISCONNECT = 0xC00A0027;
+global_var STATUS_CTX_CONSOLE_CONNECT = 0xC00A0028;
+global_var STATUS_CTX_SHADOW_DENIED = 0xC00A002A;
+global_var STATUS_CTX_WINSTATION_ACCESS_DENIED = 0xC00A002B;
+global_var STATUS_CTX_INVALID_WD = 0xC00A002E;
+global_var STATUS_CTX_WD_NOT_FOUND = 0xC00A002F;
+global_var STATUS_CTX_SHADOW_INVALID = 0xC00A0030;
+global_var STATUS_CTX_SHADOW_DISABLED = 0xC00A0031;
+global_var STATUS_RDP_PROTOCOL_ERROR = 0xC00A0032;
+global_var STATUS_CTX_CLIENT_LICENSE_NOT_SET = 0xC00A0033;
+global_var STATUS_CTX_CLIENT_LICENSE_IN_USE = 0xC00A0034;
+global_var STATUS_CTX_SHADOW_ENDED_BY_MODE_CHANGE = 0xC00A0035;
+global_var STATUS_CTX_SHADOW_NOT_RUNNING = 0xC00A0036;
+global_var STATUS_PNP_BAD_MPS_TABLE = 0xC0040035;
+global_var STATUS_PNP_TRANSLATION_FAILED = 0xC0040036;
+global_var STATUS_PNP_IRQ_TRANSLATION_FAILED = 0xC0040037;
+global_var STATUS_SXS_SECTION_NOT_FOUND = 0xC0150001;
+global_var STATUS_SXS_CANT_GEN_ACTCTX = 0xC0150002;
+global_var STATUS_SXS_INVALID_ACTCTXDATA_FORMAT = 0xC0150003;
+global_var STATUS_SXS_ASSEMBLY_NOT_FOUND = 0xC0150004;
+global_var STATUS_SXS_MANIFEST_FORMAT_ERROR = 0xC0150005;
+global_var STATUS_SXS_MANIFEST_PARSE_ERROR = 0xC0150006;
+global_var STATUS_SXS_ACTIVATION_CONTEXT_DISABLED = 0xC0150007;
+global_var STATUS_SXS_KEY_NOT_FOUND = 0xC0150008;
+global_var STATUS_SXS_VERSION_CONFLICT = 0xC0150009;
+global_var STATUS_SXS_WRONG_SECTION_TYPE = 0xC015000A;
+global_var STATUS_SXS_THREAD_QUERIES_DISABLED = 0xC015000B;
+global_var STATUS_SXS_ASSEMBLY_MISSING = 0xC015000C;
+global_var STATUS_SXS_RELEASE_ACTIVATION_CONTEXT = 0x4015000D;
+global_var STATUS_SXS_PROCESS_DEFAULT_ALREADY_SET = 0xC015000E;
+global_var STATUS_SXS_EARLY_DEACTIVATION = 0xC015000F;
+global_var STATUS_SXS_INVALID_DEACTIVATION = 0xC0150010;
+global_var STATUS_SXS_MULTIPLE_DEACTIVATION = 0xC0150011;
+global_var STATUS_SXS_SYSTEM_DEFAULT_ACTIVATION_CONTEXT_EMPTY = 0xC0150012;
+global_var STATUS_SXS_PROCESS_TERMINATION_REQUESTED = 0xC0150013;
+global_var STATUS_CLUSTER_INVALID_NODE = 0xC0130001;
+global_var STATUS_CLUSTER_NODE_EXISTS = 0xC0130002;
+global_var STATUS_CLUSTER_JOIN_IN_PROGRESS = 0xC0130003;
+global_var STATUS_CLUSTER_NODE_NOT_FOUND = 0xC0130004;
+global_var STATUS_CLUSTER_LOCAL_NODE_NOT_FOUND = 0xC0130005;
+global_var STATUS_CLUSTER_NETWORK_EXISTS = 0xC0130006;
+global_var STATUS_CLUSTER_NETWORK_NOT_FOUND = 0xC0130007;
+global_var STATUS_CLUSTER_NETINTERFACE_EXISTS = 0xC0130008;
+global_var STATUS_CLUSTER_NETINTERFACE_NOT_FOUND = 0xC0130009;
+global_var STATUS_CLUSTER_INVALID_REQUEST = 0xC013000A;
+global_var STATUS_CLUSTER_INVALID_NETWORK_PROVIDER = 0xC013000B;
+global_var STATUS_CLUSTER_NODE_DOWN = 0xC013000C;
+global_var STATUS_CLUSTER_NODE_UNREACHABLE = 0xC013000D;
+global_var STATUS_CLUSTER_NODE_NOT_MEMBER = 0xC013000E;
+global_var STATUS_CLUSTER_JOIN_NOT_IN_PROGRESS = 0xC013000F;
+global_var STATUS_CLUSTER_INVALID_NETWORK = 0xC0130010;
+global_var STATUS_CLUSTER_NO_NET_ADAPTERS = 0xC0130011;
+global_var STATUS_CLUSTER_NODE_UP = 0xC0130012;
+global_var STATUS_CLUSTER_NODE_PAUSED = 0xC0130013;
+global_var STATUS_CLUSTER_NODE_NOT_PAUSED = 0xC0130014;
+global_var STATUS_CLUSTER_NO_SECURITY_CONTEXT = 0xC0130015;
+global_var STATUS_CLUSTER_NETWORK_NOT_INTERNAL = 0xC0130016;
+global_var STATUS_CLUSTER_POISONED = 0xC0130017;
+
+# TRANSACTION codes
+global_var TRANS_PIPE           = 0x26;
+
+# Opnum codes
+global_var OPNUM_OPENHKCR           = 0x00;
+global_var OPNUM_OPENHKCU           = 0x01;
+global_var OPNUM_OPENHKLM           = 0x02;
+global_var OPNUM_OPENHKU            = 0x04;
+global_var OPNUM_OPENKEY            = 0x0F;
+global_var OPNUM_QUERYINFOKEY       = 0x10;
+global_var OPNUM_QUERYVALUE         = 0x11;
+global_var OPNUM_ENUMVALUE          = 0x0A;
+global_var OPNUM_ENUMKEY            = 0x09;
+global_var OPNUM_CLOSEKEY           = 0x05;
+global_var OPNUM_GETKEYSECURITY     = 0x0C;
+global_var OPNUM_CREATEKEY          = 0x06;
+global_var OPNUM_SETVALUE           = 0x16;
+global_var OPNUM_SERVERGETINFO      = 0x15;
+global_var OPNUM_SHAREENUM          = 0x0F;
+global_var OPNUM_WKSTAGETINFO       = 0x00;
+global_var OPNUM_WKSTAUSERENUM      = 0x02;
+global_var OPNUM_LSAOPENPOLICY      = 0x2C;
+global_var OPNUM_LSAQUERYINFO       = 0x07;
+global_var OPNUM_LSAQUERYDOMAININFO = 0x35;
+global_var OPNUM_LSASECURITYOBJECT  = 0x03;
+global_var OPNUM_LSALOOKUPSID       = 0x0F;
+global_var OPNUM_LSALOOKUPNAMES     = 0x0E;
+global_var OPNUM_LSACLOSE           = 0x00;
+global_var OPNUM_OPENSCMANAGERW     = 0x0F;
+global_var OPNUM_OPENSCMANAGERA     = 0x1B;
+global_var OPNUM_OPENSERVICEW       = 0x10;
+global_var OPNUM_OPENSERVICEA       = 0x1C;
+global_var OPNUM_SERVICECONTROL     = 0x01;
+global_var OPNUM_CREATESERVICEA     = 0x18;
+global_var OPNUM_CREATESERVICEW     = 0x0C;
+global_var OPNUM_STARTSERVICEA      = 0x1F;
+global_var OPNUM_STARTSERVICEW      = 0x13;
+global_var OPNUM_DELETESERVICE      = 0x02;
+global_var OPNUM_CLOSESERVICE       = 0x00;
+global_var OPNUM_QUERYSERVICE       = 0x06;
+global_var OPNUM_QUERYSERVICESECURITY = 0x04;
+global_var OPNUM_ENUMSERVICEA       = 0x1A;
+global_var OPNUM_ENUMSERVICEW       = 0x0E;
+global_var OPNUM_SERVICEDISPLAYNAMEA = 0x20;
+global_var OPNUM_SERVICEDISPLAYNAMEW = 0x14;
+global_var OPNUM_SAMCONNECT2        = 0x39;
+global_var OPNUM_SAMENUMDOM         = 0x06;
+global_var OPNUM_SAMLOOKUP          = 0x05;
+global_var OPNUM_SAMOPENDOM         = 0x07;
+global_var OPNUM_SAMLOOKUPNAME      = 0x11;
+global_var OPNUM_SAMOPENUSER        = 0x22;
+global_var OPNUM_SAMOPENGROUP       = 0x13;
+global_var OPNUM_SAMOPENALIAS       = 0x1B;
+global_var OPNUM_SAMGETGROUPS       = 0x27;
+global_var OPNUM_SAMCLOSEHANDLE     = 0x01;
+global_var OPNUM_SAMLOOKUPIDS       = 0x12;
+global_var OPNUM_SAMQUERYINFOU      = 0x24;
+global_var OPNUM_SAMQUERYDISPINFO   = 0x28;
+global_var OPNUM_SAMQUERYINFOD      = 0x2E;
+global_var OPNUM_SAMQUERYDISPINFO3  = 0x33;
+global_var OPNUM_SAMGETALIASM       = 0x10;
+global_var OPNUM_SAMGETMEMALIAS     = 0x21;
+global_var OPNUM_SAMGETMEMGROUP     = 0x19;
+global_var OPNUM_NETSESSENUM        = 0x0C;
+global_var OPNUM_LSAENUMERATEACCOUNTWITHUSERRIGHT = 0x23;
+
+# SERVICE codes
+global_var SERVICE_ERROR_IGNORE   = 0;
+global_var SERVICE_ERROR_NORMAL   = 1;
+global_var SERVICE_ERROR_SEVERE   = 2;
+global_var SERVICE_ERROR_CRITICAL = 3;
+
+global_var SERVICE_WIN32_OWN_PROCESS   = 16;
+global_var SERVICE_WIN32_SHARE_PROCESS = 32;
+global_var SERVICE_KERNEL_DRIVER       = 1;
+global_var SERVICE_FILE_SYSTEM_DRIVER  = 2;
+global_var SERVICE_INTERACTIVE_PROCESS = 256;
+
+global_var SERVICE_BOOT_START   = 0;
+global_var SERVICE_SYSTEM_START = 1;
+global_var SERVICE_AUTO_START   = 2;
+global_var SERVICE_DEMAND_START = 3;
+global_var SERVICE_DISABLED     = 4;
+
+global_var SERVICE_WIN32        = 0x30;
+global_var SERVICE_DRIVER       = 0x0B;
+
+
+# POLICY codes
+global_var PolicyAuditEventsInformation          = 2;
+global_var PolicyPrimaryDomainInformation        = 3;
+global_var PolicyAccountDomainInformation        = 5;
+global_var PolicyLsaServerRoleInformation        = 6;
+global_var PolicyModificationInformation         = 9;
+global_var PolicyDnsDomainInformation            = 12;
+global_var PolicyDomainKerberosTicketInformation = 3;
+var PolicyMachineAccountInformation = 15;
+
+
+# Security Descriptor FLAGS
+global_var OWNER_SECURITY_INFORMATION = 0x00000001;
+global_var GROUP_SECURITY_INFORMATION = 0x00000002;
+global_var DACL_SECURITY_INFORMATION  = 0x00000004;
+global_var SACL_SECURITY_INFORMATION  = 0x00000008;
+
+global_var ACCESS_ALLOWED_ACE_TYPE = 0;
+global_var ACCESS_DENIED_ACE_TYPE = 1;
+
+
+global_var FILE_SHARE_READ       = 0x00000001;
+global_var FILE_SHARE_WRITE      = 0x00000002;
+global_var FILE_SHARE_DELETE     = 0x00000004;
+
+global_var CREATE_NEW              = 2;
+global_var CREATE_ALWAYS           = 5;
+global_var OPEN_EXISTING           = 1;
+global_var OPEN_ALWAYS             = 3;
+global_var TRUNCATE_EXISTING       = 4;
+
+global_var FILE_ATTRIBUTE_READONLY                = 0x00000001;
+global_var FILE_ATTRIBUTE_HIDDEN                  = 0x00000002;
+global_var FILE_ATTRIBUTE_SYSTEM                  = 0x00000004;
+global_var FILE_ATTRIBUTE_DIRECTORY               = 0x00000010;
+global_var FILE_ATTRIBUTE_ARCHIVE                 = 0x00000020;
+global_var FILE_ATTRIBUTE_DEVICE                  = 0x00000040;
+global_var FILE_ATTRIBUTE_NORMAL                  = 0x00000080;
+global_var FILE_ATTRIBUTE_TEMPORARY               = 0x00000100;
+global_var FILE_ATTRIBUTE_SPARSE_FILE             = 0x00000200;
+global_var FILE_ATTRIBUTE_REPARSE_POINT           = 0x00000400;
+global_var FILE_ATTRIBUTE_COMPRESSED              = 0x00000800;
+global_var FILE_ATTRIBUTE_OFFLINE                 = 0x00001000;
+global_var FILE_ATTRIBUTE_NOT_CONTENT_INDEXED     = 0x00002000;
+global_var FILE_ATTRIBUTE_ENCRYPTED               = 0x00004000;
+global_var FILE_FLAG_OPEN_NO_RECALL               = 0x00100000;
+global_var FILE_FLAG_OPEN_REPARSE_POINT           = 0x00200000;
+global_var FILE_FLAG_POSIX_SEMANTICS              = 0x01000000;
+global_var FILE_FLAG_BACKUP_SEMANTICS             = 0x02000000;
+global_var FILE_FLAG_DELETE_ON_CLOSE              = 0x04000000;
+global_var FILE_FLAG_SEQUENTIAL_SCAN              = 0x08000000;
+global_var FILE_FLAG_RANDOM_ACCESS                = 0x10000000;
+global_var FILE_FLAG_NO_BUFFERING                 = 0x20000000;
+global_var FILE_FLAG_OVERLAPPED                   = 0x40000000;
+global_var FILE_FLAG_WRITE_THROUGH                = 0x80000000;
+
+# SMB2 File Information Classes - [MS-FSCC] section 2.4
+global_var FILE_DIRECTORY_INFORMATION              = 1;
+global_var FILE_FULL_DIRECTORY_INFORMATION         = 2;
+global_var FILE_BOTH_DIRECTORY_INFORMATION         = 3;
+global_var FILE_BASIC_INFORMATION                  = 4;
+global_var FILE_STANDARD_INFORMATION               = 5;
+global_var FILE_INTERNAL_INFORMATION               = 6;
+global_var FILE_EA_INFORMATION                     = 7;
+global_var FILE_ACCESS_INFORMATION                 = 8;
+global_var FILE_NAME_INFORMATION                   = 9;
+global_var FILE_RENAME_INFORMATION                 = 10;
+global_var FILE_LINK_INFORMATION                   = 11;
+global_var FILE_NAMES_INFORMATION                  = 12;
+global_var FILE_DISPOSITION_INFORMATION            = 13;
+global_var FILE_POSITION_INFORMATION               = 14;
+global_var FILE_FULL_EA_INFORMATION                = 15;
+global_var FILE_MODE_INFORMATION                   = 16;
+global_var FILE_ALIGNMENT_INFORMATION              = 17;
+global_var FILE_ALL_INFORMATION                    = 18;
+global_var FILE_ALLOCATION_INFORMATION             = 19;
+global_var FILE_END_OF_FILE_INFORMATION            = 20;
+global_var FILE_ALTERNATE_NAME_INFORMATION         = 21;
+global_var FILE_STREAM_INFORMATION                 = 22;
+global_var FILE_PIPE_INFORMATION                   = 23;
+global_var FILE_PIPE_LOCAL_INFORMATION             = 24;
+global_var FILE_PIPE_REMOTE_INFORMATION            = 25;
+global_var FILE_MAILSLOT_QUERY_INFORMATION         = 26;
+global_var FILE_MAILSLOT_SET_INFORMATION           = 27;
+global_var FILE_COMPRESSION_INFORMATION            = 28;
+global_var FILE_OBJECT_ID_INFORMATION              = 29;
+global_var FILE_MOVE_CLUSTER_INFORMATION           = 31;
+global_var FILE_QUOTA_INFORMATION                  = 32;
+global_var FILE_REPARSE_POINT_INFORMATION          = 33;
+global_var FILE_NETWORK_OPEN_INFORMATION           = 34;
+global_var FILE_ATTRIBUTE_TAG_INFORMATION          = 35;
+global_var FILE_TRACKING_INFORMATION               = 36;
+global_var FILE_ID_BOTH_DIRECTORY_INFORMATION      = 37;
+global_var FILE_ID_FULL_DIRECTORY_INFORMATION      = 38;
+global_var FILE_VALID_DATA_LENGTH_INFORMATION      = 39;
+global_var FILE_SHORT_NAME_INFORMATION             = 40;
+global_var FILE_SFIO_RESERVE_INFORMATION           = 44;
+global_var FILE_SFIO_VOLUME_INFORMATION            = 45;
+global_var FILE_HARD_LINK_INFORMATION              = 46;
+global_var FILE_NORMALIZED_NAME_INFORMATION        = 48;
+global_var FILE_ID_GLOBAL_TX_DIRECTORY_INFORMATION = 50;
+global_var FILE_STANDARD_LINK_INFORMATION          = 54;
+
+# SMB2 File System Information Classes - [MS-FSCC] section 2.5
+global_var FILE_FS_VOLUME_INFORMATION       = 1;
+global_var FILE_FS_LABEL_INFORMATION        = 2;
+global_var FILE_FS_SIZE_INFORMATION         = 3;
+global_var FILE_FS_DEVICE_INFORMATION       = 4;
+global_var FILE_FS_ATTRIBUTE_INFORMATION    = 5;
+global_var FILE_FS_CONTROL_INFORMATION      = 6;
+global_var FILE_FS_FULL_SIZE_INFORMATION    = 7;
+global_var FILE_FS_OBJECT_ID_INFORMATION    = 8;
+global_var FILE_FS_DRIVER_PATH_INFORMATION  = 9;
+global_var FILE_FS_VOLUME_FLAGS_INFORMATION = 10;
+global_var FILE_FS_SECTOR_SIZE_INFORMATION  = 11;
+
+# ACCESS Rights
+global_var ACCESS_NONE         = 0x00;
+global_var ACCESS_READ         = 0x01;
+global_var ACCESS_WRITE        = 0x02;
+global_var ACCESS_CREATE       = 0x04;
+global_var ACCESS_EXEC         = 0x08;
+global_var ACCESS_DELETE       = 0x10;
+global_var ACCESS_ATRIB        = 0x20;
+global_var ACCESS_PERM         = 0x40;
+global_var ACCESS_GROUP        = 0x8000;
+global_var ACCESS_ALL          = ACCESS_READ   |
+                                 ACCESS_WRITE  |
+                                 ACCESS_CREATE |
+                                 ACCESS_EXEC   |
+                                 ACCESS_DELETE |
+                                 ACCESS_ATRIB  |
+                                 ACCESS_PERM ;
+
+global_var DELETE                           = 0x00010000;
+global_var READ_CONTROL                     = 0x00020000;
+global_var WRITE_DAC                        = 0x00040000;
+global_var WRITE_OWNER                      = 0x00080000;
+global_var SYNCHRONIZE                      = 0x00100000;
+global_var STANDARD_RIGHTS_REQUIRED         = 0x000F0000;
+global_var STANDARD_RIGHTS_READ             = READ_CONTROL;
+global_var STANDARD_RIGHTS_WRITE            = READ_CONTROL;
+global_var STANDARD_RIGHTS_EXECUTE          = READ_CONTROL;
+global_var STANDARD_RIGHTS_ALL              = 0x001F0000;
+global_var SPECIFIC_RIGHTS_ALL              = 0x0000FFFF;
+global_var ACCESS_SYSTEM_SECURITY           = 0x01000000;
+global_var MAXIMUM_ALLOWED                  = 0x02000000;
+global_var GENERIC_READ                     = 0x80000000;
+global_var GENERIC_WRITE                    = 0x40000000;
+global_var GENERIC_EXECUTE                  = 0x20000000;
+global_var GENERIC_ALL                      = 0x10000000;
+
+
+
+# FILE Rights
+
+global_var FILE_READ_DATA            = 0x0001 ;
+global_var FILE_LIST_DIRECTORY       = 0x0001 ;
+global_var FILE_WRITE_DATA           = 0x0002 ;
+global_var FILE_ADD_FILE             = 0x0002 ;
+global_var FILE_APPEND_DATA          = 0x0004 ;
+global_var FILE_ADD_SUBDIRECTORY     = 0x0004 ;
+global_var FILE_CREATE_PIPE_INSTANCE = 0x0004 ;
+global_var FILE_READ_EA              = 0x0008 ;
+global_var FILE_WRITE_EA             = 0x0010 ;
+global_var FILE_EXECUTE              = 0x0020 ;
+global_var FILE_TRAVERSE             = 0x0020 ;
+global_var FILE_DELETE_CHILD         = 0x0040 ;
+global_var FILE_READ_ATTRIBUTES      = 0x0080 ;
+global_var FILE_WRITE_ATTRIBUTES     = 0x0100 ;
+
+global_var FILE_ALL_ACCESS  = STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x1FF;
+
+global_var FILE_GENERIC_READ         = STANDARD_RIGHTS_READ     |
+                                       FILE_READ_DATA           |
+                                       FILE_READ_ATTRIBUTES     |
+                                       FILE_READ_EA             |
+                                       SYNCHRONIZE;
+
+
+global_var FILE_GENERIC_WRITE        = FILE_WRITE_DATA          |
+                                       FILE_WRITE_ATTRIBUTES    |
+                                       FILE_WRITE_EA            |
+                                       FILE_APPEND_DATA;
+
+
+global_var FILE_GENERIC_EXECUTE      = STANDARD_RIGHTS_EXECUTE  |
+                                       FILE_READ_ATTRIBUTES     |
+                                       FILE_EXECUTE             |
+                                       SYNCHRONIZE;
+
+# SERVICE CODES
+global_var SERVICE_NO_CHANGE              = 0xffffffff;
+global_var SERVICE_ACTIVE                 = 0x00000001;
+global_var SERVICE_INACTIVE               = 0x00000002;
+global_var SERVICE_STATE_ALL              = SERVICE_ACTIVE   |
+                                            SERVICE_INACTIVE ;
+
+global_var SERVICE_CONTROL_STOP           = 0x00000001;
+global_var SERVICE_CONTROL_PAUSE          = 0x00000002;
+global_var SERVICE_CONTROL_CONTINUE       = 0x00000003;
+global_var SERVICE_CONTROL_INTERROGATE    = 0x00000004;
+global_var SERVICE_CONTROL_SHUTDOWN       = 0x00000005;
+global_var SERVICE_CONTROL_PARAMCHANGE    = 0x00000006;
+global_var SERVICE_CONTROL_NETBINDADD     = 0x00000007;
+global_var SERVICE_CONTROL_NETBINDREMOVE  = 0x00000008;
+global_var SERVICE_CONTROL_NETBINDENABLE  = 0x00000009;
+global_var SERVICE_CONTROL_NETBINDDISABLE = 0x0000000A;
+
+global_var SERVICE_STOPPED                = 0x00000001;
+global_var SERVICE_START_PENDING          = 0x00000002;
+global_var SERVICE_STOP_PENDING           = 0x00000003;
+global_var SERVICE_RUNNING                = 0x00000004;
+global_var SERVICE_CONTINUE_PENDING       = 0x00000005;
+global_var SERVICE_PAUSE_PENDING          = 0x00000006;
+global_var SERVICE_PAUSED                 = 0x00000007;
+
+global_var SERVICE_ACCEPT_STOP            = 0x00000001;
+global_var SERVICE_ACCEPT_PAUSE_CONTINUE  = 0x00000002;
+global_var SERVICE_ACCEPT_SHUTDOWN        = 0x00000004;
+global_var SERVICE_ACCEPT_PARAMCHANGE     = 0x00000008;
+global_var SERVICE_ACCEPT_NETBINDCHANGE   = 0x00000010;
+
+global_var SC_MANAGER_CONNECT             = 0x0001;
+global_var SC_MANAGER_CREATE_SERVICE      = 0x0002;
+global_var SC_MANAGER_ENUMERATE_SERVICE   = 0x0004;
+global_var SC_MANAGER_LOCK                = 0x0008;
+global_var SC_MANAGER_QUERY_LOCK_STATUS   = 0x0010;
+global_var SC_MANAGER_MODIFY_BOOT_CONFIG  = 0x0020;
+
+global_var SC_MANAGER_ALL_ACCESS          = STANDARD_RIGHTS_REQUIRED      |
+                                            SC_MANAGER_CONNECT            |
+                                            SC_MANAGER_CREATE_SERVICE     |
+                                            SC_MANAGER_ENUMERATE_SERVICE  |
+                                            SC_MANAGER_LOCK               |
+                                            SC_MANAGER_QUERY_LOCK_STATUS  |
+                                            SC_MANAGER_MODIFY_BOOT_CONFIG;
+
+global_var SERVICE_QUERY_CONFIG           = 0x0001;
+global_var SERVICE_CHANGE_CONFIG          = 0x0002;
+global_var SERVICE_QUERY_STATUS           = 0x0004;
+global_var SERVICE_ENUMERATE_DEPENDENTS   = 0x0008;
+global_var SERVICE_START                  = 0x0010;
+global_var SERVICE_STOP                   = 0x0020;
+global_var SERVICE_PAUSE_CONTINUE         = 0x0040;
+global_var SERVICE_INTERROGATE            = 0x0080;
+global_var SERVICE_USER_DEFINED_CONTROL   = 0x0100;
+
+global_var SERVICE_ALL_ACCESS             = STANDARD_RIGHTS_REQUIRED     |
+                                            SERVICE_QUERY_CONFIG         |
+                                            SERVICE_CHANGE_CONFIG        |
+                                            SERVICE_QUERY_STATUS         |
+                                            SERVICE_ENUMERATE_DEPENDENTS |
+                                            SERVICE_START                |
+                                            SERVICE_STOP                 |
+                                            SERVICE_PAUSE_CONTINUE       |
+                                            SERVICE_INTERROGATE          |
+                                            SERVICE_USER_DEFINED_CONTROL;
+
+
+global_var SERVICE_READ                   = SERVICE_QUERY_CONFIG         |
+                                            SERVICE_QUERY_STATUS         |
+                                            SERVICE_ENUMERATE_DEPENDENTS |
+                                            SERVICE_INTERROGATE          |
+                                            SERVICE_USER_DEFINED_CONTROL |
+                                            READ_CONTROL;
+
+
+global_var SERVICE_EXECUTE                = SERVICE_START                |
+                                            SERVICE_STOP                 |
+                                            SERVICE_PAUSE_CONTINUE       |
+                                            READ_CONTROL;
+
+
+global_var SERVICE_WRITE                  = SERVICE_CHANGE_CONFIG        |
+                                            READ_CONTROL;
+
+global_var SERVICE_DELETE                 = DELETE;
+
+
+
+# Higher code
+global_var HKEY_LOCAL_MACHINE  = OPNUM_OPENHKLM;
+global_var HKEY_CURRENT_USER   = OPNUM_OPENHKCU;
+global_var HKEY_USERS          = OPNUM_OPENHKU;
+global_var HKEY_CLASS_ROOT     = OPNUM_OPENHKCR;
+
+
+# Write mode codes
+global_var WRITE_START         = 0x08;
+
+
+# SHARE_INFO
+global_var SHARE_INFO_0        = 0;
+global_var SHARE_INFO_1        = 1;
+global_var SHARE_INFO_2        = 2;
+global_var SHARE_INFO_502      = 502;
+
+
+global_var WKSTA_USER_INFO_0  = 0;
+global_var WKSTA_USER_INFO_1  = 1;
+
+# Extra codes
+global_var ASCII_STRING        = 0;
+global_var UNICODE_STRING      = 1;
+
+
+# Registry
+global_var REG_SZ              = 1;
+global_var REG_EXPAND_SZ       = 2;
+global_var REG_BINARY          = 3;
+global_var REG_DWORD           = 4;
+global_var REG_MULTI_SZ        = 7;
+global_var REG_QWORD           = 11;
+
+
+# Server info
+global_var SERVER_INFO_100     = 0;
+global_var SERVER_INFO_101     = 1;
+
+
+# Session info
+global_var SESSION_INFO_0      = 0;
+global_var SESSION_INFO_1      = 1;
+global_var SESSION_INFO_2      = 2;
+global_var SESSION_INFO_10     = 10;
+global_var SESSION_INFO_50     = 50;
+global_var SESSION_INFO_502    = 502;
+
+
+# SID type
+global_var SidTypeUser           = 1;
+global_var SidTypeGroup          = 2;
+global_var SidTypeDomain         = 3;
+global_var SidTypeAlias          = 4;
+global_var SidTypeWellKnownGroup = 5;
+global_var SidTypeDeletedAccount = 6;
+global_var SidTypeInvalid        = 7;
+global_var SidTypeUnknown        = 8;
+global_var SidTypeComputer       = 9;
+
+
+global_var SID_TYPE = [];
+SID_TYPE[SidTypeUser]           = "User";
+SID_TYPE[SidTypeGroup]          = "Group";
+SID_TYPE[SidTypeDomain]         = "Domain";
+SID_TYPE[SidTypeAlias]          = "Alias";
+SID_TYPE[SidTypeWellKnownGroup] = "Well Known Group";
+SID_TYPE[SidTypeDeletedAccount] = "Deleted Account";
+SID_TYPE[SidTypeInvalid]        = "Invalid";
+SID_TYPE[SidTypeUnknown]        = "Unknown";
+SID_TYPE[SidTypeComputer]       = "Computer";
+
+
+# LsaPolicy
+global_var AuditCategorySystem = 0;
+global_var AuditCategoryLogon  = 1;
+global_var AuditCategoryObjectAccess = 2;
+global_var AuditCategoryPrivilegeUse = 3;
+global_var AuditCategoryDetailedTracking = 4;
+global_var AuditCategoryPolicyChange = 5;
+global_var AuditCategoryAccountManagement = 6;
+global_var AuditCategoryDirectoryServiceAccess = 7;
+global_var AuditCategoryAccountLogon = 8;
+
+global_var POLICY_AUDIT_EVENT_UNCHANGED = 0;
+global_var POLICY_AUDIT_EVENT_SUCCESS   = 1;
+global_var POLICY_AUDIT_EVENT_FAILURE   = 2;
+global_var POLICY_AUDIT_EVENT_NONE      = 4;
+
+global_var POLICY_VIEW_LOCAL_INFORMATION    = 0x00000001;
+global_var POLICY_VIEW_AUDIT_INFORMATION    = 0x00000002;
+global_var POLICY_GET_PRIVATE_INFORMATION   = 0x00000004;
+global_var POLICY_TRUST_ADMIN               = 0x00000008;
+global_var POLICY_CREATE_ACCOUNT            = 0x00000010;
+global_var POLICY_CREATE_SECRET             = 0x00000020;
+global_var POLICY_CREATE_PRIVILEGE          = 0x00000040;
+global_var POLICY_SET_DEFAULT_QUOTA_LIMITS  = 0x00000080;
+global_var POLICY_SET_AUDIT_REQUIREMENTS    = 0x00000100;
+global_var POLICY_AUDIT_LOG_ADMIN           = 0x00000200;
+global_var POLICY_SERVER_ADMIN              = 0x00000400;
+global_var POLICY_LOOKUP_NAMES              = 0x00000800;
+
+global_var POLICY_ALL_ACCESS =  STANDARD_RIGHTS_REQUIRED         |
+                                POLICY_VIEW_LOCAL_INFORMATION    |
+                                POLICY_VIEW_AUDIT_INFORMATION    |
+                                POLICY_GET_PRIVATE_INFORMATION   |
+                                POLICY_TRUST_ADMIN               |
+                                POLICY_CREATE_ACCOUNT            |
+                                POLICY_CREATE_SECRET             |
+                                POLICY_CREATE_PRIVILEGE          |
+                                POLICY_SET_DEFAULT_QUOTA_LIMITS  |
+                                POLICY_SET_AUDIT_REQUIREMENTS    |
+                                POLICY_AUDIT_LOG_ADMIN           |
+                                POLICY_SERVER_ADMIN              |
+                                POLICY_LOOKUP_NAMES;
+
+
+global_var POLICY_READ        = STANDARD_RIGHTS_READ             |
+                                POLICY_VIEW_AUDIT_INFORMATION    |
+                                POLICY_GET_PRIVATE_INFORMATION;
+
+global_var POLICY_WRITE       = STANDARD_RIGHTS_WRITE            |
+                                POLICY_TRUST_ADMIN               |
+                                POLICY_CREATE_ACCOUNT            |
+                                POLICY_CREATE_SECRET             |
+                                POLICY_CREATE_PRIVILEGE          |
+                                POLICY_SET_DEFAULT_QUOTA_LIMITS  |
+                                POLICY_SET_AUDIT_REQUIREMENTS    |
+                                POLICY_AUDIT_LOG_ADMIN           |
+                                POLICY_SERVER_ADMIN;
+
+global_var POLICY_EXECUTE     = STANDARD_RIGHTS_EXECUTE          |
+                                POLICY_VIEW_LOCAL_INFORMATION    |
+                                POLICY_LOOKUP_NAMES;
+
+
+
+global_var KEY_QUERY_VALUE        = 0x00000001;
+global_var KEY_SET_VALUE          = 0x00000002;
+global_var KEY_CREATE_SUB_KEY     = 0x00000004;
+global_var KEY_ENUMERATE_SUB_KEYS = 0x00000008;
+global_var KEY_NOTIFY             = 0x00000010;
+global_var KEY_CREATE_LINK        = 0x00000020;
+
+global_var KEY_ALL_ACCESS     = STANDARD_RIGHTS_REQUIRED         |
+                                KEY_QUERY_VALUE                  |
+                                KEY_SET_VALUE                    |
+                                KEY_CREATE_SUB_KEY               |
+                                KEY_ENUMERATE_SUB_KEYS           |
+                                KEY_NOTIFY                       |
+                                KEY_CREATE_LINK;
+
+global_var KEY_READ           = READ_CONTROL                     |
+                                KEY_QUERY_VALUE                  |
+                                KEY_ENUMERATE_SUB_KEYS           |
+                                KEY_NOTIFY;
+
+global_var KEY_EXECUTE        = READ_CONTROL                     |
+                                KEY_QUERY_VALUE                  |
+                                KEY_ENUMERATE_SUB_KEYS           |
+                                KEY_NOTIFY;
+
+global_var KEY_WRITE          = READ_CONTROL                     |
+                                KEY_SET_VALUE                    |
+                                KEY_CREATE_SUB_KEY;
+
+global_var UNIT_TESTING = FALSE;
+
+# User rights
+
+# SeAssignPrimaryTokenPrivilege
+# SeAuditPrivilege
+# SeBackupPrivilege
+# SeBatchLogonRight
+# SeChangeNotifyPrivilege
+# SeCreateGlobalPrivilege
+# SeCreatePagefilePrivilege
+# SeCreatePermanentPrivilege
+# SeCreateTokenPrivilege
+# SeDenyBatchLogonRight
+# SeDenyInteractiveLogonRight
+# SeDenyNetworkLogonRight
+# SeDenyServiceLogonRight
+# SeDebugPrivilege
+# SeEnableDelegationPrivilege
+# SeImpersonatePrivilege
+# SeIncreaseBasePriorityPrivilege
+# SeIncreaseQuotaPrivilege
+# SeInteractiveLogonRight
+# SeLoadDriverPrivilege
+# SeLockMemoryPrivilege
+# SeMachineAccountPrivilege
+# SeManageVolumePrivilege
+# SeNetworkLogonRight
+# SeProfileSingleProcessPrivilege
+# SeRemoteShutdownPrivilege
+# SeRestorePrivilege
+# SeSecurityPrivilege
+# SeServiceLogonRight
+# SeShutdownPrivilege
+# SeSyncAgentPrivilege
+# SeSystemEnvironmentPrivilege
+# SeSystemProfilePrivilege
+# SeSystemtimePrivilege
+# SeTakeOwnershipPrivilege
+# SeTcbPrivilege
+# SeUndockPrivilege
+# SeUnsolicitedInputPrivilege
+
+##
+# gets a string representation of an error code
+#
+# @anonparam code error code to translate
+#
+# @return corresponding string error code, or
+#         'code' if it is not recognized
+##
+function error_code_to_string()
+{
+  var code;
+  code = _FCT_ANON_ARGS[0];
+
+  if (code == ERROR_SUCCESS)
+    return 'ERROR_SUCCESS';
+  else if (code == ERROR_INVALID_FUNCTION)
+    return 'ERROR_INVALID_FUNCTION';
+  else if (code == ERROR_FILE_NOT_FOUND)
+    return 'ERROR_FILE_NOT_FOUND';
+  else if (code == ERROR_PATH_NOT_FOUND)
+    return 'ERROR_PATH_NOT_FOUND';
+  else if (code == ERROR_TOO_MANY_OPEN_FILES)
+    return 'ERROR_TOO_MANY_OPEN_FILES';
+  else if (code == ERROR_ACCESS_DENIED)
+    return 'ERROR_ACCESS_DENIED';
+  else if (code == ERROR_INVALID_HANDLE)
+    return 'ERROR_INVALID_HANDLE';
+  else if (code == ERROR_ARENA_TRASHED)
+    return 'ERROR_ARENA_TRASHED';
+  else if (code == ERROR_NOT_ENOUGH_MEMORY)
+    return 'ERROR_NOT_ENOUGH_MEMORY';
+  else if (code == ERROR_INVALID_BLOCK)
+    return 'ERROR_INVALID_BLOCK';
+  else if (code == ERROR_BAD_ENVIRONMENT)
+    return 'ERROR_BAD_ENVIRONMENT';
+  else if (code == ERROR_BAD_FORMAT)
+    return 'ERROR_BAD_FORMAT';
+  else if (code == ERROR_INVALID_ACCESS)
+    return 'ERROR_INVALID_ACCESS';
+  else if (code == ERROR_INVALID_DATA)
+    return 'ERROR_INVALID_DATA';
+  else if (code == ERROR_OUTOFMEMORY)
+    return 'ERROR_OUTOFMEMORY';
+  else if (code == ERROR_INVALID_DRIVE)
+    return 'ERROR_INVALID_DRIVE';
+  else if (code == ERROR_CURRENT_DIRECTORY)
+    return 'ERROR_CURRENT_DIRECTORY';
+  else if (code == ERROR_NOT_SAME_DEVICE)
+    return 'ERROR_NOT_SAME_DEVICE';
+  else if (code == ERROR_NO_MORE_FILES)
+    return 'ERROR_NO_MORE_FILES';
+  else if (code == ERROR_WRITE_PROTECT)
+    return 'ERROR_WRITE_PROTECT';
+  else if (code == ERROR_BAD_UNIT)
+    return 'ERROR_BAD_UNIT';
+  else if (code == ERROR_NOT_READY)
+    return 'ERROR_NOT_READY';
+  else if (code == ERROR_BAD_COMMAND)
+    return 'ERROR_BAD_COMMAND';
+  else if (code == ERROR_CRC)
+    return 'ERROR_CRC';
+  else if (code == ERROR_BAD_LENGTH)
+    return 'ERROR_BAD_LENGTH';
+  else if (code == ERROR_SEEK)
+    return 'ERROR_SEEK';
+  else if (code == ERROR_NOT_DOS_DISK)
+    return 'ERROR_NOT_DOS_DISK';
+  else if (code == ERROR_SECTOR_NOT_FOUND)
+    return 'ERROR_SECTOR_NOT_FOUND';
+  else if (code == ERROR_OUT_OF_PAPER)
+    return 'ERROR_OUT_OF_PAPER';
+  else if (code == ERROR_WRITE_FAULT)
+    return 'ERROR_WRITE_FAULT';
+  else if (code == ERROR_READ_FAULT)
+    return 'ERROR_READ_FAULT';
+  else if (code == ERROR_GEN_FAILURE)
+    return 'ERROR_GEN_FAILURE';
+  else if (code == ERROR_SHARING_VIOLATION)
+    return 'ERROR_SHARING_VIOLATION';
+  else if (code == ERROR_LOCK_VIOLATION)
+    return 'ERROR_LOCK_VIOLATION';
+  else if (code == ERROR_WRONG_DISK)
+    return 'ERROR_WRONG_DISK';
+  else if (code == ERROR_SHARING_BUFFER_EXCEEDED)
+    return 'ERROR_SHARING_BUFFER_EXCEEDED';
+  else if (code == ERROR_HANDLE_EOF)
+    return 'ERROR_HANDLE_EOF';
+  else if (code == ERROR_HANDLE_DISK_FULL)
+    return 'ERROR_HANDLE_DISK_FULL';
+  else if (code == ERROR_NOT_SUPPORTED)
+    return 'ERROR_NOT_SUPPORTED';
+  else if (code == ERROR_REM_NOT_LIST)
+    return 'ERROR_REM_NOT_LIST';
+  else if (code == ERROR_DUP_NAME)
+    return 'ERROR_DUP_NAME';
+  else if (code == ERROR_BAD_NETPATH)
+    return 'ERROR_BAD_NETPATH';
+  else if (code == ERROR_NETWORK_BUSY)
+    return 'ERROR_NETWORK_BUSY';
+  else if (code == ERROR_DEV_NOT_EXIST)
+    return 'ERROR_DEV_NOT_EXIST';
+  else if (code == ERROR_TOO_MANY_CMDS)
+    return 'ERROR_TOO_MANY_CMDS';
+  else if (code == ERROR_ADAP_HDW_ERR)
+    return 'ERROR_ADAP_HDW_ERR';
+  else if (code == ERROR_BAD_NET_RESP)
+    return 'ERROR_BAD_NET_RESP';
+  else if (code == ERROR_UNEXP_NET_ERR)
+    return 'ERROR_UNEXP_NET_ERR';
+  else if (code == ERROR_BAD_REM_ADAP)
+    return 'ERROR_BAD_REM_ADAP';
+  else if (code == ERROR_PRINTQ_FULL)
+    return 'ERROR_PRINTQ_FULL';
+  else if (code == ERROR_NO_SPOOL_SPACE)
+    return 'ERROR_NO_SPOOL_SPACE';
+  else if (code == ERROR_PRINT_CANCELLED)
+    return 'ERROR_PRINT_CANCELLED';
+  else if (code == ERROR_NETNAME_DELETED)
+    return 'ERROR_NETNAME_DELETED';
+  else if (code == ERROR_NETWORK_ACCESS_DENIED)
+    return 'ERROR_NETWORK_ACCESS_DENIED';
+  else if (code == ERROR_BAD_DEV_TYPE)
+    return 'ERROR_BAD_DEV_TYPE';
+  else if (code == ERROR_BAD_NET_NAME)
+    return 'ERROR_BAD_NET_NAME';
+  else if (code == ERROR_TOO_MANY_NAMES)
+    return 'ERROR_TOO_MANY_NAMES';
+  else if (code == ERROR_TOO_MANY_SESS)
+    return 'ERROR_TOO_MANY_SESS';
+  else if (code == ERROR_SHARING_PAUSED)
+    return 'ERROR_SHARING_PAUSED';
+  else if (code == ERROR_REQ_NOT_ACCEP)
+    return 'ERROR_REQ_NOT_ACCEP';
+  else if (code == ERROR_REDIR_PAUSED)
+    return 'ERROR_REDIR_PAUSED';
+  else if (code == ERROR_FILE_EXISTS)
+    return 'ERROR_FILE_EXISTS';
+  else if (code == ERROR_CANNOT_MAKE)
+    return 'ERROR_CANNOT_MAKE';
+  else if (code == ERROR_FAIL_I24)
+    return 'ERROR_FAIL_I24';
+  else if (code == ERROR_OUT_OF_STRUCTURES)
+    return 'ERROR_OUT_OF_STRUCTURES';
+  else if (code == ERROR_ALREADY_ASSIGNED)
+    return 'ERROR_ALREADY_ASSIGNED';
+  else if (code == ERROR_INVALID_PASSWORD)
+    return 'ERROR_INVALID_PASSWORD';
+  else if (code == ERROR_INVALID_PARAMETER)
+    return 'ERROR_INVALID_PARAMETER';
+  else if (code == ERROR_NET_WRITE_FAULT)
+    return 'ERROR_NET_WRITE_FAULT';
+  else if (code == ERROR_NO_PROC_SLOTS)
+    return 'ERROR_NO_PROC_SLOTS';
+  else if (code == ERROR_TOO_MANY_SEMAPHORES)
+    return 'ERROR_TOO_MANY_SEMAPHORES';
+  else if (code == ERROR_EXCL_SEM_ALREADY_OWNED)
+    return 'ERROR_EXCL_SEM_ALREADY_OWNED';
+  else if (code == ERROR_SEM_IS_SET)
+    return 'ERROR_SEM_IS_SET';
+  else if (code == ERROR_TOO_MANY_SEM_REQUESTS)
+    return 'ERROR_TOO_MANY_SEM_REQUESTS';
+  else if (code == ERROR_INVALID_AT_INTERRUPT_TIME)
+    return 'ERROR_INVALID_AT_INTERRUPT_TIME';
+  else if (code == ERROR_SEM_OWNER_DIED)
+    return 'ERROR_SEM_OWNER_DIED';
+  else if (code == ERROR_SEM_USER_LIMIT)
+    return 'ERROR_SEM_USER_LIMIT';
+  else if (code == ERROR_DISK_CHANGE)
+    return 'ERROR_DISK_CHANGE';
+  else if (code == ERROR_DRIVE_LOCKED)
+    return 'ERROR_DRIVE_LOCKED';
+  else if (code == ERROR_BROKEN_PIPE)
+    return 'ERROR_BROKEN_PIPE';
+  else if (code == ERROR_OPEN_FAILED)
+    return 'ERROR_OPEN_FAILED';
+  else if (code == ERROR_BUFFER_OVERFLOW)
+    return 'ERROR_BUFFER_OVERFLOW';
+  else if (code == ERROR_DISK_FULL)
+    return 'ERROR_DISK_FULL';
+  else if (code == ERROR_NO_MORE_SEARCH_HANDLES)
+    return 'ERROR_NO_MORE_SEARCH_HANDLES';
+  else if (code == ERROR_INVALID_TARGET_HANDLE)
+    return 'ERROR_INVALID_TARGET_HANDLE';
+  else if (code == ERROR_INVALID_CATEGORY)
+    return 'ERROR_INVALID_CATEGORY';
+  else if (code == ERROR_INVALID_VERIFY_SWITCH)
+    return 'ERROR_INVALID_VERIFY_SWITCH';
+  else if (code == ERROR_BAD_DRIVER_LEVEL)
+    return 'ERROR_BAD_DRIVER_LEVEL';
+  else if (code == ERROR_CALL_NOT_IMPLEMENTED)
+    return 'ERROR_CALL_NOT_IMPLEMENTED';
+  else if (code == ERROR_SEM_TIMEOUT)
+    return 'ERROR_SEM_TIMEOUT';
+  else if (code == ERROR_INSUFFICIENT_BUFFER)
+    return 'ERROR_INSUFFICIENT_BUFFER';
+  else if (code == ERROR_INVALID_NAME)
+    return 'ERROR_INVALID_NAME';
+  else if (code == ERROR_INVALID_LEVEL)
+    return 'ERROR_INVALID_LEVEL';
+  else if (code == ERROR_NO_VOLUME_LABEL)
+    return 'ERROR_NO_VOLUME_LABEL';
+  else if (code == ERROR_MOD_NOT_FOUND)
+    return 'ERROR_MOD_NOT_FOUND';
+  else if (code == ERROR_PROC_NOT_FOUND)
+    return 'ERROR_PROC_NOT_FOUND';
+  else if (code == ERROR_WAIT_NO_CHILDREN)
+    return 'ERROR_WAIT_NO_CHILDREN';
+  else if (code == ERROR_CHILD_NOT_COMPLETE)
+    return 'ERROR_CHILD_NOT_COMPLETE';
+  else if (code == ERROR_DIRECT_ACCESS_HANDLE)
+    return 'ERROR_DIRECT_ACCESS_HANDLE';
+  else if (code == ERROR_NEGATIVE_SEEK)
+    return 'ERROR_NEGATIVE_SEEK';
+  else if (code == ERROR_SEEK_ON_DEVICE)
+    return 'ERROR_SEEK_ON_DEVICE';
+  else if (code == ERROR_IS_JOIN_TARGET)
+    return 'ERROR_IS_JOIN_TARGET';
+  else if (code == ERROR_IS_JOINED)
+    return 'ERROR_IS_JOINED';
+  else if (code == ERROR_IS_SUBSTED)
+    return 'ERROR_IS_SUBSTED';
+  else if (code == ERROR_NOT_JOINED)
+    return 'ERROR_NOT_JOINED';
+  else if (code == ERROR_NOT_SUBSTED)
+    return 'ERROR_NOT_SUBSTED';
+  else if (code == ERROR_JOIN_TO_JOIN)
+    return 'ERROR_JOIN_TO_JOIN';
+  else if (code == ERROR_SUBST_TO_SUBST)
+    return 'ERROR_SUBST_TO_SUBST';
+  else if (code == ERROR_JOIN_TO_SUBST)
+    return 'ERROR_JOIN_TO_SUBST';
+  else if (code == ERROR_SUBST_TO_JOIN)
+    return 'ERROR_SUBST_TO_JOIN';
+  else if (code == ERROR_BUSY_DRIVE)
+    return 'ERROR_BUSY_DRIVE';
+  else if (code == ERROR_SAME_DRIVE)
+    return 'ERROR_SAME_DRIVE';
+  else if (code == ERROR_DIR_NOT_ROOT)
+    return 'ERROR_DIR_NOT_ROOT';
+  else if (code == ERROR_DIR_NOT_EMPTY)
+    return 'ERROR_DIR_NOT_EMPTY';
+  else if (code == ERROR_IS_SUBST_PATH)
+    return 'ERROR_IS_SUBST_PATH';
+  else if (code == ERROR_IS_JOIN_PATH)
+    return 'ERROR_IS_JOIN_PATH';
+  else if (code == ERROR_PATH_BUSY)
+    return 'ERROR_PATH_BUSY';
+  else if (code == ERROR_IS_SUBST_TARGET)
+    return 'ERROR_IS_SUBST_TARGET';
+  else if (code == ERROR_SYSTEM_TRACE)
+    return 'ERROR_SYSTEM_TRACE';
+  else if (code == ERROR_INVALID_EVENT_COUNT)
+    return 'ERROR_INVALID_EVENT_COUNT';
+  else if (code == ERROR_TOO_MANY_MUXWAITERS)
+    return 'ERROR_TOO_MANY_MUXWAITERS';
+  else if (code == ERROR_INVALID_LIST_FORMAT)
+    return 'ERROR_INVALID_LIST_FORMAT';
+  else if (code == ERROR_LABEL_TOO_LONG)
+    return 'ERROR_LABEL_TOO_LONG';
+  else if (code == ERROR_TOO_MANY_TCBS)
+    return 'ERROR_TOO_MANY_TCBS';
+  else if (code == ERROR_SIGNAL_REFUSED)
+    return 'ERROR_SIGNAL_REFUSED';
+  else if (code == ERROR_DISCARDED)
+    return 'ERROR_DISCARDED';
+  else if (code == ERROR_NOT_LOCKED)
+    return 'ERROR_NOT_LOCKED';
+  else if (code == ERROR_BAD_THREADID_ADDR)
+    return 'ERROR_BAD_THREADID_ADDR';
+  else if (code == ERROR_BAD_ARGUMENTS)
+    return 'ERROR_BAD_ARGUMENTS';
+  else if (code == ERROR_BAD_PATHNAME)
+    return 'ERROR_BAD_PATHNAME';
+  else if (code == ERROR_SIGNAL_PENDING)
+    return 'ERROR_SIGNAL_PENDING';
+  else if (code == ERROR_MAX_THRDS_REACHED)
+    return 'ERROR_MAX_THRDS_REACHED';
+  else if (code == ERROR_LOCK_FAILED)
+    return 'ERROR_LOCK_FAILED';
+  else if (code == ERROR_BUSY)
+    return 'ERROR_BUSY';
+  else if (code == ERROR_CANCEL_VIOLATION)
+    return 'ERROR_CANCEL_VIOLATION';
+  else if (code == ERROR_ATOMIC_LOCKS_NOT_SUPPORTED)
+    return 'ERROR_ATOMIC_LOCKS_NOT_SUPPORTED';
+  else if (code == ERROR_INVALID_SEGMENT_NUMBER)
+    return 'ERROR_INVALID_SEGMENT_NUMBER';
+  else if (code == ERROR_INVALID_ORDINAL)
+    return 'ERROR_INVALID_ORDINAL';
+  else if (code == ERROR_ALREADY_EXISTS)
+    return 'ERROR_ALREADY_EXISTS';
+  else if (code == ERROR_INVALID_FLAG_NUMBER)
+    return 'ERROR_INVALID_FLAG_NUMBER';
+  else if (code == ERROR_SEM_NOT_FOUND)
+    return 'ERROR_SEM_NOT_FOUND';
+  else if (code == ERROR_INVALID_STARTING_CODESEG)
+    return 'ERROR_INVALID_STARTING_CODESEG';
+  else if (code == ERROR_INVALID_STACKSEG)
+    return 'ERROR_INVALID_STACKSEG';
+  else if (code == ERROR_INVALID_MODULETYPE)
+    return 'ERROR_INVALID_MODULETYPE';
+  else if (code == ERROR_INVALID_EXE_SIGNATURE)
+    return 'ERROR_INVALID_EXE_SIGNATURE';
+  else if (code == ERROR_EXE_MARKED_INVALID)
+    return 'ERROR_EXE_MARKED_INVALID';
+  else if (code == ERROR_BAD_EXE_FORMAT)
+    return 'ERROR_BAD_EXE_FORMAT';
+  else if (code == ERROR_ITERATED_DATA_EXCEEDS_64k)
+    return 'ERROR_ITERATED_DATA_EXCEEDS_64k';
+  else if (code == ERROR_INVALID_MINALLOCSIZE)
+    return 'ERROR_INVALID_MINALLOCSIZE';
+  else if (code == ERROR_DYNLINK_FROM_INVALID_RING)
+    return 'ERROR_DYNLINK_FROM_INVALID_RING';
+  else if (code == ERROR_IOPL_NOT_ENABLED)
+    return 'ERROR_IOPL_NOT_ENABLED';
+  else if (code == ERROR_INVALID_SEGDPL)
+    return 'ERROR_INVALID_SEGDPLERROR_INVALID_SEGDPL';
+  else if (code == ERROR_AUTODATASEG_EXCEEDS_64k)
+    return 'ERROR_AUTODATASEG_EXCEEDS_64k';
+  else if (code == ERROR_RING2SEG_MUST_BE_MOVABLE)
+    return 'ERROR_RING2SEG_MUST_BE_MOVABLE';
+  else if (code == ERROR_RELOC_CHAIN_XEEDS_SEGLIM)
+    return 'ERROR_RELOC_CHAIN_XEEDS_SEGLIM';
+  else if (code == ERROR_INFLOOP_IN_RELOC_CHAIN)
+    return 'ERROR_INFLOOP_IN_RELOC_CHAIN';
+  else if (code == ERROR_ENVVAR_NOT_FOUND)
+    return 'ERROR_ENVVAR_NOT_FOUND';
+  else if (code == ERROR_NO_SIGNAL_SENT)
+    return 'ERROR_NO_SIGNAL_SENT';
+  else if (code == ERROR_FILENAME_EXCED_RANGE)
+    return 'ERROR_FILENAME_EXCED_RANGE';
+  else if (code == ERROR_RING2_STACK_IN_USE)
+    return 'ERROR_RING2_STACK_IN_USE';
+  else if (code == ERROR_META_EXPANSION_TOO_LONG)
+    return 'ERROR_META_EXPANSION_TOO_LONG';
+  else if (code == ERROR_INVALID_SIGNAL_NUMBER)
+    return 'ERROR_INVALID_SIGNAL_NUMBER';
+  else if (code == ERROR_THREAD_1_INACTIVE)
+    return 'ERROR_THREAD_1_INACTIVE';
+  else if (code == ERROR_LOCKED)
+    return 'ERROR_LOCKED';
+  else if (code == ERROR_TOO_MANY_MODULES)
+    return 'ERROR_TOO_MANY_MODULES';
+  else if (code == ERROR_NESTING_NOT_ALLOWED)
+    return 'ERROR_NESTING_NOT_ALLOWED';
+  else if (code == ERROR_BAD_PIPE)
+    return 'ERROR_BAD_PIPE';
+  else if (code == ERROR_PIPE_BUSY)
+    return 'ERROR_PIPE_BUSY';
+  else if (code == ERROR_NO_DATA)
+    return 'ERROR_NO_DATA';
+  else if (code == ERROR_PIPE_NOT_CONNECTED)
+    return 'ERROR_PIPE_NOT_CONNECTED';
+  else if (code == ERROR_MORE_DATA)
+    return 'ERROR_MORE_DATA';
+  else if (code == ERROR_VC_DISCONNECTED)
+    return 'ERROR_VC_DISCONNECTED';
+  else if (code == ERROR_INVALID_EA_NAME)
+    return 'ERROR_INVALID_EA_NAME';
+  else if (code == ERROR_EA_LIST_INCONSISTENT)
+    return 'ERROR_EA_LIST_INCONSISTENT';
+  else if (code == ERROR_NO_MORE_ITEMS)
+    return 'ERROR_NO_MORE_ITEMS';
+  else if (code == ERROR_CANNOT_COPY)
+    return 'ERROR_CANNOT_COPY';
+  else if (code == ERROR_DIRECTORY)
+    return 'ERROR_DIRECTORY';
+  else if (code == ERROR_EAS_DIDNT_FIT)
+    return 'ERROR_EAS_DIDNT_FIT';
+  else if (code == ERROR_EA_FILE_CORRUPT)
+    return 'ERROR_EA_FILE_CORRUPT';
+  else if (code == ERROR_EA_TABLE_FULL)
+    return 'ERROR_EA_TABLE_FULL';
+  else if (code == ERROR_INVALID_EA_HANDLE)
+    return 'ERROR_INVALID_EA_HANDLE';
+  else if (code == ERROR_EAS_NOT_SUPPORTED)
+    return 'ERROR_EAS_NOT_SUPPORTED';
+  else if (code == ERROR_NOT_OWNER)
+    return 'ERROR_NOT_OWNER';
+  else if (code == ERROR_TOO_MANY_POSTS)
+    return 'ERROR_TOO_MANY_POSTS';
+  else if (code == ERROR_MR_MID_NOT_FOUND)
+    return 'ERROR_MR_MID_NOT_FOUND';
+  else if (code == ERROR_INVALID_ADDRESS)
+    return 'ERROR_INVALID_ADDRESS';
+  else if (code == ERROR_ARITHMETIC_OVERFLOW)
+    return 'ERROR_ARITHMETIC_OVERFLOW';
+  else if (code == ERROR_PIPE_CONNECTED)
+    return 'ERROR_PIPE_CONNECTED';
+  else if (code == ERROR_PIPE_LISTENING)
+    return 'ERROR_PIPE_LISTENING';
+  else if (code == ERROR_EA_ACCESS_DENIED)
+    return 'ERROR_EA_ACCESS_DENIED';
+  else if (code == ERROR_OPERATION_ABORTED)
+    return 'ERROR_OPERATION_ABORTED';
+  else if (code == ERROR_IO_INCOMPLETE)
+    return 'ERROR_IO_INCOMPLETE';
+  else if (code == ERROR_IO_PENDING)
+    return 'ERROR_IO_PENDING';
+  else if (code == ERROR_NOACCESS)
+    return 'ERROR_NOACCESS';
+  else if (code == ERROR_SWAPERROR)
+    return 'ERROR_SWAPERROR';
+  else if (code == ERROR_STACK_OVERFLOW)
+    return 'ERROR_STACK_OVERFLOW';
+  else if (code == ERROR_INVALID_MESSAGE)
+    return 'ERROR_INVALID_MESSAGE';
+  else if (code == ERROR_CAN_NOT_COMPLETE)
+    return 'ERROR_CAN_NOT_COMPLETE';
+  else if (code == ERROR_INVALID_FLAGS)
+    return 'ERROR_INVALID_FLAGS';
+  else if (code == ERROR_UNRECOGNIZED_VOLUME)
+    return 'ERROR_UNRECOGNIZED_VOLUME';
+  else if (code == ERROR_FILE_INVALID)
+    return 'ERROR_FILE_INVALID';
+  else if (code == ERROR_FULLSCREEN_MODE)
+    return 'ERROR_FULLSCREEN_MODE';
+  else if (code == ERROR_NO_TOKEN)
+    return 'ERROR_NO_TOKEN';
+  else if (code == ERROR_BADDB)
+    return 'ERROR_BADDB';
+  else if (code == ERROR_BADKEY)
+    return 'ERROR_BADKEY';
+  else if (code == ERROR_CANTOPEN)
+    return 'ERROR_CANTOPEN';
+  else if (code == ERROR_CANTREAD)
+    return 'ERROR_CANTREAD';
+  else if (code == ERROR_CANTWRITE)
+    return 'ERROR_CANTWRITE';
+  else if (code == ERROR_REGISTRY_RECOVERED)
+    return 'ERROR_REGISTRY_RECOVERED';
+  else if (code == ERROR_REGISTRY_CORRUPT)
+    return 'ERROR_REGISTRY_CORRUPT';
+  else if (code == ERROR_REGISTRY_IO_FAILED)
+    return 'ERROR_REGISTRY_IO_FAILED';
+  else if (code == ERROR_NOT_REGISTRY_FILE)
+    return 'ERROR_NOT_REGISTRY_FILE';
+  else if (code == ERROR_KEY_DELETED)
+    return 'ERROR_KEY_DELETED';
+  else if (code == ERROR_NO_LOG_SPACE)
+    return 'ERROR_NO_LOG_SPACE';
+  else if (code == ERROR_KEY_HAS_CHILDREN)
+    return 'ERROR_KEY_HAS_CHILDREN';
+  else if (code == ERROR_CHILD_MUST_BE_VOLATILE)
+    return 'ERROR_CHILD_MUST_BE_VOLATILE';
+  else if (code == ERROR_NOTIFY_ENUM_DIR)
+    return 'ERROR_NOTIFY_ENUM_DIR';
+  else if (code == ERROR_DEPENDENT_SERVICES_RUNNING)
+    return 'ERROR_DEPENDENT_SERVICES_RUNNING';
+  else if (code == ERROR_INVALID_SERVICE_CONTROL)
+    return 'ERROR_INVALID_SERVICE_CONTROL';
+  else if (code == ERROR_SERVICE_REQUEST_TIMEOUT)
+    return 'ERROR_SERVICE_REQUEST_TIMEOUT';
+  else if (code == ERROR_SERVICE_NO_THREAD)
+    return 'ERROR_SERVICE_NO_THREAD';
+  else if (code == ERROR_SERVICE_DATABASE_LOCKED)
+    return 'ERROR_SERVICE_DATABASE_LOCKED';
+  else if (code == ERROR_SERVICE_ALREADY_RUNNING)
+    return 'ERROR_SERVICE_ALREADY_RUNNING';
+  else if (code == ERROR_INVALID_SERVICE_ACCOUNT)
+    return 'ERROR_INVALID_SERVICE_ACCOUNT';
+  else if (code == ERROR_SERVICE_DISABLED)
+    return 'ERROR_SERVICE_DISABLED';
+  else if (code == ERROR_CIRCULAR_DEPENDENCY)
+    return 'ERROR_CIRCULAR_DEPENDENCY';
+  else if (code == ERROR_SERVICE_DOES_NOT_EXIST)
+    return 'ERROR_SERVICE_DOES_NOT_EXIST';
+  else if (code == ERROR_SERVICE_CANNOT_ACCEPT_CTRL)
+    return 'ERROR_SERVICE_CANNOT_ACCEPT_CTRL';
+  else if (code == ERROR_SERVICE_NOT_ACTIVE)
+    return 'ERROR_SERVICE_NOT_ACTIVE';
+  else if (code == ERROR_FAILED_SERVICE_CONTROLLER_CONNECT)
+    return 'ERROR_FAILED_SERVICE_CONTROLLER_CONNECT';
+  else if (code == ERROR_EXCEPTION_IN_SERVICE)
+    return 'ERROR_EXCEPTION_IN_SERVICE';
+  else if (code == ERROR_DATABASE_DOES_NOT_EXIST)
+    return 'ERROR_DATABASE_DOES_NOT_EXIST';
+  else if (code == ERROR_SERVICE_SPECIFIC_ERROR)
+    return 'ERROR_SERVICE_SPECIFIC_ERROR';
+  else if (code == ERROR_PROCESS_ABORTED)
+    return 'ERROR_PROCESS_ABORTED';
+  else if (code == ERROR_SERVICE_DEPENDENCY_FAIL)
+    return 'ERROR_SERVICE_DEPENDENCY_FAIL';
+  else if (code == ERROR_SERVICE_LOGON_FAILED)
+    return 'ERROR_SERVICE_LOGON_FAILED';
+  else if (code == ERROR_SERVICE_START_HANG)
+    return 'ERROR_SERVICE_START_HANG';
+  else if (code == ERROR_INVALID_SERVICE_LOCK)
+    return 'ERROR_INVALID_SERVICE_LOCK';
+  else if (code == ERROR_SERVICE_MARKED_FOR_DELETE)
+    return 'ERROR_SERVICE_MARKED_FOR_DELETE';
+  else if (code == ERROR_SERVICE_EXISTS)
+    return 'ERROR_SERVICE_EXISTS';
+  else if (code == ERROR_ALREADY_RUNNING_LKG)
+    return 'ERROR_ALREADY_RUNNING_LKG';
+  else if (code == ERROR_SERVICE_DEPENDENCY_DELETED)
+    return 'ERROR_SERVICE_DEPENDENCY_DELETED';
+  else if (code == ERROR_BOOT_ALREADY_ACCEPTED)
+    return 'ERROR_BOOT_ALREADY_ACCEPTED';
+  else if (code == ERROR_SERVICE_NEVER_STARTED)
+    return 'ERROR_SERVICE_NEVER_STARTED';
+  else if (code == ERROR_DUPLICATE_SERVICE_NAME)
+    return 'ERROR_DUPLICATE_SERVICE_NAME';
+  else if (code == ERROR_END_OF_MEDIA)
+    return 'ERROR_END_OF_MEDIA';
+  else if (code == ERROR_FILEMARK_DETECTED)
+    return 'ERROR_FILEMARK_DETECTED';
+  else if (code == ERROR_BEGINNING_OF_MEDIA)
+    return 'ERROR_BEGINNING_OF_MEDIA';
+  else if (code == ERROR_SETMARK_DETECTED)
+    return 'ERROR_SETMARK_DETECTED';
+  else if (code == ERROR_NO_DATA_DETECTED)
+    return 'ERROR_NO_DATA_DETECTED';
+  else if (code == ERROR_PARTITION_FAILURE)
+    return 'ERROR_PARTITION_FAILURE';
+  else if (code == ERROR_INVALID_BLOCK_LENGTH)
+    return 'ERROR_INVALID_BLOCK_LENGTH';
+  else if (code == ERROR_DEVICE_NOT_PARTITIONED)
+    return 'ERROR_DEVICE_NOT_PARTITIONED';
+  else if (code == ERROR_UNABLE_TO_LOCK_MEDIA)
+    return 'ERROR_UNABLE_TO_LOCK_MEDIA';
+  else if (code == ERROR_UNABLE_TO_UNLOAD_MEDIA)
+    return 'ERROR_UNABLE_TO_UNLOAD_MEDIA';
+  else if (code == ERROR_MEDIA_CHANGED)
+    return 'ERROR_MEDIA_CHANGED';
+  else if (code == ERROR_BUS_RESET)
+    return 'ERROR_BUS_RESET';
+  else if (code == ERROR_NO_MEDIA_IN_DRIVE)
+    return 'ERROR_NO_MEDIA_IN_DRIVE';
+  else if (code == ERROR_NO_UNICODE_TRANSLATION)
+    return 'ERROR_NO_UNICODE_TRANSLATION';
+  else if (code == ERROR_DLL_INIT_FAILED)
+    return 'ERROR_DLL_INIT_FAILED';
+  else if (code == ERROR_SHUTDOWN_IN_PROGRESS)
+    return 'ERROR_SHUTDOWN_IN_PROGRESS';
+  else if (code == ERROR_NO_SHUTDOWN_IN_PROGRESS)
+    return 'ERROR_NO_SHUTDOWN_IN_PROGRESS';
+  else if (code == ERROR_IO_DEVICE)
+    return 'ERROR_IO_DEVICE';
+  else if (code == ERROR_SERIAL_NO_DEVICE)
+    return 'ERROR_SERIAL_NO_DEVICE';
+  else if (code == ERROR_IRQ_BUSY)
+    return 'ERROR_IRQ_BUSY';
+  else if (code == ERROR_MORE_WRITES)
+    return 'ERROR_MORE_WRITES';
+  else if (code == ERROR_COUNTER_TIMEOUT)
+    return 'ERROR_COUNTER_TIMEOUT';
+  else if (code == ERROR_FLOPPY_ID_MARK_NOT_FOUND)
+    return 'ERROR_FLOPPY_ID_MARK_NOT_FOUND';
+  else if (code == ERROR_FLOPPY_WRONG_CYLINDER)
+    return 'ERROR_FLOPPY_WRONG_CYLINDER';
+  else if (code == ERROR_FLOPPY_UNKNOWN_ERROR)
+    return 'ERROR_FLOPPY_UNKNOWN_ERROR';
+  else if (code == ERROR_FLOPPY_BAD_REGISTERS)
+    return 'ERROR_FLOPPY_BAD_REGISTERS';
+  else if (code == ERROR_DISK_RECALIBRATE_FAILED)
+    return 'ERROR_DISK_RECALIBRATE_FAILED';
+  else if (code == ERROR_DISK_OPERATION_FAILED)
+    return 'ERROR_DISK_OPERATION_FAILED';
+  else if (code == ERROR_DISK_RESET_FAILED)
+    return 'ERROR_DISK_RESET_FAILED';
+  else if (code == ERROR_EOM_OVERFLOW)
+    return 'ERROR_EOM_OVERFLOW';
+  else if (code == ERROR_NOT_ENOUGH_SERVER_MEMORY)
+    return 'ERROR_NOT_ENOUGH_SERVER_MEMORY';
+  else if (code == ERROR_POSSIBLE_DEADLOCK)
+    return 'ERROR_POSSIBLE_DEADLOCK';
+  else if (code == ERROR_MAPPED_ALIGNMENT)
+    return 'ERROR_MAPPED_ALIGNMENT';
+  else
+    return code;
+}

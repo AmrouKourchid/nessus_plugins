@@ -1,0 +1,145 @@
+#TRUSTED 1c5b77a71905e0516098ead934008520ac9a21718bbcb5c7a0f8ca7e8e4041a726fa1a624bb297214a9b4933a097978f229310fa6502916b2342937f29efc3c8c4417b9443c6cff654d5b481833a1612c0015ed22dab2910b18a0ea81a9f5475770edf09abaf629c4da9c8e039884a562925c9ad99da11ae1f268b65a53c4df1fed539c2af33d7360389a30392b27821582d08f7010da80d50b6a1c8a97a6c3832077d52989442491763272307ed6d687519ee933f79cf4ea2f49650358e697955a0e75a66e4e03157c527157268e9b535f5b4003c2e67bc9a8e292f9dff59e0b99689f4a3ef21a1b27fb8f914e61804c0eff65b3e4211601070194f10b9faca7f4a5ddef20b04f32cf1f89aba4e34a22a3e38371df6635ab2c20d93ed3cf65d8f867cdd829ac3d7e35fcd1db9a2c184407aa0cfe097f56c83d178e072c17baf6d18a9d2dfef75ee9c26c309032470853acd45dd1a28250c8c5a73f768772bdf00c1c88a49360a48a5eae1c2d626c1b9246556977a28a9cca2cb3ccae0e81b0588a3c81358a6b271ca4c35fbe629c7388d9e36e89b3ebdc9c97f3bff1f144940a502ed7159e8a78c06c2534d2d8c656f584a29de33f66c53b99e78dd77f4abc45c95e124d1ef8af1c1c19c4b8972166886617cd00542d1a42bf23457efe6b4f4579c310bbd99cb7f50f7b16245dcb06ab0d593ac3842c074327bcf59b961ead3
+#TRUST-RSA-SHA256 0dec1290f776207072d98284e95c0acdbb746374e1fa9c076e14795ffd8c9cdad92e8534d302d6c3c983741dcc54a87a3bb90d6bdb665fbe8548ebe5dd5e3d6565f3e90447bec20cd491ee8f392dcf62100a57fb1b23d47d783fcb1d981e5ee3daa33e77ed8c294978b89beae4eab5e2779b7f10b3e645456c76d2f465a589e55e999495e0e63d710dcec81f1dbb0a84e0aa7f2b785c6286bc546db7c700d3426f10fe34790cd0571cc07b5e74aa94102ec1f1bb53052251b6c8e8d279911c57c8c24a149cb29410c8469712eb319d1f07a0840912b31df33c71f34930be775a9218840acf0258d2feffb4f092f997b50572de16c56661770c3c5569d73c11423731f369712182b77ff677b34bdc9f949e8b0fe08e4e8fb8ba4bb10e10a2ac2ec7baf7acfc8bb4f126ec4350419f03fad4c5760b127769b2bf8fec2da07f3750c22f774a1ac1ada47959e29970a2b74770f8cc8df3e78a015f0aae60452017c16f2b9243e6ae67d7da1412c40ca24e46095741cadbe8b68bdec13465755372a50451514d31d112d9453a6eeea451196ffc9e9dda064831289429e6561fc2b6af4a2d7ab3d3053e0fd8955bb9d56a1ed7a3c82a1618a05210f3497b7d66e259693d6e9accbfbe526bdf1bda5d988e34e7d3275569f84280a2cf22d7e09de53090f96e511832baefa247291034ba178bb02a6c7a7a2ddb35c0e29b68af8e27f3eb
+###
+# (C) Tenable, Inc.
+#
+# Revision: 1.9
+#
+###
+
+##
+# Check if this is Oracle SBC based on information collected
+#
+# @return Returns TRUE if we know this is not Oracle SBC, FALSE otherwise.
+##
+function oracle_sbc_pre_check_fail()
+{
+  # Have we already checked that the host is not Oracle SBC?
+  if (host_info_key_val['host_not_oracle_sbc'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ oracle_sbc_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Oracle SBC if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_aruba_cppm() ||
+      is_arrayos()
+    )
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# callback for systems with "Acme Packet OS VM SCZ" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return TRUE if this is Oracle SBC, NULL otherwise
+##
+function handle_oracle_sbc(session, use_shell_handler, &channel, cmd_res)
+{
+  var product, release, build, branch, patch, build_date;
+  var os, matches, pattern;
+
+  #Local checks just means we can run commands on the target host.
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  ##
+  #  Oracle SBC includes command validation
+  #   Dev testing showed that it is usually best
+  #   to just reissue commands fresh for this target
+  ##
+  session.clear_cmd_error();
+  cmd_res = run_command(cmd:'show version',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  replace_kb_item(name:'Host/show_version', value:cmd_res);
+
+  ##
+  # Parse out the product, version, build, and branch information in primary check
+  # Acme Packet OS VM SCZ 9.18.0 Build 6 (Branch wolverine-9.18.0-sentry-release)
+  ##
+  pattern = "Acme\sPacket\s(?:OS\sVM|\d+)\sSCZ([0-9]+\.[0-9]+\.[0-9]+)\sPatch\s([0-9]+)\s\(Build ([0-9]+)\).*\n.*\nBuild Date=([0-9]+\/[0-9]+\/[0-9]+)";
+  matches = pregmatch(pattern:pattern, string:cmd_res, icase:TRUE);
+
+  if (!empty_or_null(matches) &&
+      !empty_or_null(matches[1]) &&
+      !empty_or_null(matches[2]) &&
+      !empty_or_null(matches[3]) && 
+      !empty_or_null(matches[4]))
+  {
+    release = matches[1];
+    patch   = matches[2];
+    build   = matches[3];
+    build_date= matches[4];
+
+    os = strcat('Oracle SBC ', release, ' Build ', build);
+
+    report += strcat('\nThe remote host is running ', os, '\n');
+
+    replace_kb_item(name:'Host/Oracle/SBC', value: TRUE);
+    replace_kb_item(name:'Host/Oracle/SBC/version', value:release);
+    replace_kb_item(name:'Host/Oracle/SBC/patch', value:patch);
+    replace_kb_item(name:'Host/Oracle/SBC/build', value:build);
+    replace_kb_item(name:'Host/Oracle/SBC/build_date', value:build_date);
+    replace_kb_item(name:'Host/Oracle/SBC/show_ver', value:cmd_res);
+
+    # Used by os_fingerprint.nasl for Host Identification
+    replace_kb_item(name:'Host/OS/showver', value:os);
+    replace_kb_item(name:'Host/OS/showver/Confidence', value:100);
+    replace_kb_item(name:'Host/OS/showver/Type', value:'embedded');
+
+    session.clear_cmd_error();
+
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+    report += '\nOS Security Patch Assessment is not supported for Oracle SBC.\n';
+
+    return TRUE;
+  }
+  else
+    return NULL;
+}
+
+##
+# Callback for systems without "Acme Packet OS VM SCZ" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_oracle_sbc(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:'Host/showversion_unrecognized', value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_oracle_sbc'] = TRUE;
+  }
+}

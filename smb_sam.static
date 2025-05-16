@@ -1,0 +1,1252 @@
+#TRUSTED 62cc80d5394f7f8539c96eb6e9448268f21a13439d79e5bb02fb63f9a680c4f252982811647948f13e03bf7e6289f52819f508e47110ac2fa4b8144a6f0ab4eea9a95867d6e5aadb309c7cb76f4058a8f104e2e58f5ce538197ff96a95bd16c4bdd829b9d056b049b332894f1196e4f83dc0c030709d8e4a89fd699f52d0f0f694ba20517778816a0b9942a2ad0ebc3bc4ea3a06a6f4c618ddcb36394df01344a7b864c04a32826a53c7e28ec4ce48291e9562c4e9d15c290acf9eba49cc2135e927cb8cf75fcc241da493c3e63763dfc529670097e5d875580661381c72242c53ab4c755b6f9114af16582f9705f5c7d5c6525fac82df4c377eb17e002c1cedd2eb8a4d89f65d823c842301c50d33fad37f072053dd4e827307a98c267d0288000a3e3d1ebf076da2f82fb84263678283a98f30303789f4bf92dce0bf3d6e8d36d09494a0113ae713f7b2865eab1150524e45f85e92e49e9ae1b7f4b9f9202e06cfe49c7db229ff66866ac355d84cd59a62203dc15f05ea35a3848490203ee4c3447feb4e7ff5b877632a1707fb24ca4980c03b06851b6043ae58c1fc456bc98e5e8b57b5b8823bd70186b13129c6f5e82b322f146307f916f8fc7b6f7e114f93f416f8d9ec047cc94f12fcbc3b7876bd66a6aee10e5ae399bec0925ca993088018734376e9178895df604cee8f39ca7b291740ea94c284c6d9f0809bbf415c
+#TRUST-RSA-SHA256 8a05fb30fadd7671a7d5e840cde97d8acb4b5db53a79b618df29a549745ba6b2efbf2ee6ddd961afc1a1b8b0bf5a8e5c9c4a310bded97c7f08e9def4c1d9efd39b2e3b5c06cb209ab3c6e91878d35e243985708ea9d2f11b8cbcb042a9738bf94f5f546535a3a61f7211372303efd1cdb6ef2f356dcc6abe9287a2e5482bea86ddb52203e4070df95edf48964d82014faaf7ba22b81c480cb8a87c282e521c42a11c7727f59cde0e8de5b7f82941134b144ee8ede8b4270b4f092e7fc42dcee81bc58dbd22bdef542116dd23d8661f527a1654e1eacb56c84ad7acaa9d826cefff6ddf02fb9c484cc1ee4a27de8e769659d47a66567a8f6f390f519b170d60490878fe00471984780e1981dce6dea12f826730450d130694a8d13e7c1172710c307fcd0b30211c4c50a2221f7100812a36d83a92dda3df9ecc62948191ff64838f143cc527628c174b4d710a57ca696c2db38d6133c6fc0c00d71037e198e7e756f6b960bd31cdf4fe68e9e7b7c8bb6d3499382d86c3cdb3e980089f3c005d41aceade072a600c7fa12a3544be33c61c4ec90a3094e74a3559e8ded28d4dda5f6f83a9581fffdd3558231d4ec7222f53af9377610908b89390ebcd563091b8aa313cdb47c33e02549d8d0e2cf0d34e49c45fe700c1526d4afd5778ae05f1128de740f1754bd496d8e7c3fcef6b1bed342933049cfe41636231474b115408a188
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# smb_sam.inc
+# Revision: 1.10
+#
+
+#==================================================================#
+# Section 6a. SAM API                                              #
+#==================================================================#
+
+
+##
+# Connects to the remote SAM pipe.
+# @return  Returns an array : ret[0] : registry handle
+#                             ret[1] : registry pipe
+#                             ret[2] : 1 (Pipe handle)
+##
+
+function SamConnect2 ()
+{
+  var fid, ret, data, resp, rep;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Trying SamConnect2');
+
+  fid = bind_pipe(pipe:"samr", uuid:"12345778-1234-abcd-ef00-0123456789ac", vers:1);
+  if (isnull (fid))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'bind_pipe()');
+    return NULL;
+  }
+
+  data = class_parameter (ref_id:0x00020000, name:"\"+session_get_hostname()) +
+    raw_dword (d:0x30)        ; # Access mask
+
+  data = dce_rpc_pipe_request(fid:fid, code:OPNUM_SAMCONNECT2, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:fid, data:data);
+  if (!rep || (strlen (rep) != 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:20);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = substr (rep, 0, 19);
+  ret[1] = fid;
+  ret[2] = 1;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Enumerates SAM domains
+#
+# @param [handle:int] A SAM server handle.
+# @return Returns an array of Domain Names
+##
+
+function SamEnumerateDomainsInSamServer (handle)
+{
+  var data, resp, rep, ret, len, ref_id, count;
+  var actual_count, max_count, offset, name, pos, i;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Trying SamEnumerateDomainsInSamServer');
+
+  data = handle[0]                +  # Handle
+    raw_dword (d:0)               +  # NULL handle
+    raw_dword (d:0xFFFFFFFF) ;       # Max buf size
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMENUMDOM, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+  dbg::detailed_log(
+    lvl:3,
+    family:'SMB',
+    src:FUNCTION_NAME,
+    msg:'dce_rpc pipe request response',
+    msg_details:{
+      "Data":{"lvl":3, "value":data}
+    });
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  dbg::detailed_log(
+    lvl:3,
+    family:'SMB',
+    src:FUNCTION_NAME,
+    msg:'dce_rpc parsed response',
+    msg_details:{
+      "Data":{"lvl":3, "value":rep}
+    });
+
+  if (!rep || (strlen (rep) < 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  handle = get_dword(blob:rep, pos:0);
+  ref_id = get_dword(blob:rep, pos:4);
+  count = get_dword(blob:rep, pos:8);
+  ref_id = get_dword(blob:rep, pos:12);
+  max_count = get_dword(blob:rep, pos:16);
+
+  # we don't care about size and ref_id
+  pos = count * 12 + 20;
+
+  ret = NULL;
+
+  for (i=0; i<count; i++)
+  {
+    if (strlen (rep) < pos + 12)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+12);
+      return NULL;
+    }
+
+    max_count = get_dword(blob:rep, pos:pos);
+    offset = get_dword(blob:rep, pos:pos+4);
+    actual_count = get_dword(blob:rep, pos:pos+8);
+
+    if (session_is_unicode() == 1)
+      actual_count = actual_count * 2;
+
+    if (strlen(rep) < pos + 12 + actual_count)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+12+actual_count);
+      return NULL;
+    }
+
+    name = get_string2 (blob:rep, pos:pos + 12, len:actual_count);
+
+    pos += actual_count + 12;
+
+    while ((actual_count % 4) != 0)
+    {
+      actual_count ++;
+      pos ++;
+    }
+
+    ret[i] = name;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Query SAM server for a domain
+#
+# @param [handle:int] A SAM server handle.
+# @param [domain:string] A domain name to search for.
+# @return Returns a domain SID
+##
+
+function SamLookupDomainInSamServer (handle, domain)
+{
+  var data, resp, rep;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Looking up SID for domain ' + domain);
+
+  data = handle[0]                     +  # Handle
+  class_parameter (ref_id:0x00020000, name:domain, size:TRUE, _null:FALSE);
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMLOOKUP, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+  dbg::detailed_log(
+    lvl:3,
+    family:'SMB',
+    src:FUNCTION_NAME,
+    msg:'dce_rpc pipe request response',
+    msg_details:{
+      "Data":{"lvl":3, "value":data}
+    });
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  dbg::detailed_log(
+    lvl:3,
+    family:'SMB',
+    src:FUNCTION_NAME,
+    msg:'dce_rpc parsed response',
+    msg_details:{
+      "Data":{"lvl":3, "value":rep}
+    });
+
+  if (!rep || (strlen (rep) < 24))
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24);
+      return NULL;
+    }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'SID for domain ' + domain + ' is ' + substr(rep, 8, strlen(rep)-5));
+  return substr(rep, 8, strlen(rep)-5);
+}
+
+
+##
+# Open the given domain sid
+#
+# @param [handle:int] A SAM server handle.
+# @param [sid:array] A domain SID.
+# @param [access:int] Requested access permissions.
+# @return Returns an array : ret[0] domain handle
+#                            ret[1] FID
+#                            ret[2] reserved
+##
+
+function SamOpenDomain (handle, sid, access)
+{
+  var data, resp, rep, ret, len;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opening domain');
+
+  data = handle[0]                     +  # Handle
+         raw_dword (d:access)          +  # Access mask
+         raw_dword (d:ord(sid[1]))     +  # count
+         sid ;                            # sid
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMOPENDOM, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+  dbg::detailed_log(
+    lvl:3,
+    family:'SMB',
+    src:FUNCTION_NAME,
+    msg:'dce_rpc pipe request response',
+    msg_details:{
+      "Data":{"lvl":3, "value":data}
+    });
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  dbg::detailed_log(
+    lvl:3,
+    family:'SMB',
+    src:FUNCTION_NAME,
+    msg:'dce_rpc parsed response',
+    msg_details:{
+      "Data":{"lvl":3, "value":rep}
+    });
+
+  if (!rep || (strlen (rep) != 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:20);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = substr (rep, 0, 19);
+  ret[1] = handle[1];
+  ret[2] = 0;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Domain opened');
+  return ret;
+}
+
+
+##
+# Query for a user in a domain
+#
+# @param [handle:int] A SAM domain handle.
+# @param [user:string] A user to search for.
+# @return Returns a user RID
+#
+# @remark Supports only one name
+##
+
+function SamLookupNamesInDomain (handle, user)
+{
+  var data, resp, rep, ret, len;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Querying for user ' + user);
+
+  data = handle[0]                     +  # Handle
+         raw_dword (d:1)               +  # count
+         raw_dword (d:1000)            +  # max count
+         raw_dword (d:0)               +  # offset
+         raw_dword (d:1)               +  # actual count
+         class_parameter (ref_id:0x00020000, name:user, size:TRUE, _null:FALSE);
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMLOOKUPNAME, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) != 36))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:36, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:32);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Found');
+  return get_dword(blob:rep, pos:12);
+}
+
+
+##
+# Open a handle to a SAM hosted domain object
+#
+# @param [handle:int] A SAM domain handle.
+# @param [rid:int] A RID identifying the object to open.
+# @param [access:int] Requested access permissions.
+# @param [code:int] An optional SAM OpCode.
+# Return      : ret[0] handle
+#               ret[1] FID
+#               ret[2] reserved
+##
+
+function SamOpen (handle, rid, access, code)
+{
+  var data, resp, rep, ret, len;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opening SAM handle');
+  data = handle[0]                     +  # Handle
+         raw_dword (d:access)          +  # Access mask
+         raw_dword (d:rid)             ;  # count
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:code, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) != 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:20);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = substr (rep, 0, 19);
+  ret[1] = handle[1];
+  ret[2] = 0;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'SAM handle opened');
+  return ret;
+}
+
+
+##
+# Open a SAM domain user handle
+#
+# @param [handle:int] A SAM domain user handle.
+# @param [rid:int] A RID identifying the user to open.
+# @param [access:int] Requested access permissions.
+#
+# @return Returns an array : ret[0] user handle
+#                            ret[1] FID
+#                            ret[2] reserved
+##
+function SamOpenUser (handle, rid, access)
+{
+  return SamOpen (handle:handle, rid:rid, access:access, code:OPNUM_SAMOPENUSER);
+}
+
+
+##
+# Open a SAM domain group handle
+#
+# @param [handle:int] A SAM domain group handle.
+# @param [rid:int] A RID identifying the group to open.
+# @param [access:int] Requested access permissions.
+#
+# @return Returns an array : ret[0] group handle
+#                            ret[1] FID
+#                            ret[2] reserved
+##
+function SamOpenGroup (handle, rid, access)
+{
+  return SamOpen (handle:handle, rid:rid, access:access, code:OPNUM_SAMOPENGROUP);
+}
+
+##
+# Open a SAM domain alias handle
+#
+# @param [handle:int] A SAM alias handle.
+# @param [rid:int] A RID identifying the alias to open.
+# @param [access:int] Requested access permissions.
+#
+# @return Returns an array : ret[0] alias handle
+#                            ret[1] FID
+#                            ret[2] reserved
+##
+function SamOpenAlias (handle, rid, access)
+{
+  var data, resp, rep, ret, len;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opening SAM alias');
+
+  data = handle[0]                     +  # Handle
+         raw_dword (d:access)          +  # Access mask
+         raw_dword (d:rid)             ;  # count
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMOPENALIAS, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) != 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:20);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = substr (rep, 0, 19);
+  ret[1] = handle[1];
+  ret[2] = 0;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opened SAM alias');
+  return ret;
+}
+
+
+##
+# Return the groups that a user belongs to
+#
+# @param [handle:int] A SAM domain handle.
+# @return Returns an array of group RIDs
+##
+function SamGetGroupsForUser (handle)
+{
+  var data, resp, rep, ret, len, i, pos, ref_id, count, max_count;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamGetGroupsForUser');
+
+  data = handle[0] ;
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMGETGROUPS, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 20))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:20);
+    return NULL;
+  }
+
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ref_id = get_dword(blob:rep, pos:0);
+  count  = get_dword(blob:rep, pos:4);
+  ref_id = get_dword(blob:rep, pos:8);
+  max_count = get_dword(blob:rep, pos:12);
+
+  pos = 16;
+
+  if (strlen(rep) < pos + count * 8 + 4)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos + count * 8 + 4);
+    return NULL;
+  }
+
+
+  ret = NULL;
+  for (i=0; i<count; i++)
+  {
+    ret[i] = get_dword(blob:rep, pos:pos);
+    pos += 8;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Return the members of an alias
+#
+# @param [handle:int] A SAM domain handle.
+# @return Returns an array of group/user RIDs
+##
+function SamGetMembersInAlias (handle)
+{
+  var data, resp, rep, ret, len, i, pos, ref_id, count, max_count, num;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamGetMembersInAlias');
+
+  data = handle[0] ;
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMGETMEMALIAS, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 20))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:20);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+
+  count  = get_dword(blob:rep, pos:0);
+  ref_id = get_dword(blob:rep, pos:4);
+  max_count = get_dword(blob:rep, pos:8);
+
+  # we don't care about ref_id
+  pos = 12 + count * 4;
+
+  if (strlen(rep) < pos + 4)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+4);
+    return NULL;
+  }
+
+  ret = NULL;
+  for (i=0; i<count; i++)
+  {
+    if (strlen(rep) < pos+12)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+12);
+      return NULL;
+    }
+    num = get_dword(blob:rep, pos:pos);
+    if (strlen(rep) < pos+12+num*4)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+12+num*4);
+      return NULL;
+    }
+
+    ret[i] = substr(rep, pos+4, pos+12+num*4-1);
+    pos += 12 + num*4;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Return the members of a group
+#
+# @param [handle:int] A SAM domain handle.
+# @return Returns an array of RIDs
+##
+function SamGetMembersInGroup (handle)
+{
+  var data, resp, rep, ret, len, i, pos, ref_id, count, max_count, num;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamGetMembersInGroup');
+
+  data = handle[0] ;
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMGETMEMGROUP, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 20))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:20);
+    return NULL;
+  }
+
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  count  = get_dword(blob:rep, pos:4);
+  pos = 20;
+
+  if (strlen(rep) < pos + count*4 + 4)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos + count*4 + 4);
+    return NULL;
+  }
+
+  ret = NULL;
+  for (i=0; i<count; i++)
+  {
+    ret[i] = get_dword(blob:rep, pos:pos);
+    pos += 4;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Map ids to names in a SAM domain
+#
+# @param [handle:int] A SAM domain handle.
+# @param [ids:array] A RID identifying the alias to open.
+# @return Returns an array of names
+##
+function SamLookupIdsInDomain (handle, ids)
+{
+  var data, resp, rep, ret, len, i, pos, ref_id, count, max_count, actual_count, offset, id, name;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamLookupIdsInDomain');
+
+  data = handle[0]                    +
+         raw_dword (d:max_index(ids)) + # count
+         raw_dword (d:1000)           + # max_count
+         raw_dword (d:0)              + # offset
+         raw_dword (d:max_index(ids)) ; # actual count
+
+  foreach id (ids)
+    data += raw_dword (d:id);
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMLOOKUPIDS, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 20))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:20);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  count = get_dword(blob:rep, pos:0);
+  ref_id = get_dword(blob:rep, pos:4);
+  max_count = get_dword(blob:rep, pos:8);
+
+  # we don't care about size and ref_id
+  pos = count * 8 + 12;
+
+  ret = NULL;
+
+  for (i=0; i<count; i++)
+  {
+    if (strlen (rep) < pos + 12)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+12);
+      return NULL;
+    }
+
+    max_count = get_dword(blob:rep, pos:pos);
+    offset = get_dword(blob:rep, pos:pos+4);
+    actual_count = get_dword(blob:rep, pos:pos+8);
+
+    if (session_is_unicode() == 1)
+      actual_count = actual_count * 2;
+
+    if (strlen(rep) < pos + 12 + actual_count)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+12+actual_count);
+      return NULL;
+    }
+
+    name = get_string2 (blob:rep, pos:pos + 12, len:actual_count);
+
+    pos += actual_count + 12;
+
+    while ((actual_count % 4) != 0)
+    {
+      actual_count ++;
+      pos ++;
+    }
+
+    ret[i] = name;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Query SAM domain for user information
+#
+# @param [handle:int] A SAM domain handle.
+# @return Returns an array of user information  (level 21)
+# @remark Incomplete !!!
+##
+function SamQueryInformationUser (handle)
+{
+  var data, resp, rep, ret, pos, ref_id, level;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamQueryInformationUser');
+
+  data = handle[0]       +
+         raw_word (w:21) ; # level
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMQUERYINFOU, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 52))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:52);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ref_id = get_dword(blob:rep, pos:0);
+  level = get_dword(blob:rep, pos:4);
+
+  pos = 8;
+
+  ret = NULL;
+  ret[0] = substr(rep, pos, pos+7);     # last logon time
+  ret[1] = substr(rep, pos+8, pos+15);  # last logoff time
+  ret[2] = substr(rep, pos+16, pos+23); # pwd last set
+  ret[3] = substr(rep, pos+24, pos+31); # acct expiry
+  ret[4] = substr(rep, pos+32, pos+39); # pwd can change
+  ret[5] = substr(rep, pos+40, pos+47); # pwd must change
+
+  # we don't care about name info (maybe later)
+  pos = pos + 20*8   # time + string
+            + 8 ;    # RID + GRID
+
+  if (strlen(rep) < pos + 4)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+4);
+    return NULL;
+  }
+
+  ret[6] = get_dword(blob:rep, pos:pos);
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# return domain information
+#
+# @param [handle:int] An SMB domain handle
+# @param [level:int] Kind of domain information requested:
+#                       DomainPasswordInformation = 1,
+#                       DomainGeneralInformation = 2,
+#                       DomainLogoffInformation = 3,
+#                       DomainOemInformation = 4,
+#                       DomainNameInformation = 5,
+#                       DomainReplicationInformation = 6,
+#                       DomainServerRoleInformation = 7,
+#                       DomainModifiedInformation = 8,
+#                       DomainStateInformation = 9,
+#                       DomainGeneralInformation2 = 11,
+#                       DomainLockoutInformation = 12,
+#                       DomainModifiedInformation2 = 13
+#                    See: https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-samr/4df07fab-1bbc-452f-8e92-7853a3c7e380
+# @return array of domain information  (level 1,3 or 12)
+# @remark  Incomplete !!!
+##
+function SamQueryInformationDomain (handle, level)
+{
+  var data, resp, rep, ret, pos, ref_id, lev;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamQueryInformationDomain');
+
+  data = handle[0]       +
+         raw_word (w:level) ; # level
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMQUERYINFOD, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 8))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:8);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+
+  ref_id = get_dword(blob:rep, pos:0);
+  lev = get_word (blob:rep, pos:4);
+
+  pos = 8;
+
+  ret = NULL;
+
+  if (lev == 1)
+  {
+    if (strlen(rep) != 36)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:36, operator:'is not');
+      return NULL;
+    }
+
+    ret[0] = get_word (blob:rep, pos:pos);    # min pass len
+    ret[1] = get_word (blob:rep, pos:pos+2);  # pass history len
+    ret[2] = get_dword(blob:rep, pos:pos+4); # password must meet complexity requirements
+    ret[3] = convert_time_to_sec(time:substr (rep, pos+8, pos+15));    # max pass age
+    ret[4] = convert_time_to_sec(time:substr (rep, pos+16, pos+23));   # min pass age
+  }
+  else if (lev == 3)
+  {
+    if (strlen(rep) != 20)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:20, operator:'is not');
+      return NULL;
+    }
+
+    ret[0] = convert_time_to_sec(time:substr(rep, pos, pos+7));     # force logoff
+  }
+  else if (lev == 12)
+  {
+    if (strlen(rep) != 32)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:32, operator:'is not');
+      return NULL;
+    }
+
+    ret[0] = convert_time_to_sec(time:substr (rep, pos, pos+7));        # lockout duration
+    ret[1] = convert_time_to_sec(time:substr (rep, pos+8, pos+15));     # lockout duration
+    ret[2] = get_word (blob:rep, pos:pos+16); # lockout threshold
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# returns user information for a domain
+#
+# @param : [handle:int] An SMB domain handle
+# @return : array of user information
+##
+function SamQueryDisplayInformation(handle)
+{
+  var data, resp, rep, rid, string_len, pos, idx, names, result;;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamQueryDisplayInformation');
+
+  resp = STATUS_MORE_ENTRIES;
+  idx = 0;
+  names = [];
+
+  while(resp == STATUS_MORE_ENTRIES)
+  {
+    data = handle[0] +               # domain
+           raw_dword(d:1) +          # level - user
+           raw_dword(d:idx) +          # index
+           raw_dword(d:1) +          # number of names
+           raw_dword(d:0x7fffffff);  # tell Windows to send what it has
+
+    data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMQUERYDISPINFO, data:data);
+    if(!data)
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+      return NULL;
+    }
+    dbg::detailed_log(
+      lvl:3,
+      family:'SMB',
+      src:FUNCTION_NAME,
+      msg:'dce_rpc pipe request response',
+      msg_details:{
+        "Data":{"lvl":3, "value":data}
+      });
+
+    rep = dce_rpc_parse_response(fid:handle[1], data:data);
+    dbg::detailed_log(
+      lvl:3,
+      family:'SMB',
+      src:FUNCTION_NAME,
+      msg:'dce_rpc parsed response',
+      msg_details:{
+        "Data":{"lvl":3, "value":rep}
+      });
+
+    if(!rep || (strlen(rep) < 20))
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:20);
+      return NULL;
+    }
+
+    resp = get_dword(blob:rep, pos:strlen(rep)-4);
+    if(resp != STATUS_SUCCESS && resp != STATUS_MORE_ENTRIES)
+      break;
+
+    names[idx] = {};
+    names[idx]["rid"] = get_dword(blob:rep, pos:28);
+
+    string_len = get_dword(blob:rep, pos:68);
+    if (session_is_unicode() == 1)
+      string_len *= 2;
+
+    pos = 72;
+    names[idx]["name"] = get_string2(blob:rep, pos:pos, len: string_len);
+
+    pos += string_len;
+    if(pos >= strlen(rep) + 2)
+      break;
+
+    string_len = get_word(blob:rep, pos:pos);
+    if (session_is_unicode() == 1)
+      string_len *= 2;
+    pos += 2;
+
+    if(string_len > 0 && pos < strlen(rep) + 4)
+    {
+      pos += 6;
+      string_len = get_dword(blob:rep, pos:pos);
+      if (session_is_unicode() == 1)
+        string_len *= 2;
+
+      pos += 4;
+      names[idx]["desc"] = get_string2(blob:rep, pos:pos, len:string_len);
+      pos += string_len;
+    }
+    else
+    {
+      names[idx]["desc"] = '';
+    }
+
+    if(pos >= strlen(rep) + 2)
+      break;
+
+    string_len = get_word(blob:rep, pos:pos);
+    if (session_is_unicode() == 1)
+      string_len *= 2;
+    pos += 2;
+
+    if(string_len > 0 && pos < strlen(rep) + 4)
+    {
+      pos += 6;
+      string_len = get_dword(blob:rep, pos:pos);
+      if (session_is_unicode() == 1)
+        string_len *= 2;
+
+      pos += 4;
+      names[idx]["full_name"] = get_string2(blob:rep, pos:pos, len:string_len);
+    }
+    else
+    {
+      names[idx]["full_name"] = '';
+    }
+
+    idx += 1;
+  }
+
+  result["status"] = resp;
+  result["names"] = names;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return result;
+}
+
+##
+# Return user account aliases
+#
+# @param [handle:int] An SMB handle of a domain.
+# @param [sid:int] Security descriptor of the user.
+# @param [rids:array] Array of RIDs of groups the user belongs to.
+# @param [urid:int] RID of the user in the domain.
+#
+# @return An array of account aliases on success, NULL otherwise.
+##
+
+function SamGetAliasMemberShip (handle, sid, rids, urid)
+{
+  var data, resp, rep, ret, i, tmp_sid, count, num_sid, ref_id, rid, pos, num_id;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running SamGetAliasMemberShip');
+
+  tmp_sid = sid[0] + raw_byte(b:ord(sid[1]) + 1) + substr (sid, 2, strlen(sid)-1);
+  count = ord(sid[1]) + 1;
+
+  num_id = max_index(rids) + 1;
+
+  data = handle[0]       +
+         raw_dword (d:num_id)      + # count
+         raw_dword (d:0x00146668)  + # ref_id
+         raw_dword (d:num_id)      ; # max count
+
+  ref_id = 0x001466a8;
+
+  for (i=0; i<num_id; i++)
+  {
+    data += raw_dword (d:ref_id);
+    ref_id += 0x28;
+  }
+
+  # we add user rid first
+  data += raw_dword (d:count) + tmp_sid + raw_dword (d:urid);
+
+  # and group rids
+  foreach rid (rids)
+    data += raw_dword (d:count) + tmp_sid + raw_dword (d:rid);
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMGETALIASM, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 12))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:12);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  count = get_dword(blob:rep, pos:0);
+  if (count == 0)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'count', length:0, operator:'is');
+    return NULL;
+  }
+
+  ret = NULL;
+  pos = 12;
+
+  if (strlen(rep) < pos + count*4 + 4)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos + count*4 + 4);
+    return NULL;
+  }
+
+  for (i=0; i<count; i++)
+  {
+    ret[i] = get_dword(blob:rep, pos:pos);
+    pos += 4;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+##
+# Closes an SMB handle.
+#
+# @param [handle:int] An SMB handle.
+# @return TRUE if success, NULL otherwise.
+##
+
+function SamCloseHandle (handle)
+{
+  var data, rep, code, ret;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Closing SAM Handle');
+
+  code = NULL;
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SAMCLOSEHANDLE, data:handle[0]);
+  if (data)
+  {
+    rep = dce_rpc_parse_response(fid:handle[1], data:data);
+    if (rep && (strlen (rep) == 24))
+    {
+      # NULL handle (useless) + code
+      # Return code
+      code = get_dword(blob:rep, pos:20);
+    }
+  }
+
+  if (handle[2] == 1)
+    ret = smb_close (fid:handle[1]);
+
+  if (isnull (code) || (code != STATUS_SUCCESS) || (ret != 1))
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Closed');
+  return 1;
+}

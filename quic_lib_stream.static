@@ -1,0 +1,563 @@
+#TRUSTED 3f0a21d0fd0656a099a7371a568a9ce429b2b3092912f7162ca23ec305548b5041896dc33ef5c387db23124187b920eaec8c689edb15d05e1eab4d73be254ab434417bf83d50d497a512cb28c51969ed1619b87e92181adc45be51d9212896d96f7e6283df0ea2e9839b7b216e58075096b366a6f25627830f0a3401b96d189319d540a912113621172b546eb8253a1f30b0ba9861c93b66bf5396d85fa629550cdffcac164c4c9c0a592c1a75946532c5ca338e331e18490a42843893064671077499ec0516b96a43584dd2fc89d8d4f350bc2d43939721bdddc17440d14193c0aea69d155c29a4370ce5b10cdfe0587d389b0ced04181c814d76776a7f1bf25afbab81c684112122768326482dfb1df84750e80cdd63f0cfaf8fc4ba8d7eec745c3ba99cc1ffd3ea73582e518ddca533fad5d3cee227132594865609979db724efbc265dba459c38a9e99a08c0e8a7e5c95055dbc61d7d1c74c36b626cc39f9c797da4e6282fa5ba8ba9784021f2f9a8d4cc3f4bc6ac535ab20e6100f445dcb18df4a49c673e7d47bc3fd3bc1e4b92c079d357e7e80f67a1dfa2158920d32920d5aa564d8da1e47a8c7cdaf7a66ed7ef5c7ad4c61095c1e5b1c7ea874d3a3d20a9d8c3cc49579f6043e1d2cdbbb3ebc394d789540e5afacb1411953dcd7da2bf7f5632541414e1cb385629e6a3247209ad94bcddf920666a12887e519d95b3
+#TRUST-RSA-SHA256 68e5030e63cadb4101ebef532bc2f314775b007d1d9526dcf04d17fbf869941bd2c225804938b42e96eee824010300dc1db3a10f1f5a5d4a9a5583a31e24a7ff9da51bef970bed61922384098027508bb0aac93d0dfe40041020b35af824289e7defecaffc507097071f223b152656b608bef25247e8f34c487a7f3fe158a46224c042f49d0481d304bb5e3c1a108a201de70089e2e9edf64bde1914482ad09d8b031b6b1b9fc6deab15895cd6246a13c5541afa03e6a7c87c95dde8d4be50af9c8492d1c617b437c54dda7f060323fd3d236742a381a768f87e1867643dc915de13b8a47dfc674ae2dc20c0bd261afae2be8f4a4237d12b2529c1333ca596fb93c906d4e1f5d118d64f6ebf5e754c3f38ef81386daa46a5232b97198e6b0a5407423b2ccd69d19c3128f81d278cf4bbf9a5be0db3e7094cf284ffacee9421252e20d95addadba108d73af0e647925491dd6a9a8220ce15d88a5db3efe01140eb9147a17c0322dbb2f741ec0b702e769146448b1817d1dc44d6cfaeb6458e4fec73ac1d361bbe66a18ef8e1d898ba829ec348a8f5fd63d2d52726be4972238c30196feb9607d19f96af609f81c37d5d97c1a3ade54f8ab6b948bc313fa26ab379179f560442dfe6186ad216b6cd9db94d78a9a93377201025195fb155d91fa76391bbf0f92c9cf563f20c9ca38bb39c5997a60b89aa8a191e824fe641c762720
+
+###
+#
+# Implements the QUIC stream abstraction for the Nessus QUIC libary.
+# https://www.rfc-editor.org/rfc/rfc9000.html
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+###
+
+namespace quic
+{
+  object stream
+  {
+    var id;
+    var send_state;
+    var recv_state;
+    var connection;
+
+    # Blocks of data by initial frames sent/received -
+    # retry frames do not have to respect prior frame boundaries.
+    var send_data_blocks = [];
+    var recv_data_blocks = [];
+
+    # Send data block offsets [start_offset, end_offset]
+    var send_data_offsets = [];
+    # Recv data block offsets [start_offset, end_offset]
+    var recv_data_offsets = [];
+
+    # First block of undelivered data
+    var send_start_from;
+    var recv_start_from;
+
+    # Last block of contiguous undelivered data
+    var send_end_from;
+    var recv_end_from;
+
+    ##
+    # Constructs a QUIC stream object and sets the stream id and connection.
+    #
+    # @anonparam [first:int]     The stream id.
+    # @anonparam [second:object] The stream's connection.
+    ##
+    function stream()
+    {
+      this.id = _FCT_ANON_ARGS[0];
+      this.connection = _FCT_ANON_ARGS[1];
+
+      #We can't prevent the construction of an object
+      if(isnull(this.id) || isnull(this.connection))
+        return;
+
+      this.init();
+    }
+
+
+    ##
+    # Sets the id of a stream if it is in the READY state.
+    #
+    # @anonparam [first:int] The new stream id.
+    ##
+    public function set_id()
+    {
+      if(!isnull(this.id))
+      {
+        if(((this.id & 3 == 3) || !(this.id & 2)) && this.recv_state != STREAM_READY)
+          return;
+
+        if(((this.id & 3 == 2) || !(this.id & 2)) && this.send_state != STREAM_READY)
+          return;
+      }
+
+      if(!isnull(_FCT_ANON_ARGS[0]) && typeof(_FCT_ANON_ARGS[0]) == "int")
+        this.id = _FCT_ANON_ARGS[0];
+    }
+
+
+    ##
+    # Associates this stream with a QUIC connection.
+    #
+    # @param [first:object] This stream's new connection.
+    ##
+    public function set_connection()
+    {
+      if(!isnull(_FCT_ANON_ARGS[0]) && typeof(_FCT_ANON_ARGS[0]) == "object")
+        this.connection = _FCT_ANON_ARGS[0];
+    }
+
+
+    ##
+    # Initializes a stream based on its type.  The unused half of a bidirectional stream
+    # is closed.
+    ##
+    public function init()
+    {
+      this.send_start_from = 0;
+      this.recv_start_from = 0;
+      this.send_end_from = -1;
+      this.recv_end_from = -1;
+
+      #Unidirectional
+      if(id & 2)
+      {
+        if(id & 1)
+        {
+          this.send_data_blocks = NULL;
+          this.send_data_offsets = NULL;
+          this.send_state = STREAM_CLOSED;
+          this.send_start_from = -1;
+          this.recv_state = STREAM_READY;
+        }
+        else
+        {
+          this.recv_data_blocks = NULL;
+          this.recv_data_offsets = NULL;
+          this.recv_state = STREAM_CLOSED;
+          this.recv_start_from = -1;
+          this.send_state = STREAM_READY;
+        }
+      }
+      else
+      {
+        this.send_state = STREAM_READY;
+        this.recv_state = STREAM_READY;
+      }
+    }
+
+    ##
+    # Stops the send side of a stream.
+    ##
+    public function stop_send()
+    {
+      this.send_state = STREAM_SIZE_KNOWN;
+    }
+
+    ##
+    # Stops the recv side of a stream.
+    ##
+    public function reset_recv()
+    {
+      this.recv_state = STREAM_SIZE_KNOWN;
+    }
+
+    ##
+    # Closes all directions of a stream.
+    ##
+    public function close()
+    {
+      this.send_state = STREAM_CLOSED;
+      this.recv_state = STREAM_CLOSED;
+      this.connection = NULL;
+      send_data_blocks = NULL;
+      recv_data_blocks = NULL;
+
+      send_start_from = -1;
+      recv_start_from = -1;
+      send_end_from = -1;
+      recv_end_from = -1;
+    }
+
+
+    ##
+    # Appends a possibly resent data block to an inbound stream and updates the stream
+    # markers that indicate contiguous blocks available for delivery.
+    #
+    # @param [data:bytes]  The new data block.
+    # @param [offset:int]  Stream offset of the new data block.
+    # @param [fin:boolean] TRUE if this is the last block of the stream.
+    #
+    # @return [int|object] Returns SUCCESS or an Error object.
+    ##
+    public function add_recv_data(data, offset, fin)
+    {
+      var res;
+      if(this.recv_state == STREAM_CLOSED)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:STREAM_STATE_ERROR,
+          name:get_error_desc(error:STREAM_STATE_ERROR),
+          msg:'Stream is closed for receiving data.');
+      }
+
+      res = this.add_data(blocks:this.recv_data_blocks,
+                          offsets:this.recv_data_offsets,
+                          end_from:this.recv_end_from,
+                          data:data,
+                          offset:offset,
+                          state:this.recv_state);
+
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:res.get_last_code(),
+          name:get_error_desc(error:res.get_last_code()),
+          msg:"Failed to add receive data to stream.");
+      }
+
+      this.recv_end_from = this.recompute_contiguity(offsets:this.recv_data_offsets, start_from:this.recv_start_from);
+
+      if(fin)
+        this.reset_recv();
+
+      return res;
+    }
+
+
+    ##
+    # Appends a new data block to an outbound stream and updates the stream
+    # markers that indicate contiguous blocks available for delivery.
+    #
+    # @param [data:bytes]  The new data block.
+    # @param [offset:int]  Stream offset of the new data block.
+    # @param [fin:boolean] TRUE if this is the last block of the stream.
+    #
+    # @return [int] Returns SUCCESS or a QUIC error code.
+    ##
+    public function add_send_data(data, offset, fin)
+    {
+      var res;
+      if(this.send_state == STREAM_CLOSED || this.send_state == STREAM_SIZE_KNOWN)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:STREAM_STATE_ERROR,
+          name:get_error_desc(error:STREAM_STATE_ERROR),
+          msg:'Stream is closed for sending data.');
+      }
+
+      res = this.add_data(blocks:this.send_data_blocks,
+                          offsets:this.send_data_offsets,
+                          end_from:this.send_end_from,
+                          data:data,
+                          offset:offset,
+                          state:this.send_state);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:res.get_last_code(),
+          name:get_error_desc(error:res.get_last_code()),
+          msg:"Failed to add send data to stream.");
+      }
+
+      this.send_end_from = this.recompute_contiguity(offsets:send_data_offsets, start_from:this.send_start_from);
+
+      if(fin)
+        this.stop_send();
+
+      return res;
+    }
+
+
+    ##
+    # Computes the contiguous buffered data available on a particular stream direction.
+    #
+    # @param [offsets:list]   List of data block stream offsets. Each pair of offsets marks the start
+    #                         and end stream offset of the data block with the same index.
+    # @param [start_from:int] Index of the first undelivered data block of a stream direction.
+    #
+    # @return [int] Index of the computed last block of undelivered contiguous data.
+    ##
+    protected function recompute_contiguity(offsets, start_from)
+    {
+      var i;
+      var end_from = -1;
+      var last_offset = -1;
+      var max_i = max_index(offsets);
+
+      if(max_i > 0)
+        last_offset = offsets[start_from][BLOCK_START_OFFSET] - 1;
+
+      for(i = start_from; i < max_i; i++)
+      {
+        if(last_offset + 1 == offsets[i][BLOCK_START_OFFSET])
+        {
+          end_from = i;
+          last_offset = offsets[i][BLOCK_END_OFFSET];
+        }
+        else
+        {
+          break;
+        }
+      }
+
+      return end_from;
+    }
+
+
+    ##
+    # Processes and conditionally buffers a possibly resent data block and updates the stream
+    # markers that indicate undelivered contiguous blocks available to clients.
+    #
+    # @param [blocks:list]    List of buffered data blocks.
+    # @param [offsets:list]   List of data block stream offsets. Each pair of offsets marks the start
+    #                         and end stream offset of the data block with the same index.
+    # @param [end_from:int]   Index of the data block representing the end of contiguous data.
+    # @param [data:bytes]     The data block to process.
+    # @param [offset:int]     Stream offset of the new data block.
+    # @param [state:int]      State of the stream direction being added to.
+    #
+    # @return [int|object] Returns SUCCESS or an Error object.
+    ##
+    protected function add_data(&blocks, &offsets, end_from, data, offset, state)
+    {
+      # Trying to send or receive data on a closed stream or stream of the wrong type
+      if(isnull(blocks) || isnull(data) || isnull(state) || isnull(offset) || isnull(end_from) || state == STREAM_CLOSED)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:STREAM_STATE_ERROR,
+          name:get_error_desc(error:STREAM_STATE_ERROR),
+          msg:'Bad stream state.');
+      }
+
+      var end_offset = offset + strlen(data) - 1;
+      var existing;
+      var block;
+      var i;
+      var count = max_index(blocks);
+      for(i = 0; i >=0 && i < count; i++)
+      {
+        existing = offsets[i];
+        block = blocks[i];
+
+        # No overlap
+        # Is completely before existing block
+        if(end_offset < existing[BLOCK_START_OFFSET] && end_offset < existing[BLOCK_END_OFFSET])
+        {
+          insert_element(var:blocks, idx:i, value:data);
+          insert_element(var:offsets, idx:i, value:[offset, end_offset]);
+          return SUCCESS;
+        }
+
+        # Is completely past existing block
+        if((offset > existing[BLOCK_END_OFFSET] && end_offset > existing[BLOCK_END_OFFSET]))
+          continue;
+
+        # Starts within existing block
+        if(offset >= existing[BLOCK_START_OFFSET] &&
+           offset <= existing[BLOCK_END_OFFSET] &&
+           end_offset > existing[BLOCK_END_OFFSET])
+        {
+          if(substr(data, 0, existing[BLOCK_END_OFFSET] - offset) !=
+             substr(block, offset - existing[BLOCK_START_OFFSET]))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:PROTOCOL_VIOLATION,
+              name:get_error_desc(error:PROTOCOL_VIOLATION),
+              msg:'Data differs in repeated stream segment.');
+          }
+
+          if(existing[BLOCK_END_OFFSET] + 1 > end_offset)
+            return SUCCESS;
+
+          data = substr(data, end_offset - existing[BLOCK_END_OFFSET]);
+          offset = existing[BLOCK_END_OFFSET] + 1;
+        }
+
+        # Entirely subsumes existing block
+        if(offset <= existing[BLOCK_START_OFFSET] && end_offset >= existing[BLOCK_END_OFFSET])
+        {
+          if(substr(data, existing[BLOCK_START_OFFSET] - offset, existing[BLOCK_END_OFFSET] - offset) != block)
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:PROTOCOL_VIOLATION,
+              name:get_error_desc(error:PROTOCOL_VIOLATION),
+              msg:'Data differs in repeated stream segment.');
+          }
+          return SUCCESS;
+        }
+
+        # Is Entirely subsumed within existing block
+        if(offset > existing[BLOCK_START_OFFSET] && end_offset < existing[BLOCK_END_OFFSET])
+        {
+          if(data != substr(block, offset - existing[BLOCK_START_OFFSET], existing[BLOCK_START_OFFSET] - end_offset))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:PROTOCOL_VIOLATION,
+              name:get_error_desc(error:PROTOCOL_VIOLATION),
+              msg:'Data differs in repeated stream segment.');
+          }
+          return SUCCESS;
+        }
+
+        # Ends within existing block
+        if(offset < existing[BLOCK_START_OFFSET] &&
+           end_offset >= existing[BLOCK_START_OFFSET] &&
+           end_offset <= existing[BLOCK_END_OFFSET])
+        {
+          if(substr(data, existing[BLOCK_START_OFFSET] - offset, end_offset) !=
+             substr(block, 0, end_offset - existing[BLOCK_START_OFFSET]))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:PROTOCOL_VIOLATION,
+              name:get_error_desc(error:PROTOCOL_VIOLATION),
+              msg:'Data differs in repeated stream segment.');
+          }
+
+          data = substr(data, 0, existing[BLOCK_END_OFFSET] - end_offset);
+          end_offset = existing[BLOCK_START_OFFSET] - 1;
+          insert_element(var:blocks, idx:i, value:data);
+          insert_element(var:offsets, idx:i, value:[offset, end_offset]);
+          return SUCCESS;
+        }
+
+      }
+
+      if(state == STREAM_SIZE_KNOWN)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:STREAM_STATE_ERROR,
+          name:get_error_desc(error:STREAM_STATE_ERROR),
+          msg:'Adding data to a closed stream.');
+      }
+
+      if(end_from < 0 || offset > offsets[end_from][BLOCK_END_OFFSET])
+      {
+        append_element(var:blocks, value:data);
+        append_element(var:offsets, value:[offset, end_offset]);
+      }
+
+      return SUCCESS;
+    }
+
+    ##
+    # Returns contiguous data from one buffered direction of a stream and advances the stream
+    # to mark the returned data as already received.
+    #
+    # @param [blocks:list]    List of buffered data blocks.
+    # @param [end_from:int]   Index of the data block representing the end of contiguous data.
+    # @param [start_from:int] Index of the data block representing the start of unread data.
+    # @param [state:int]      State of the stream direction being retrieved.
+    #
+    # @return [bytes|NULL] Returns a block of contiguous stream data or NULL if the stream is
+    #                      closed or the wrong parameters were passed.
+    # @remark This function is not idempotent.  Data will not be returned twice.
+    ##
+    protected function get_data(&blocks, end_from, start_from, state)
+    {
+      var i;
+      var data = '';
+
+      # Trying to send or receive data on a closed stream or stream of the wrong type
+      if(isnull(blocks) || isnull(end_from) || isnull(start_from) || state == STREAM_CLOSED)
+        return NULL;
+
+      for(i = start_from; i <= end_from; i++)
+        data += blocks[i];
+
+      return data;
+    }
+
+    ##
+    # Used internally by connection to retrieve all data buffered for sending to the server.
+    #
+    # @return [bytes|NULL] Returns a possibly empty set of bytes or NULL on error
+    # @remark
+    #   This function is not idempotent.  Data will not be returned twice.
+    ##
+    public function get_send_data()
+    {
+      var data;
+      data = this.get_data(blocks:this.send_data_blocks,
+                           end_from:this.send_end_from,
+                           start_from:this.send_start_from,
+                           state:this.send_state);
+
+      if(!isnull(data))
+      {
+        this.send_start_from = this.send_end_from + 1;
+        this.send_end_from = -1;
+      }
+
+      return data;
+    }
+
+    ##
+    # Returns all contiguous data that has been buffered on a recv stream.  Out of order packet
+    # data that has not been resent by the server will not be returned.
+    #
+    # @return [bytes|NULL] Returns a possibly empty string of bytes.  If the stream is closed or is
+    #                      a client created unidirectional stream (send-only), NULL will be returned.
+    # @remark
+    #   This function is not idempotent.  Data will not be returned twice.
+    ##
+    public function get_recv_data()
+    {
+      var data;
+      data = this.get_data(blocks:this.recv_data_blocks,
+                           end_from:this.recv_end_from,
+                           start_from:this.recv_start_from,
+                           state:this.recv_state);
+
+      if(!isnull(data))
+      {
+        this.recv_start_from = this.recv_end_from + 1;
+        this.recv_end_from = -1;
+      }
+
+      return data;
+    }
+
+
+    ##
+    # Appends data to outbound data buffered for the current stream.  This function then instructs
+    # the connection to send all buffered data from active send streams to the server and retrieve
+    # all responses from the server.  Data is returned as a list of recv streams with buffered data.
+    #
+    # @param [data:bytes]  Data to send to the server.
+    # @param [fin:boolean] TRUE if this is the end of send data on this stream; FALSE otherwise.
+    #
+    # @return [list|object] On success, returns a list in the form [recv streams]. If the
+    #                       result code is not SUCCESS an Error object will be returned.
+    ##
+    public function send_recv(data, fin)
+    {
+      var offset, last_block;
+
+      if(this.send_state == STREAM_CLOSED || this.send_state == STREAM_SIZE_KNOWN)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:STREAM_STATE_ERROR,
+          name:get_error_desc(error:STREAM_STATE_ERROR),
+          msg:'Stream is closed for sending data.');
+      }
+
+      offset = 0;
+      if(max_index(this.send_data_blocks) > 0)
+        offset = this.send_data_offsets[max_index(this.send_data_blocks) - 1][BLOCK_END_OFFSET] + 1;
+
+      var res = add_send_data(data:data, offset:offset, fin:fin);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:res.get_last_code(),
+          name:get_error_desc(error:res.get_last_code()),
+          msg:"Failed to add send data to stream.");
+      }
+
+      return this.connection.send_stream_data();
+    }
+  }
+}
+

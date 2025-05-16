@@ -1,0 +1,613 @@
+#TRUSTED 1978eadcc64e4117f9cfbf9234fd255f359c8189bc728dadafef532c54cb4f352a6e91be5d9b64d5375789c38b93a79226c153c996a1649d6635d3adaa38db15721dfad6dea00c6f162f130e94b1c81bae25c97dd9aefbb80dc3e1b604aee03234dc1efee65c586e6085e6c117f865943b8719b19c1231b3dd5104345f463b4fed51162f42c494964a5d41ee5fe8418318374c1674deee139e78c622b4492a4388bec382a0382e200a673c3177442da15650d872fff6a6fdaf3a23addbcc038de12ab12a404f735656026a01b8c8ab2c4aad3b0e593e0bfdc19dbffdd5933dcc4baf6fbed543dd990bd3c76370f74c170eb033fbbccfa7a34287f408ee38e236005d03efb435bf417634a93506467f42892260094787809b26a4afeeeae186e275ab31057052cd09ae68ddc6875b96edc3198c2dd4e34f430346d061326c99aa3b8a712830f130861d88253ccdcba7c816ab172c8281e9750de4f7d67a000311baadac45787ebf4d7481ae55c0b6ee9b542d44f9a7e1e5869d340df079e09b48068a29caa0f857ecfd7066d870b400112e832e60b6c0192466d0a214ab7801442cf644674d05cc045ece1a02a019404636511f07e262bebd621d1fa3f7b7d520dd7defdfca7a53037be7d84579abf7da1845a036c0b55bb3daa198b43c991faf6f7ca4f37e6a324ce750df6713e09d2d6606ccdba8ea189329e1d74805266233
+#TRUST-RSA-SHA256 a59ed31e1af07c8148c0c03e6d999db8c42c13507e0f703aba4a7d3848319cb0e5e17e8d3adac8cdd5a3b8a5c2ff1a13addd1305122326c4985f96c3f48a505ffdf38539e16de4318b9b43bc81bc0ca39110f9a63274a5aa23bcc17ab66689c11074d9e210d8d66c1ee348905dc9d9d7949e112a78b8695c9038f6632bab630ed390c57765ce9284ffb32d2881abbcb44e6d364cd06b59b0be2ab7fc9d565268b7ebb56363af8d48f85eaa09d789607ad682754aaf8c373f8d40c35cd3dbfb50f565256376471a6e881832d4e97807a06f490ec36706ccc877ef2c08d6bd453e7a12a953ca3658c988c45d7296af72067ab4f82fd90eb9224aed2e5156646a864ac567b6f2b73e692308fb785f03a2f83b7889bab46ffc772f777c71a59bdd8193abed74ebc740418684ae35aee87a81d9da207d74a546a2bb995c8c09715e5efcc65927b0daeb5eb87b1448d49279217a76c38a5abb5346610555faf0779a056cf2dec9f1e5f20597b9d39064ce7f14457704caae86b64d047ffad05e1d65dd4f4d48e301137174458d83f6924412bb20a4884c7612c8700e80edbadebc748a338fc8348865e13345bddea007c7cd01796ef35802cb016807412e5781c5ce293fa159af6a37220ffd0d0bea100d50220d546b2cedfd9aac17d5f91495b8f9fec13aab7be3707e43b67d2537379cde47359d0c3025ea1820729fdf5e11f5bcc5
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 0
+###
+
+namespace fudo
+{
+  object FudoConfig : integrations::IntegrationConfig
+  {
+    var checkin;
+    var force_checkout;
+    var credential_id;
+    var escalation_credential_id;
+    var api_username;
+    var api_password;
+    var escalation_account_name;
+    var address;
+    var escalate_with;
+    var escalation_address;
+    var use_target_address;
+    var escalation_use_target_address;
+    var active_sessions;
+    var logged_in;
+    var account_name;
+
+    var use_error_handling = TRUE;
+
+    ##
+    # Initialize Fudo configuration.
+    #
+    # @param [prefix:string] The prefix of the UI string for the config element
+    # @param [postfix:string] The postfix of the UI string for the config element
+    # @param [default_platform:string] The default platform (e.g. LINUX) when querying accounts.
+    #
+    # @return [boolean] true always
+    ##
+    public function init(prefix, postfix)
+    {
+      var original_host, parsed_host;
+      this.int_name = 'Fudo';
+
+      # connect to PAM params
+      original_host = script_get_preference(prefix + 'Host' + postfix);
+      parsed_host = integrations::parse_url(url:original_host);
+      this.host = parsed_host.target;
+      if (this.host != original_host)
+      {
+        integrations::logger(msg:'Warning: using "'+this.host+'" as host instead of "'+original_host+'"', config:this, lvl:2);
+      }
+      this.port = script_get_preference(prefix + 'Port' + postfix);
+      this.ssl = integrations::boolean(script_get_preference(prefix + 'SSL' + postfix));
+      this.ssl_verify = integrations::boolean(script_get_preference(prefix + 'Verify SSL Certificate' + postfix));
+      this.api_username = script_get_preference(prefix + 'API User' + postfix);
+      this.api_password = script_get_preference(prefix + 'Password' + postfix);
+
+      # params to specify secret - either you can get by credential id
+      this.credential_id = script_get_preference(prefix + 'Credential ID' + postfix);
+      # or by listing accounts and using a combination of filter parameters to narrow them down.
+      this.account_name = script_get_preference(prefix + 'Secret Name' + postfix);
+      this.use_target_address = integrations::boolean(script_get_preference(prefix + 'Use Target IP Address' + postfix));
+      this.address = script_get_preference(prefix + 'Address' + postfix);
+
+      # same for escalation
+      this.escalate_with = script_get_preference(prefix + 'Elevate privileges with' + postfix);
+      this.escalation_account_name = script_get_preference(prefix + 'Escalation Account Name' + postfix);
+      this.escalation_credential_id = script_get_preference(prefix + 'Escalation Credential ID' + postfix);
+      this.escalation_use_target_address = integrations::boolean(script_get_preference(prefix + 'Escalation Use Target IP Address' + postfix));
+      this.escalation_address = script_get_preference(prefix + 'Escalation Address' + postfix);
+
+      # Checkout/checkin behavior
+      this.checkin =  integrations::boolean(script_get_preference(prefix + 'Check In Secret' + postfix));
+      this.force_checkout = int(integrations::boolean(script_get_preference(prefix + 'Force Secret Checkout' + postfix)));
+
+      # When you checkout a credential it creates a session. We could
+      # check out more than one secret, so keep track of them in a list.
+      # these are secret checkout sessions, not login sessions.
+      this.active_sessions = [];
+
+      # Logging in is done with sessions stored in cookies. We just need to keep
+      # track of whether we have already logged in.
+      this.logged_in = FALSE;
+
+      _set_default_address();
+      _set_default_escalation_account();
+
+      integrations::logger(msg:'Fudo Settings ~' +
+        '\nHost: ' + this.host +
+        '\nPort: ' + this.port +
+        '\nSSL: ' + this.ssl +
+        '\nVerify SSL: ' + this.ssl_verify +
+        '\nAPI Username: ' + this.api_username +
+        '\nAccount Name: ' + this.account_name +
+        '\nAccount Address: ' + this.address +
+        '\nUse Target Address: ' + this.use_target_address +
+        '\nCredential ID: ' + this.credential_id +
+        '\nCheck in: ' + this.checkin +
+        '\nForce checkout: ' + this.force_checkout +
+        '\nEscalate With: ' + this.escalate_with +
+        '\nEscalation Account Name: ' + this.escalation_account_name +
+        '\nEscalation Account Address: ' + this.escalation_address +
+        '\nEscalation Use Target Address: ' + this.escalation_use_target_address +
+        '\nEscalation Credential ID: ' + this.escalation_credential_id,
+        config:this, lvl:3
+      );
+
+      return true;
+    }
+
+    ##
+    # Generate a Referer URL used in HTTP headers.
+    #
+    # @anonparam [string] The trailing portion of the URL.
+    #
+    # @return [string] The Referer URL.
+    ##
+    function _get_referer_url()
+    {
+      return 'https://' + this.host + _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Get a unique cache key for the specified credential.
+    #
+    # @param [api_user:string] The API user for the credential.
+    # @param [credential_id:string] The unique ID of the credential.
+    # @param [credential_address:string] The address of the credential.
+    # @param [credential_account_name:string] The account name of the credential.
+    #
+    # @return [string] The cache key.
+    ##
+    function _get_cache_key(api_user, credential_id, credential_address, credential_account_name)
+    {
+      if (credential_id)
+      {
+        return 'fudo_id_' + credential_id;
+      }
+      # Include API user in cache key because -- what if API userA has access to one
+      # 'username@address' but API userB has access to a different one? Even more likely if
+      # no address was specified.
+      var cache_key = 'fudo_apiuser_' + api_user;
+
+      if (credential_account_name)
+      {
+        cache_key += '_user_' + credential_account_name;
+      }
+
+      if (credential_address)
+      {
+        cache_key += '@' + credential_address;
+      }
+
+      return cache_key;
+    }
+
+    ##
+    # Set default escalation parameters.
+    #
+    # @return NULL
+    ##
+    function _set_default_escalation_account()
+    {
+      if (!this.escalation_credential_id && !this.escalation_address && !this.escalation_account_name)
+      {
+        this.escalation_credential_id = this.credential_id;
+        this.escalation_address = this.address;
+        this.escalation_account_name = this.account_name;
+      }
+    }
+
+    ##
+    # Set the default address parameter.
+    ##
+    function _set_default_address()
+    {
+      # "Use Target Address" overrides specified address.
+      if (this.use_target_address)
+      {
+        this.address = get_host_report_name();
+      }
+      if (this.escalation_use_target_address)
+      {
+        this.escalation_address = get_host_report_name();
+      }
+    }
+
+    ##
+    # Scrub sensitive data from logs
+    #
+    # @param [msg:string] msg to remove sensitive data from
+    #
+    # @return [string] scrubbed string
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(
+        msg:msg,
+        '"pwd"[[:space:]]*:[[:space:]]*"(.+?)"',
+        '"password"[[:space:]]*:[[:space:]]*"(.+?)"'
+      );
+      return msg;
+    }
+
+    ##
+    # Log in to Fudo API
+    #
+    # @remark This sets the ``logged_in`` variable.
+    #
+    # @return [array] the result of integrations::post
+    ##
+    function _login()
+    {
+      var headers = {
+        Referer:_get_referer_url('/api/sign-in')
+      };
+      if (this.logged_in)
+      {
+        # already logged in
+        return NULL;
+      }
+      var result = integrations::post(
+        config:this, command:'/api/sign-in', json:TRUE, headers:headers,
+        data:{
+          username:this.api_username,
+          password:this.api_password
+        }
+      );
+
+      # Fudo API may return a 200 OK status with 'failure' in the response body to
+      # indicate a failed login. Raise an error for this since it is not raised
+      # by integrations::post.
+      if (result.body.status == 'failure')
+      {
+        result = dbg::raise_error(msg:'Fudo API returned failure status on login.',
+                                  code:integrations::errors::API_LOGIN_FAILED);
+      }
+
+      if (!dbg::is_error(result))
+      {
+        this.logged_in = TRUE;
+      }
+      return result;
+    }
+
+    ##
+    # List accounts.
+    #
+    # @return [array] the result of integrations::get
+    ##
+    function _list_accounts()
+    {
+      var headers = {
+        Referer:_get_referer_url('/api/accounts-list')
+      };
+      return integrations::get(config:this, command:'/api/accounts-list', headers:headers);
+    }
+
+    ##
+    # Check out Fudo account.
+    #
+    # @param [account_id:string] The ID of the account to check out.
+    #
+    # @return [array] The result of integrations::post
+    ##
+
+    function _checkout_account(account_id)
+    {
+      var headers = {
+        Referer:_get_referer_url('/api/pam-secret-checkout')
+      };
+      var data = {
+        account_id:account_id,
+        force:this.force_checkout,
+        reason:'Tenable Nessus Scan'
+      };
+      return integrations::post(
+        config:this, command:'/api/pam-secret-checkout', json:TRUE, data:data, headers:headers
+      );
+    }
+
+    ##
+    # Check in Fudo account(s).
+    #
+    # @remark There may be more than one account checked out, so this
+    #         function checks in every account for which there is an active
+    #         session in the ``active_sessions`` list.
+    #
+    # @remark Errors may arise during checkin, but they are considered non-fatal
+    #         and are logged and handled rather than returned to the caller.
+    #
+    # @return NULL
+    ##
+    function _checkin_accounts()
+    {
+      var checkin_result;
+      var data;
+      var headers = {
+        Referer:_get_referer_url('/api/pam-secret-checkin')
+      };
+      foreach (var session_id in this.active_sessions)
+      {
+        data = {
+          # No Account ID is actually needed here, but '0' still has to be provided,
+          # or the checkin returns an error. This is how it is shown in the Fudo
+          # documentation.
+          account_id:'0',
+          session_id:session_id
+        };
+        checkin_result = integrations::post(
+          config:this, command:'/api/pam-secret-checkin', json:TRUE, data:data, headers:headers
+        );
+        if (dbg::is_error(checkin_result))
+        {
+          dbg::log_error(msg:'Warning: checkin failed.');
+        }
+      }
+    }
+
+    ##
+    # Sign out of Fudo
+    #
+    # @remark An error may arise during logout, but they are considered non-fatal
+    #         and are logged and handled rather than returned to the caller.
+    #
+    # @return NULL
+    ##
+    function _sign_out()
+    {
+      var headers = {
+        Referer:_get_referer_url('/api/sign-out')
+      };
+      var signout_result = integrations::post(config:this, command:'/api/sign-out', headers:headers);
+      if (dbg::is_error(signout_result))
+      {
+        dbg::log_error(msg:'Warning: sign out failed.');
+      }
+      this.logged_in = FALSE;
+    }
+
+    ##
+    # Get a matching account ID from a list of accounts.
+    #
+    # @param [accounts_list:list] The list of accounts.
+    # @param [credential_account_name:string] The account name to look for.
+    # @param [credentail_address:string] The account server address to look for.
+    #
+    # @return [string] The account ID or NULL.
+    ##
+    function _get_id_from_accounts_list(accounts_list, credential_account_name, credential_address)
+    {
+      foreach(var account in accounts_list)
+      {
+        if (credential_account_name && credential_address)
+        {
+          if ((account.name == credential_account_name) && (account.server.address == credential_address))
+          {
+            return account.id;
+          }
+        }
+        else if (credential_account_name)
+        {
+          if (account.name == credential_account_name)
+          {
+            return account.id;
+          }
+        }
+        else if (credential_address)
+        {
+          if (account.server.address == credential_address)
+          {
+            return account.id;
+          }
+        }
+        # We could consider un-commenting this -- then you could specify nothing and you
+        # would default to whatever first account the APIuser has access to. I think this is
+        # unnecessary though. As it exists right now if you didn't give username or ID or address
+        # AND you unchecked 'use target IP address', it will always be a failure.
+        #else
+        #{
+        #  return account.id;
+        #}
+      }
+      return NULL;
+    }
+
+    ##
+    # Get the specified Fudo Account.
+    #
+    # @remark ``credential_id``, ``credential_account_name``, and ``credential_address``
+    #         are all optional, in that any of them may be NULL. However, at least one
+    #         must be specified.
+    #
+    # @param [credential_id:list] The exact credential ID to check out.
+    # @param [credential_account_name:string] The account name to look for.
+    # @param [credentail_address:string] The account server address to look for.
+    #
+    # @return [array] An array with the password/ssh_key/sudo_password
+    ##
+    function get_fudo_account(credential_id, credential_account_name, credential_address)
+    {
+      var creds = {success:TRUE};
+      var cache_key = _get_cache_key(
+        credential_id:credential_id, credential_account_name:credential_account_name, credential_address:credential_address
+      );
+      var cache_result = integrations::get_cache(secret:cache_key);
+      if (cache_result && cache_result.success)
+      {
+        integrations::logger(msg:'Using secret from cache', lvl:2, config:this);
+        return cache_result.kv;
+      }
+      var login_result = _login();
+      if (dbg::is_error(login_result))
+      {
+        login_result.add_error(msg:'Failed to authenticate to Fudo API.',
+                               code:integrations::errors::API_LOGIN_FAILED);
+        return login_result;
+      }
+      if (!credential_id)
+      {
+        # Need to list accounts to obtain credential ID.
+        var accounts_list = _list_accounts();
+        if (dbg::is_error(accounts_list))
+        {
+          accounts_list.add_error(msg:'Listing accounts failed.',
+                                  code:integrations::errors::LIST_ACCOUNTS_FAILED);
+          return accounts_list;
+        }
+        # If we were given a username or address, then we need to look at the list of accounts until we find
+        # an account matching the username or address.
+        credential_id = _get_id_from_accounts_list(
+          accounts_list:accounts_list.body.items,
+          credential_account_name:credential_account_name,
+          credential_address:credential_address
+        );
+        if (!credential_id)
+        {
+          return dbg::raise_error(msg:'No account ID found',
+                                  code:integrations::errors::ACCOUNT_NOT_FOUND);
+        }
+      }
+
+      var checkout_result = _checkout_account(account_id:credential_id);
+      if (dbg::is_error(checkout_result))
+      {
+        var error_message = 'Account checkout failed.';
+        if (checkout_result.get_last_code() == 404)
+        {
+          error_message += ' Account not found. This may be caused '
+                           'by "Reveal Password" option not being enabled '
+                           'for API user in safe.';
+        }
+        checkout_result.add_error(msg:error_message,
+                                  code:integrations::errors::CHECKOUT_FAILED);
+        return checkout_result;
+      }
+
+      var session_id = checkout_result.body.result.session_id;
+      if (session_id)
+      {
+        integrations::logger(msg:'Checkout session: ' + session_id, lvl:3, config:this);
+        append_element(var:this.active_sessions, value:session_id);
+      }
+      else
+      {
+        integrations::logger(msg:'Warning: no session created.', lvl:1, config:this);
+      }
+
+      if ('PRIVATE KEY' >< checkout_result.body.password)
+      {
+        creds.private_key = checkout_result.body.result.pwd;
+      }
+      else
+      {
+        creds.password = checkout_result.body.result.pwd;
+      }
+
+      if (!(creds.password || creds.private_key))
+      {
+        return dbg::raise_error(msg:'Password was unexpectedly empty.',
+                                code:integrations::errors::NULL_ACCOUNT);
+      }
+
+      integrations::set_cache(secret:cache_key, kv:creds);
+
+      return creds;
+    }
+
+    ##
+    # Get Fudo Accounts.
+    #
+    # @remark This function will get both login and escalation accounts
+    #         if escalation is used.
+    #
+    # @param [credential_id:list] The exact credential ID to check out.
+    # @param [credential_account_name:string] The account name to look for.
+    # @param [credentail_address:string] The account server address to look for.
+    #
+    # @return [array] An array with the password/ssh_key/sudo_password
+    ##
+    public function get_accounts()
+    {
+      var result, esc_result, creds;
+
+      creds = {};
+
+      result = get_fudo_account(
+        credential_id:this.credential_id,
+        credential_account_name:this.account_name,
+        credential_address:this.address
+      );
+      if (dbg::is_error(result))
+      {
+        result.add_error(msg:'Failed to obtain credential for target host.',
+                         code:integrations::errors::LOGIN_CRED_FAILED);
+        if (this.logged_in)
+        {
+          _sign_out();
+        }
+        return result;
+      }
+
+      creds.password = result.password;
+      creds.private_key = result.private_key;
+
+      # Regarding domain support, it doesn't look like there is a way
+      # to fetch an account's domain from the Fudo API, so just needs to be
+      # entered manually in the credential. This gets handled completely
+      # outside the integration.
+
+      if (this.escalate_with && this.escalate_with != 'Nothing')
+      {
+        esc_result = get_fudo_account(
+          credential_id:this.escalation_credential_id,
+          credential_account_name:this.escalation_account_name,
+          credential_address:this.escalation_address
+        );
+        if (dbg::is_error(esc_result))
+        {
+          esc_result.add_error(msg:'Failed to obtain escalation password.',
+                               code:integrations::errors::ESC_CRED_FAILED);
+          if (this.logged_in)
+          {
+            _sign_out();
+          }
+          return esc_result;
+        }
+        creds.sudo_password = esc_result.password;
+        if (!creds.sudo_password)
+        {
+          integrations::logger(msg:'Warning: empty sudo_password', lvl:1, config:this);
+        }
+      }
+
+      if (this.checkin)
+      {
+        _checkin_accounts();
+      }
+
+      if (this.logged_in)
+      {
+        _sign_out();
+      }
+
+      return creds;
+    }
+  }
+
+  ##
+  # Get credentials from Fudo.
+  #
+  # @param [prefix:string] The prefix of the UI string for the config element
+  # @param [postfix:string] The postfix of the UI string for the config element
+  # @param [default_platform:string] The default platform (e.g. LINUX) when querying accounts.
+  #
+  # @return [array] The array result containing credentials.
+  ##
+  function get_credential(prefix, postfix)
+  {
+    var result;
+    var config = new fudo::FudoConfig();
+    config.init(prefix:prefix, postfix:postfix);
+
+    # For logs generated by dbg::log_error, make them go to the same log file as integrations::logger.
+    dbg::set_default_logname(SCRIPT_NAME + '~' + config.int_name, force:TRUE);
+
+    integrations::logger(msg:'Waiting to acquire lock to acquire Fudo credentials', lvl:3, config:config);
+    mutex_lock(SCRIPT_NAME);
+    integrations::logger(msg:'Lock acquired.', lvl:3, config:config);
+    result = config.get_accounts();
+    # NOTE: we need to catch and log errors here so that the error appears in the integration
+    # log (e.g. ssh_settings.nasl~Fudo), otherwise it will appear in the respective plugin
+    # logs (e.g. ssh_settings.log).
+    if (dbg::is_error(result))
+    {
+      dbg::log_error(msg:'Unable to get credentials.');
+      # Also raise an error to the caller.
+      result = dbg::raise_error(msg:'Integration failed',
+                                code:integrations::errors::INTEGRATION_FAILED);
+    }
+    mutex_unlock(SCRIPT_NAME);
+
+    dbg::set_default_logname(force:TRUE);
+    return result;
+  }
+}

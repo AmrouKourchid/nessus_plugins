@@ -1,0 +1,204 @@
+#TRUSTED 1dae1a689cf413021e211a7a879c1ee262504048ea4659cd5fde5b732b23dafb0202e2aec3c6d91f6008d1c4bbe7f01d7cbadd6becf0780281bb51d5963cc14a951b4982fa54a038cf02a71f74c7cc24bd29a4fc17493920f13a0c28ce84731d07f477a701d877775824bfd9f3f39a711ccba3a96cdc87ba7824e62471d3b92e0929416a9054aedda90a77e99ec1f8380770fecaa96d1d28d9b2ca5444f78c279d90f158db6389b526db29a209df284b3a8e2eaaf3af9ddeabeede576f43c4ec7995ab8030a9813a53aa07ae336532ba1d0b1b92307cc725511634ac6880d235e0fcb81bb682c5791546a85aeb277b92f2e75b4c0548c13727c699b6bd141f3dbb4a02c082f28004e7d41bd508872c6f88a1ceac4a8aef3898cf20ed63edfe8775d212c1d78713e42005d2b05ecfbddfb54ccebcdaf725d487a908d110c93e5e8c53c4954d294bdde4af29e9b2097250bc64b1f4ce7ef397711bc8ff802ed02ba4bf54acf8e67b1d309050a77320a32d89d3a2fb929f2d5fe01434239ddb87057d492133aba8e6090291db21b56cf7cc9711912c3e6fd82408598658f40b7cbc1b8944b64fe18f5a25965baf9ac0e324f21a451075f6f5048085144ad5115fc5f6a05d0cbfda29d01eb258ab22808f1cba77bd883b4b40a0263b7ee042554e4d52152d44b10399230125573644765753a4ba56f8c9f31e79b7c652fcbc4bad07
+#TRUST-RSA-SHA256 90ea67588cc0744f8d3727ccb748cc892aa06fc3db6df75b21bfb0080d4725a39f0c1d8418ea5fd17f633230f0520f646e7eccd80a92f243e49495bdeed863089f130be0c1b2fa5d13213e1564c5ff7a3be2573e8faaa63510e9e9a6b3117f3c81c93cc4c63181ab902654069de97a3277216d853ed1a725120e8994830f5f0705b2282837d517e5f21f23f48a27537322f327acba8861e5aa2a33aba9a91a2c58f315ca4e208a2ed4cbaa4d6c2d7ee8f6ae79238e2354e0b70234c100408892dabef50e25ea418bb2dd7afd76886480fa68689687944f68a4db56f81116f6cbe6e125146159d430e70c77aa37333d739f703bcf3cf412c068c1220c00548a74e016c0bd55c3ff57c171821b558a104cacbfc4e73cb0eb3c52f31f12361c5420d4d364b4cb54ab1e2dbb00d7445c48f74ece24b689eaa13f5f269ad51793ea80599505005eb5f578095fd719858848eeae4f82feccd18bbac02c580b6506a2536fd7818070e908e097bd04456be6f3fab8553de253baa78ab94d36663fe9223e4f0d55c287f5e3318b60787895b29fdeadef76c5549c5f6edaa5560598e053239541fd17da3e1ecc8fc7c2d0251f8c9dc89b5906d61719ebcd11a937f45ab516cd2f890d7ed44261e7073698e664a36507eb4c3fb78b9a52c563ded077f2f0d17d23826598f4a015c0d2f45d75f10c0dad5b2896ae08d71899a6d05e64149f04
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.4
+
+# Mandriva helper functions
+
+
+function handle_mandriva_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  var version, release;
+  var match = pregmatch(pattern:"^(.*?) release ([0-9.]+)", string:cmd_res);
+  if(!isnull(match))
+  {
+    if(!isnull(match[1]))
+      version = match[1];
+
+    if(!isnull(match[2]))
+      release = match[2];
+
+    if ('Mandriva Business Server' >< version)
+     version += '-MBS ';
+    else if(pgrep(string:version, pattern:"^Mandr(ake|iva)"))
+     version = 'MDK ';
+    else
+     version += ' ';
+
+    replace_kb_item(name:"Host/Mandrake/release", value: version + release);
+  }
+
+  report += '\nThe remote ' + version + 'system is :\n' + cmd_res;
+
+  replace_kb_item(name:"Host/etc/redhat-release", value: cmd_res);
+  replace_kb_item(name:"Host/etc/mandrake-release", value: cmd_res);
+
+  # Store rpm-list
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"Mandrake");
+
+  register_mandriva_os(release_info: cmd_res);
+
+  if(!empty_or_null(rpm_buf) && !isnull(release) && !isnull(version))
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_mandriva_linux.static', value: 52);
+    return TRUE;
+  }
+
+  if(empty_or_null(release) || empty_or_null(version))
+  {
+    var err_msg = "The remote system is a Mandriva successor, but the version or release could not be determined.";
+    failure_kb_msg = err_msg;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += '\nOS Security Patch Assessment is not available because of the following error:\n';
+    report += err_msg;
+  }
+
+  return NULL;
+}
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_mandriva_os(release_info)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Mageia release 9 (Official) for x86_64
+  #    Mageia release 1 (Official) for i586
+  #    Mandriva Linux Corporate Server release 4.0 (Thornburgh) for i586
+  #    Mandrakelinux release 10.2 (Limited Edition 2005) for i586
+
+  #
+  #  - Match groups:
+  #    1: Distro  (e.g. Mageia, Mandrake, Mandriva)
+  #    2: Product (e.g. Mageia, Mandrake Linux, Mandriva Linux Corporate Server)
+  #    3: Release (e.g. 9, 1, 10)
+  #    4: Version (e.g. .2)
+  #    5: Edition (e.g. Official, Limited Edition 2005)
+  #    6: Architecutre (e.g. x86_64, i586)
+
+  var pattern = '(Mageia|Mandriva|Mandrake)((?: ?Linux)?(?: (?:.* Server))?)?(?: release)? ([0-9]+)(\\.[0-9.]+)? ?(?:\\(([^)]+)\\))?(?: for (\\w+))?';
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Distro
+  var distro = matches[1];
+
+  # Product
+  var product = distro;
+  if (!empty_or_null(matches[2]))
+  {
+    matches[2] = capitalize(str:trim(matches[2]));
+    product += ' ' + matches[2];
+    var cpe_product = matches[2];
+  }
+
+  # Release
+  var release = matches[3];
+
+  # Version
+  var version = release;
+  if (!empty_or_null(matches[4]))
+    version += matches[4];
+
+  # Edition
+  var edition = matches[5];
+  if (!empty_or_null(edition))
+    var display_version = strcat(version, ' (', edition, ')'); 
+
+  # CPU Architecture
+  var arch = matches[6];
+
+  # OS Name
+  var os_name = strcat(product, ' ', version);
+  if (!empty_or_null(edition))
+    os_name += strcat(' (', edition, ')');
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:/o:mageia:mageia:7.0
+  #    cpe:/o:mageia:mageia:5.1
+  #
+  #    cpe:/o:mandriva:linux:2008.1
+  #    cpe:/o:mandriva:enterprise_server:5.0
+  #    cpe:/o:mandriva:business_server:1.0
+  #
+  #    cpe:/o:mandrakesoft:mandrake_linux:9.2
+  #    cpe:/o:mandrakesoft:mandrake_linux:7.0
+  #    cpe:/o:mandrakesoft:mandrake_linux_corporate_server:4.0
+  var cpe_attributes = [];
+  
+  if (distro == 'Mageia')
+  {
+    # Vendor and product
+    cpe_attributes = [ 'mageia', 'mageia' ];
+  }
+  else if (distro == 'Mandriva')
+  {
+    # Vendor
+    append_element(var:cpe_attributes, value:'mandriva');
+
+    # Product
+    if (empty_or_null(product))
+      append_element(var:cpe_attributes, value:'linux');
+    else
+      append_element(var:cpe_attributes, value:cpe_product);
+
+  }
+  else if (distro == 'Mandrake')
+  {
+    # Vendor
+    append_element(var:cpe_attributes, value:'mandrakesoft');
+
+    # Product
+    if (empty_or_null(cpe_product))
+      append_element(var:cpe_attributes, value:'mandrake_linux');
+    else
+      append_element(var:cpe_attributes, value:'mandrake_' + cpe_product);
+  }
+
+  var cpe = 'cpe:/o:' + join(cpe_attributes, sep:':');
+
+  
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : distro,
+    product     : product,
+
+    release     : release,
+    version     : version,
+    display_version : display_version,
+
+    os_edition  : edition,
+    os_name     : os_name,
+    target_hw   : arch,
+
+    cpe         : cpe
+  );
+
+  return NULL;
+}

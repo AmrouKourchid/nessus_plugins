@@ -1,0 +1,867 @@
+#TRUSTED 8f137691439d8f54c11c29f4b987a2cdf45a305857845f9418ee32a1385d84b6a19afbaf58096dfa0bf50a76922cead275fbe5bddd74502d00c4a52cf99e7cc1da42ef4d9b72fc075174a8a0b2da153c55f476652571a78e11ce5ddc397c9169b060abf380293167694408f09e019f923ec68c4c800fc7dda1cd2d0dd18febaf9c9dc1229197607ebe29cad6352c924300a66144ec6e762d60a7c57a96ca4af62cc7d2e6b720019fd3170f34a3f07847c5f622d0f8d590536ea382a5460bd1790e64a630555e634c3ad1f9888dce1eff695ccc135458fa4ee801370d2fa9f950c06c2cbe671ddb71eea801e28c596e448194a7f34b29fdc3de7e0c724fbaab27f3e487a531adf7334dbc95388fa4c43f76e63cdc59ae054a0e487f8be0bd8e7aaab05799c885ac27987fd57d615f38f5fc0311d260181d978ced09179dea91e94303025d7ef38a207dd5b6d01c6b7394cbc12e41444b1dbec5701220ae6b12cc4188e379409c21efd5180138a701b42bfd3103f80be1c6c4e049acf264881aee0545c58e9ececf0f291be2578a38e2dc395c81f76b63fda211217997eaf91f4c869b1bf895fab3b2fd096894460206abe90e0ecb7b8a6526dddf689b5b6a7488164ad2dd1cff8c7118a504ba96b1979631b70bc6a59e8193286da68b1c74e2d154f43faeb88918ff7eba76b4adf0b4157b761fea8d39a01e520d30121fcf0c2b
+#TRUST-RSA-SHA256 99836e108db8d081bd0da90fec12d8b27239df6244ad2241a5baaa89d0156c721300cd0294faa82f8548a745027286625c396ecfcc7a1ce5095a8783b35daca2e17f1d4c7b68afa238df7d9d1092f0460824ea8a07fd17a16796b6fba1605c332d9303f2d4e07ab04c7a9b7974de9bf341adf021d28eb64f735da639d4413261ac1938159e2e34b0a1507eb31e04c755bb69bf971dedea363d4189e6cd676db8a453e57508ffeb0dee851693cb6e233d16658cfb8cbf310aefd09a8d3a8f889f62d3b354824bd0537201e0802366216c560b8d70b0a09420d6ed951eaec7c3efa26d38a2e33df4a28a7e871d01a1a6853b21f2c9b9e0e9a09d330b140122303203e791bbc8721f1fa90cf2bbbb871f9314750248430b9d2cb10ea3a2037a63541cb01307edf1e7b8f13d913c3a93723988d45d5f83fc153bc4b80472df5f2f60fefe10bda96b659cd49adc469b3e0c1c823ae8f43954ce4166b01acea2d7b70a5081f78ff7951b8864966f7b0f6c0c4dd6ede9dfc42f170609769cf07d328bfff8cb9d329e5c6d2bdd02ae80d3d9f3855adf9b6522493fd769d224fcfaa5c6cbb6b61d6389beab2f63f7da7abd6760f6f20c042a7cf6dba8184f4fa0b9205276952a34222f5bf8e60cdc12d3b274ab3146d7c1dfb9a44468710731a442e01f8bbc758d629a010ab5cbaf50f750e8cb68bceab5342c80ea80e57cb330399f7f3c
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.14
+namespace sshlib
+{
+  global_var _compat_session;
+
+  function ssh_open_connection_wrapper(exit_on_disconnect)
+  {
+    local_var host, ret, sock, fn;
+    fn = 'ssh_open_connection_wrapper';
+    _compat_session = new('sshlib::session');
+    dbg::detailed_log(lvl:3, src:fn, msg:'Entering wrapper.');
+
+    ret = try_ssh_kb_settings_login(session:_compat_session, accept_none_auth:TRUE); # ?
+    ## DEBUGGING
+    if (!ret)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:'Failed to establish SSH connection. Returning 0.');
+
+      _compat_session.close_connection();
+      return 0;
+    }
+    _ssh_socket = _compat_session.socket;
+    dbg::detailed_log(lvl:1, src:fn, msg:'Successfully established SSH connection. Returning 1.');
+
+    return 1;
+  }
+
+  function ssh_wrapper_escl_type()
+  {
+    local_var su, su_method;
+
+    if(get_kb_item(SSH_LIB_KB_PREFIX + "try_ssh_kb_settings_login_success"))
+    {
+      return get_kb_item(SSH_LIB_KB_PREFIX +
+        _compat_session.get_kb_connection_id() + "/escalation_type");
+    }
+
+    su = get_kb_item("Secret/SSH/sudo");
+    if(su && su != SU_NONE)
+    {
+      su_method = get_kb_item("Secret/SSH/sudo_method");
+      if(su_method == "Cisco 'enable'")
+        su_method = 'cisco_enable';
+      if(su_method == "Checkpoint Gaia 'expert'")
+        su_method = 'gaia_expert';
+    }
+
+    return su_method;
+  }
+
+  function ssh_wrapper_load_legacy_escl(escl_type)
+  {
+    local_var sulogin, supass, supath, root, fn, escl_extra;
+
+    fn = 'ssh_wrapper_load_legacy_escl';
+
+    escl_extra = make_array();
+
+    sulogin = get_kb_item("Secret/SSH/su-login");
+    supass = get_kb_item("Secret/SSH/sudo-password");
+    supath = get_kb_item("Secret/SSH/sudo_path");
+    root = get_kb_item("Secret/SSH/root");
+
+    if (isnull(supath)) supath = "";
+    if (isnull(root)) root = "root";
+
+    switch (escl_type)
+    {
+      case "su+sudo":
+        escl_extra["sudo_user"] = root;
+        escl_extra["sudo_dir"]  = supath;
+      case "su":
+        escl_extra["su_user"] = sulogin;
+        escl_extra["su_pass"] = supass;
+        escl_extra["su_dir"]  = supath;
+        break;
+      case "sudo":
+        escl_extra["sudo_user"] = root;
+        escl_extra["sudo_pass"] = supass;
+        escl_extra["sudo_dir"]  = supath;
+        break;
+      case "pbrun":
+        escl_extra["pbrun_user"] = root;
+        escl_extra["pbrun_pass"] = supass;
+        escl_extra["pbrun_dir"]  = supath;
+        break;
+      case "dzdo":
+        escl_extra["dzdo_user"] = root;
+        escl_extra["dzdo_pass"] = supass;
+        escl_extra["dzdo_dir"]  = supath;
+        break;
+      case "cisco_enable":
+        escl_extra["enable_pass"] = get_kb_item("Secret/SSH/enable-password");
+        break;
+      case "gaia_expert":
+        escl_extra["expert_pass"] = get_kb_item("Secret/SSH/expert-password");
+        break;
+      default:
+        dbg::detailed_log(lvl:1, src:fn, msg:'Unknown escalation type '+escl_type+'.');
+        return NULL;
+    }
+
+    return escl_extra;
+
+  }
+
+  function ssh_wrapper_load_escl()
+  {
+    local_var escl_extra, fn, escl_type;
+    fn = 'ssh_wrapper_load_escl';
+
+
+    # Get sshlib stored escl creds if present
+    escl_extra = get_kb_args(kb_prefix:"Secret/" + SSH_LIB_KB_PREFIX +
+                  _compat_session.get_kb_connection_id() + "/escalation_extra");
+
+    # If stored creds exist, we are done here
+    if(!empty_or_null(escl_extra))
+    {
+      dbg::detailed_log(lvl:2, src:fn, msg:'Retrieved previously saved escalation information.');
+      return escl_extra;
+    }
+
+    # We don't have creds, if sshlib was previously used, we already know that
+    # there were no escl creds provided, so don't check for them.
+    if(get_kb_item(SSH_LIB_KB_PREFIX + "try_ssh_kb_settings_login_success"))
+    {
+      dbg::detailed_log(lvl:2, src:fn, msg:'No escalation information was provided for the credential set used to successfully log in to the target.');
+      return NULL;
+    }
+
+    # Fall back to legacy KB items
+    escl_type = ssh_wrapper_escl_type();
+    dbg::detailed_log(lvl:2, src:fn, msg:'Retrieving escalation information from legacy KB items.');
+    return ssh_wrapper_load_legacy_escl(escl_type:escl_type);
+  }
+
+  function ssh_wrapper_state_check()
+  {
+    if (isnull(_compat_session) || !_compat_session.socket )
+      exit(1, 'Attempted to send SSH command without establishing an active session.');
+    if (_compat_session.cur_state.val == "SOC_CLOSED")
+    {
+      var msg = "Socket is closed.";
+      if(_compat_session.error)
+        msg += " Error details : " + _compat_session.error;
+      exit(1, msg);
+    }
+
+    return TRUE;
+  }
+
+  function ssh_wrapper_use_escl(nosudo, cisco, escl_extra)
+  {
+    # If no escalation is provided, no need to use escl. If nosudo is set then
+    # escalation should not be used unless cisco is set, in which case nosudo
+    # should be ignored.
+    return escl_extra && (isnull(nosudo) || nosudo == FALSE || cisco);
+  }
+
+  function ssh_wrapper_open_shell_handler(shell_handler, use_current_chan)
+  {
+    local_var chan, handler_string, fn;
+
+    fn = 'ssh_wrapper_open_shell_handler';
+
+    if(!shell_handler)
+      shell_handler = get_kb_shell_handler();
+
+    if(isnull(use_current_chan))
+      use_current_chan = FALSE;
+
+    if(!shell_handler)
+    {
+      handler_string = get_kb_item(SSH_LIB_KB_PREFIX + 'shell_handler');
+      dbg::detailed_log(lvl:1, src:fn, msg:"Failed to get shell handler '"+handler_string+"'.");
+      return NULL;
+    }
+
+    if(use_current_chan)
+    {
+      dbg::detailed_log(lvl:2, src:fn, msg:"Retrieving current channel for session.");
+      chan = _compat_session.get_default_channel();
+      if(!isnull(chan))
+      {
+        if(chan.usable_for_shell_command())
+          return chan;
+
+        dbg::detailed_log(lvl:2, src:fn, msg:'The session needs a new channel. Closing channel.');
+        chan.close();
+      }
+    }
+
+    chan = _compat_session.open_shell(shell_handler:shell_handler);
+    if(!chan)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Failed to open shell.");
+      return NULL;
+    }
+
+    return chan;
+  }
+
+  function ssh_wrapper_use_shell_handler(use_escl, noexec, cisco, nosetup)
+  {
+    # use_escl has already been updated to take nosudo and
+    # missing escalation credentials into account
+    return use_escl || noexec || cisco || nosetup;
+  }
+
+  # WARNING: Passing untrusted input to this function may result in unexpected command execution
+  function ssh_cmd_wrapper(cmd, timeout, nosudo, nosh, noexec, cisco,
+                           nosetup, noclose, term, no53, force_priv_escl,
+                           cmd_timeout_min, inactivity_timeout_min)
+  {
+    local_var shell_handler, use_shell_handler, chan, ret;
+    local_var escl_extra, use_escl, old_term;
+
+    old_term = 'vt100'; # Safety default
+
+    # Ensure that there is a valid session before continuing
+    ssh_wrapper_state_check();
+
+    # Escalation is usually used, and it is helpful to attempt to load it first
+    # so that it is known from the beginning if escalation should be taken into
+    # consideration in the case that no escalation credentials are provided.
+    escl_extra = ssh_wrapper_load_escl();
+
+    use_escl = ssh_wrapper_use_escl(nosudo:nosudo, cisco:cisco, escl_extra:escl_extra);
+
+    use_shell_handler = ssh_wrapper_use_shell_handler(use_escl:use_escl, noexec:noexec, cisco:cisco, nosetup:nosetup);
+
+    if (term)
+    {
+      old_term = overwrite_default_pty_term(term:term);
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Temporarily overwriting sshlib term argument to ' + term + '.');
+    }
+
+    if (use_shell_handler)
+    {
+      shell_handler = get_kb_shell_handler();
+
+      var sh_type = get_kb_item(SSH_LIB_KB_PREFIX + 'shell_handler');
+      var sh_opts;
+
+      if(!isnull(shell_handler))
+        sh_opts = shell_handler.get_pty_opts(no53:no53);
+
+      if (isnull(shell_handler) || (nosh && sh_type == "sshlib::sh_shell_handler") || (no53 && !isnull(sh_opts[53])))
+      {
+        use_shell_handler = FALSE;
+
+        if(nosh && sh_type == "sshlib::sh_shell_handler")
+        {
+          dbg::detailed_log(
+            lvl:2,
+            src:FUNCTION_NAME,
+            msg:"ssh_cmd() call specified 'nosh' but shell handler '" + sh_type + "' retrieved from KB uses 'sh'."
+          );
+        }
+
+        if(no53 && !isnull(sh_opts[53]))
+        {
+          dbg::detailed_log(
+            lvl:2,
+            src:FUNCTION_NAME,
+            msg:"ssh_cmd() call specified 'no53' but the shell handler '" + sh_type +
+            "' retrieved from the KB sends option 53 (enable echo)."
+          );
+        }
+
+        if(isnull(shell_handler))
+        {
+          dbg::detailed_log(
+            lvl:1,
+            src:FUNCTION_NAME,
+            msg:"ssh_cmd() call configured to use shell handler but no shell handler is configured for the target."
+          );
+        }
+      }
+    }
+
+    if (use_shell_handler)
+    {
+      if (!nosetup)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Setting up shell_handler.');
+
+        chan = ssh_wrapper_open_shell_handler(shell_handler:shell_handler, use_current_chan:noclose);
+
+        if(!chan)
+        {
+          if (term)
+          {
+            overwrite_default_pty_term (term:old_term);
+            dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Restored sshlib term argument to ' + old_term + '.');
+          }
+          return NULL;
+        }
+
+        if(escl_extra)
+        {
+          chan.shell_handler.set_priv_escalation(type:ssh_wrapper_escl_type(), extra:escl_extra);
+
+          # If the find command is used with escalation (find and any argument) cd to $HOME first
+          if("find" >< cmd && cmd =~ " -\w+ " &&
+             sh_type == "sshlib::sh_shell_handler" &&
+             "sudo" >< ssh_wrapper_escl_type())
+            cmd = "cd ~ 2>/dev/null; " + cmd;
+        }
+
+      } # end of !nosetup branch
+      # 'nosetup' should not be 'TRUE' because it is checked in ssh_cmd()
+      # before calling this wrapper. This is a double-check/placeholder.
+      else
+        exit(1, FUNCTION_NAME + ': "nosetup" option not yet implemented.');
+    }
+    else if(use_shell_handler && !escl_extra)
+    {
+      dbg::detailed_log(
+        lvl:1,
+        src:FUNCTION_NAME,
+        msg:"Failed to retrieve valid escalation information. Defaulting to using 'exec' rather than a shell handler."
+      );
+    }
+
+    # To support legacy timeouts, if only timeout is supplied then
+    # apply it to both command timeout and inactivity timeout
+    if (timeout)
+    {
+      if (!cmd_timeout_min) cmd_timeout_min = timeout;
+      if (!inactivity_timeout_min) inactivity_timeout_min = timeout;
+    }
+
+    ret = _compat_session.run_command(
+      use_shell_handler      : use_shell_handler,
+      channel                : chan,
+      command                : cmd,
+      force_priv_escl        : force_priv_escl,
+      cmd_timeout_min        : cmd_timeout_min,
+      inactivity_timeout_min : inactivity_timeout_min
+    );
+
+    if (term)
+    {
+      overwrite_default_pty_term (term:old_term);
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Restored sshlib term argument to ' + old_term + '.');
+    }
+
+    dbg::detailed_log(
+      lvl:3,
+      src:FUNCTION_NAME,
+      msg:'Ran command',
+      msg_details:{
+        "Command":{"lvl":3, "value":cmd},
+        "Channel":{"lvl":3, "value":chan.local_channel},
+        "Command Settings":{"lvl":3, "value":{
+          "Use Shell Handler":use_shell_handler,
+          "Force Priv Escalation":force_priv_escl,
+          "Command Timeout":cmd_timeout_min,
+          "Inactivity Timeout":inactivity_timeout_min}
+        },
+        "Data":{"lvl":3, "value":ret}
+      });
+
+    if (!noclose && !isnull(chan))
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Closing channel.');
+      chan.close();
+    }
+    return ret;
+  }
+
+  function ssh_exchange_identification_wrapper(existing_socket)
+  {
+    if(isnull(_compat_session))
+      _compat_session = new("sshlib::session");
+
+    if(_compat_session.open_connection(existing_socket:existing_socket))
+    {
+      _ssh_protocol = 2;
+      return _compat_session.remote_version;
+    }
+    else
+      return FALSE;
+  }
+
+  function ssh_login_public_key_only_wrapper(pub, login, existing_socket)
+  {
+    # Multiple tests may be run with this function in the same plugin,
+    # so we don't want to use the _compat_session in this case, we want a
+    # fresh session every time
+    local_var session = new("sshlib::session");
+    if(!session.open_connection(existing_socket:existing_socket))
+      return FALSE;
+
+    local_var ret = ssh_public_key_accepted(login:login, pub:pub, session:session);
+    session.close_connection();
+    delete(session);
+    if(ret) return TRUE;
+    else return FALSE;
+  }
+
+  function get_ssh_error_wrapper()
+  {
+    return last_error;
+  }
+
+  function get_ssh_read_timeout_wrapper()
+  {
+    return 30;
+  }
+
+  function set_ssh_read_timeout_wrapper()
+  {
+    var tmp = _FCT_ANON_ARGS[0];
+    return TRUE;
+  }
+
+  function get_ssh_supported_authentication_wrapper()
+  {
+    # The new lib initializes supported_auth_methods to an empty list and
+    # stores the values as a list
+    # The old lib initializes _ssh_supported_authentication to "" and stores
+    # values as a comma-separated string
+    if( !isnull(_compat_session) &&
+        max_index(_compat_session.supported_auth_methods) > 0
+    )
+      return join(_compat_session.supported_auth_methods, sep:",");
+    else
+      return "";
+  }
+
+  function get_ssh_server_version_wrapper()
+  {
+    # The new lib initializes remote_version to FALSE
+    # The old lib initializes _ssh_server_version to ""
+    if(!isnull(_compat_session) && _compat_session.remote_version)
+      return _compat_session.remote_version;
+    else
+      return "";
+  }
+
+  function get_ssh_banner_wrapper()
+  {
+    # The new lib declares userauth_banner without initializing
+    # The old lib initializes _ssh_banner to ""
+    if(!isnull(_compat_session) && !isnull(_compat_session.userauth_banner))
+      return _compat_session.userauth_banner;
+    else
+      return "";
+  }
+
+  function get_server_public_key_wrapper()
+  {
+    # The new lib initializes remote_host_key as NULL
+    # The old lib declares server_host_key_blob without initializing
+    if(!isnull(_compat_session))
+      return _compat_session.remote_host_key;
+    else
+      return NULL;
+  }
+
+  function init_wrapper()
+  {
+    # Legacy function init() sets (or resets) sequence numbers, channel
+    # number, and other global variables
+    if(!isnull(_compat_session))
+      delete(_compat_session);
+
+    _compat_session = new("sshlib::session");
+
+    return NULL;
+  }
+
+  function send_ssh_packet_wrapper(code, payload)
+  {
+    if(isnull(_compat_session))
+      return NULL;
+
+    if(typeof(code) != "int") code = ord(code);
+    _compat_session.sshsend(code:code, data:payload);
+  }
+
+  function ssh_window_send_data_wrapper(data, redact)
+  {
+    if(isnull(_compat_session))
+      return NULL;
+
+    var channel = _compat_session.channel_manager.channels[local_channel];
+    channel.window_send_data(data:data, redact:redact);
+  }
+
+  function recv_wrapper_cb(session, channel)
+  {
+    # Mimicks the behavior of legacy library's recv_ssh call.
+    return !isnull(session.last_packet) &&
+           session.last_packet.type != PROTO_SSH_MSG_IGNORE &&
+           session.last_packet.type != PROTO_SSH_MSG_USERAUTH_BANNER;
+  }
+
+  function recv_ssh_packet_wrapper(timeout)
+  {
+    # Old lib initializes payload to raw_int8(i:0) which is returned for any
+    # errors prior to the payload being extracted
+    if(isnull(_compat_session))
+      return mkbyte(0);
+
+    var channel = _compat_session.channel;
+    _compat_session.sshrecv_until(
+      end_states: make_list('SOC_CLOSED'),
+      channel: channel,
+      check_callback: @recv_wrapper_cb,
+      cmd_timeout: 45
+    );
+
+    if(_compat_session.cur_state.val == "SOC_CLOSED")
+      return mkbyte(0);
+
+    # Old lib returns the full packet
+    return mkbyte(_compat_session.last_packet.type) + _compat_session.last_packet.payload;
+  }
+
+  function init_crypto_data_wrapper()
+  {
+    if(isnull(_compat_session))
+      _compat_session = new("sshlib::session");
+
+    if(isnull(_compat_session.new_cipherset))
+      _compat_session.set_new_cipherset(new("sshlib::cipherset"));
+
+    if (isnull(_crypto_algo))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'_crypto_algo must be set before calling init_crypto_data_wrapper()');
+      return -1;
+    }
+
+    _compat_session.new_cipherset.set_crypto_alg(_crypto_algo, mode:MODE_IN);
+    _compat_session.new_cipherset.set_crypto_alg(_crypto_algo, mode:MODE_OUT);
+  }
+
+  function dh_gen_key_wrapper(p, g)
+  {
+    # Old lib returns uninitialized variable if(!p)
+    if(!p) return NULL;
+
+    # Old lib returns -1 for failure, 0 for success
+    if(isnull(_compat_session)) return -1;
+
+    _compat_session.kex_handler.set_dh_groups(p:p, g:g);
+
+    # New lib returns FALSE for failure, TRUE for success
+    if (_compat_session.kex_handler.dh_gen_key())
+    {
+      dh_pub = _compat_session.kex_handler.dh_local_pub;
+      return 0;
+    }
+    else
+      return -1;
+  }
+
+  function ssh_kex2_wrapper(server_version, nofingerprint)
+  {
+    local_var fn = "ssh_kex2_wrapper";
+    # Old lib returns -1 for failure, 0 for success
+    if(isnull(_compat_session)) return -1;
+
+    # If key exchange is already done, return
+    if(_compat_session.cur_state.oneof(state_list:make_list("KEX_DONE")))
+      return 0;
+
+    # We expect one of these states if key exchange is not yet done
+    if(!_compat_session.cur_state.oneof(state_list:make_list("SOC_OPENED", "KEX_BEGIN")))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Current state is not SOC_OPENED or KEX_BEGIN, unable to complete key exchange.");
+      return -1;
+    }
+
+    # Disable checking against known_hosts
+    if(nofingerprint) _compat_session.ignore_known_hosts();
+
+    # Pass through the server_version
+    _compat_session.set_remote_version(server_version);
+
+    # Key exchange is handled automatically by callbacks
+    _compat_session.sshrecv_until(end_states:make_list("KEX_DONE", "SOC_CLOSED"));
+
+    if(_compat_session.cur_state.val != "KEX_DONE")
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Current state is not KEX_DONE, key exchange failed.");
+      return -1;
+    }
+    # Set the global _crypto_algo variable
+    if (!isnull(_compat_session.kex_handler.cipherset.crypto_alg))
+      _crypto_algo = _compat_session.kex_handler
+                                    .cipherset
+                                    .crypto_alg;
+    return 0;
+  }
+
+  function get_public_key_from_cert_wrapper()
+  {
+    local_var tmp_session = new("sshlib::session");
+    local_var tmp_kex_handler = new("sshlib::kex_handler", tmp_session);
+    local_var ret = tmp_kex_handler.get_pub_key_from_cert(_FCT_ANON_ARGS[0]);
+    tmp_session.cur_state.set("SOC_OPENED");
+    tmp_session.close_connection();
+    delete(tmp_kex_handler);
+    delete(tmp_session);
+    return ret;
+  }
+
+  function parse_ssh_cert_wrapper()
+  {
+    local_var tmp_session = new("sshlib::session");
+    local_var tmp_kex_handler = new("sshlib::kex_handler", tmp_session);
+    local_var ret = tmp_kex_handler.parse_ssh_cert(cert:_FCT_ANON_ARGS[0]);
+    tmp_session.cur_state.set("SOC_OPENED");
+    tmp_session.close_connection();
+    delete(tmp_kex_handler);
+    delete(tmp_session);
+    return ret;
+  }
+
+  function ssh_auth_supported_wrapper(method, user)
+  {
+    local_var supported_method;
+
+    if(isnull(_compat_session)) return NULL;
+
+    if(!_compat_session.get_supported_auth_methods(username:user))
+      return NULL;
+
+    if(_compat_session.supported_auth_methods[0] == "none")
+      return SSH_MSG_USERAUTH_SUCCESS;
+
+    if(_compat_session.supported_auth_methods[0] == "unknown")
+      return NULL;
+
+    if(isnull(method))
+      return TRUE;
+
+    foreach supported_method (_compat_session.supported_auth_methods)
+    {
+      if (supported_method == method)
+        return TRUE;
+    }
+
+    _compat_session.set_error("Error : Remote server does not support the '" + method + "' authentication method. It supports : " + get_ssh_supported_authentication_wrapper() + ".");
+    return FALSE;
+  }
+
+  function ssh_open_channel_wrapper()
+  {
+    if(isnull(_compat_session)) return -1;
+
+    local_var channel = _compat_session.get_channel();
+
+    if(!channel) return -1;
+
+    # Set ssh_func.inc globals
+    local_channel  = channel.local_channel;
+    remote_channel = channel.remote_channel;
+    r_window_size = channel.remote_window;
+    r_packet_size = channel.remote_maxpacket;
+    l_window_size = channel.local_window;
+    max_packet_size = channel.local_maxpacket;
+
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Opened channel.', msg_details:{
+      "Local":{"lvl":2, "value":local_channel},
+      "Remote":{"lvl":2, "value":remote_channel}
+    });
+
+    return 0;
+  }
+
+  function ssh_close_channel_wrapper()
+  {
+    if(isnull(_compat_session)) return -1;
+
+    local_var channel;
+    channel = _compat_session.channel_manager.channels[local_channel];
+
+    channel.close();
+    _compat_session.channel_manager.remove_channel(channel:channel);
+    return 0;
+  }
+
+  function ssh_request_channel_wrapper(type, want_reply, extra)
+  {
+    if(isnull(_compat_session)) return 0;
+
+    local_var channel;
+    channel = _compat_session.channel_manager.channels[local_channel];
+
+    channel.make_request(type:type, want_reply:want_reply, extra:extra);
+    return 1;
+  }
+
+  function ssh_login_wrapper(login, password, pub, priv, passphrase, realm, host, nofingerprint, cert, existing_socket)
+  {
+    local_var fn = "ssh_login_wrapper";
+
+    init_wrapper();
+    if(nofingerprint) _compat_session.ignore_known_hosts();
+
+    if (!_compat_session.open_connection(existing_socket:existing_socket))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Failed to open connection");
+      return -1;
+    }
+
+    _compat_session.get_supported_auth_methods(username:login);
+    if(_compat_session.supported_auth_methods[0] == "none" &&
+       strlen(password) == 0 && isnull(priv) && isnull(pub) && isnull(cert)
+    )
+      return 0;
+
+    local_var extra = make_array();
+
+    extra["username"] = login;
+    if (password && realm)
+    {
+      extra["password"] = password;
+      extra["realm"]    = realm;
+      extra["host"]     = host;
+      if(_compat_session.login(method:"gssapi", extra:extra)) return 0;
+      else
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:"Failed to log in with 'gssapi' authentication");
+        return -1;
+      }
+    }
+    else if (password)
+    {
+      extra["password"] = password;
+      if (_compat_session.login(method:"keyboard-interactive", extra:extra))
+        return 0;
+      else
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:"Failed to log in with 'keyboard-interactive' authentication");
+        if (_compat_session.login(method:"password", extra:extra))
+          return 0;
+        else
+        {
+          dbg::detailed_log(lvl:1, src:fn, msg:"Failed to log in with 'password' authentication");
+          return -1;
+        }
+      }
+    }
+    else if (priv)
+    {
+      extra["privatekey"] = priv;
+      if(!isnull(cert)) extra["cert"] = cert;
+      if(!isnull(passphrase)) extra["passphrase"] = passphrase;
+      if(_compat_session.login(method:"publickey", extra:extra)) return 0;
+      else
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:"Failed to log in with 'publickey' authentication");
+        return -1;
+      }
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:"Unable to determine authentication method");
+      return -1;
+    }
+  }
+
+  function update_window_size_wrapper(size)
+  {
+    if(isnull(_compat_session)) return -1;
+    if(isnull(local_channel)) return -1;
+
+    local_var channel;
+    channel = _compat_session.channel_manager.channels[local_channel];
+
+    if(isnull(channel)) return -1;
+
+    channel.window_adjust_packet(minimumsize:size);
+    return 0;
+  }
+
+  function ssh_cmd_clear_error()
+  {
+    if(!isnull(_compat_session))
+      _compat_session.clear_cmd_error();
+
+    return NULL;
+  }
+
+  function ssh_cmd_error_wrapper()
+  {
+    if(isnull(_compat_session)) return NULL;
+    return _compat_session.cmd_error;
+  }
+
+  function ssh_cmd_interrupted_wrapper()
+  {
+    if(isnull(_compat_session)) return NULL;
+    return _compat_session.last_cmd_interrupted();
+  }
+
+  function ssh_req_svc_wrapper()
+  {
+    if(isnull(_compat_session)) return FALSE;
+
+    _compat_session.sshsend(code:PROTO_SSH_MSG_SERVICE_REQUEST, data:mk_ssh_string(_FCT_ANON_ARGS[0]));
+    _compat_session.sshrecv_until(end_states:make_list("SERVICE_REQUEST_SUCCESS", "SOC_CLOSED"));
+    if(_compat_session.cur_state.val != "SERVICE_REQUEST_SUCCESS")
+    {
+      _compat_session.set_error("Did not receive SERVICE_REQUEST_SUCCESS for ssh-userauth authentication.");
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  function ssh_close_connection_wrapper()
+  {
+    if(isnull(sshlib::_compat_session)) return NULL;
+    _compat_session.close_connection();
+    delete(_compat_session);
+    return NULL;
+  }
+
+
+  ##
+  # Replace sshlib::DEFAULT_PTY_TERM if term argument is supplied
+  #
+  # @return existing previous sshlib::DEFAULT_PTY_TERM
+  ##
+  function overwrite_default_pty_term (term)
+  {
+    var old_term;
+    old_term = sshlib::DEFAULT_PTY_TERM;
+    if (!term) return old_term;
+    sshlib::DEFAULT_PTY_TERM = term;
+    return old_term;
+  }
+
+  ##
+  # Calls get_ssh_error(), closes SSH connection and exits
+  ##
+  function ssh_errexit()
+  {
+    local_var code, error, msg;
+
+    code = _FCT_ANON_ARGS[0];
+    msg  = _FCT_ANON_ARGS[1];
+
+    error = get_ssh_error();
+    if(error) error = ': ' + error;
+
+    ssh_close_connection();
+
+    exit(code, msg + error);
+  }
+}

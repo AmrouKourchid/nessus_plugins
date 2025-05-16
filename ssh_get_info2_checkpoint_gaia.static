@@ -1,0 +1,1107 @@
+#TRUSTED 0bf945950a669f61b9805fdeb1aa5117632adaef6afef3f9954c24e1a12451ab66d470b2df0b5599231f9ecbd77b56151ab72477a77c9d3dda6abfa56ba228ea0cbdfe8090e2a428665f08665bef15fdd6fa23078ea4efb8298a6cbfe4ce65e0ed07a65dc0d8f28b4f3cf6ac8a559c6bbdf6d406e0c928e01464e315a657d9fb72ef1977231c3f79168c1289698d165d6af94ea8fe367d47a023620c4ad4e3dcd11b8e41cfe6595c7fb8ee859705e4a91e4ac90b6e41fba1fd6e774bbd593127b163c4857e7d1d685f594043fbb48f45aadffd4078f095431173c84f1ceedbf96eed3d6f5f44c2681690ac0f94c8eaee03e0084f9a759a1c9da795e441d49dabd17e5f5a473b3677c5c3d8195b6b238e026c6adaf8e50d820ad3736020dcecb142133292983da6d9b75e8144ad57d5da87526235274d7b3aab35413f22b15376660a7b023f196988b359a799fd13c799b7767cc27ceaadd2cdc8ca1b408d0f4e87cb9f9ce36afc31a14708a71c665d2ac8fa52fe9d229a6c438b40a746ce2c0d9bc07a43319301a248d779e352ca7e2969482141ade04beea2cf06aaba8fd668c92950e653bc73e9ae863cad8a1e4e2b14ee1b6a78ee06e1537b03875a8e6d22f4e2e88cd660073329884193cf1701473a833632341ef961f2e2c2be4dcf037f2d5adefc00940ffa107d6f926bd0ab47305c5cae3df2095666b10235968693ef
+#TRUST-RSA-SHA256 3c2d70c90aa533e53d7088c704af14db4175ce27830449e2369f711cba404494e2481bb6b2c13939c5f2bccf581a625a626bbd2155bc5a1ba4ad76cdc5c1ef3a9be6c6c55afb47ea3249112e3002ccae8da6e624ab9a492d584c5db796364286e2a4d6ab6282ea4460726931ec8428a35ac8fdb56ed0bcfcb8099bc3f786105609b7de3e06a358ea3707f60623e8c5265c1988f4b5aace4b8af77c83ef098085128636d7f5d577ab6307208cb5e7f791511047919eb6ce56b6569ba7c65fa2b62d71aa453bdfe9dcbcfb73dc07627f1233bddd28dda4856a0cf7183cf0b701723aaf6150be47967e1416a7644334fcc8c480c8b421cdc89b9a87a27dda4f0ddab22125c9fb5bdbc2aefb7ac4b4205b8adf00446d48bac47d77b7f05623f08ceca75716395de578d84e2ea83688b26b4b7162e34445c2b88631df67cf54006a6e13e025c3123daf266c3bcbe524a433a3d5f9189209e5521158103290650a3c0bbd19b025a1379c0a17e8d9fab6a279cb8313c0fddce88eb4b45b55b6a23a96cf3afe31a12297b6f507f62da51d74006d08459bf9ab8897b7f5fb00ba0ad5c39298030c47f5a7b0ef14b50e11df41dd29617063e05cc34e5b30447c5c3b933204f04878fdf25e3392b9e6a83a87874733a93e84fe7e357cdd054482341a55f94d952edbab2ae73f07863b998daf47efd2f577d230dd0e9a9fad0df13e8233e54b
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.21
+#
+# gaia_expert_pre_check_fail
+# check if this is a Check Point Gaia (expert shell) device based on information collected
+#
+function gaia_expert_pre_check_fail()
+{
+  # have we already checked that the host is not checkpoint gaia in expert mode?
+  if(host_info_key_val['host_not_checkpoint_gaia_expert'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['uname-a_unrecognized']) &&
+     host_info_key_val['uname-a_unrecognized'] !~ gaia_expert_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Checkpoint Gaia using expert shell if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# gaia_clish_pre_check_fail
+# check if this is a Check Point Gaia (clish shell) device based on information collected
+#
+function gaia_clish_pre_check_fail()
+{
+  # have we already checked that the host is not checkpoint gaia using clish?
+  if(host_info_key_val['host_not_checkpoint_gaia_clish'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_all_unrecognized']) &&
+     host_info_key_val['showversion_all_unrecognized'] !~ gaia_clish_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Checkpoint Gaia using clish shell if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_panos() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# gaia_embedded_pre_check_fail
+# check if this is a Check Point Gaia Embedded device based on information collected
+#
+function gaia_embedded_pre_check_fail()
+{
+  # have we already checked that the host is not checkpoint gaia embedded?
+  if(host_info_key_val['host_not_checkpoint_gaia_embedded'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['show_software-version_unrecognized']) &&
+     host_info_key_val['show_software-version_unrecognized'] !~ gaia_embedded_check['test_cmd_regex'])
+    return TRUE;
+
+  # if either expert or clish already succeeded - stop
+  if(get_kb_item("Host/Check_Point/show_ver"))
+    return TRUE;
+
+  # Not Checkpoint Gaia using clish shell if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_panos() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+# This function assumes that action will be taken on a TRUE result,
+# and so returns FALSE if there is an error parsing a version or in
+# the comparison function.
+function gaia_ver_compare(version, comparator, cmp_ver)
+{
+  var os_ver = vcf::parse_version(version);
+  if(vcf::is_error(os_ver))
+    return FALSE;
+
+  var result = vcf::compare_version_to_check(version:os_ver, comparator:comparator, cmp_ver:cmp_ver);
+  if(vcf::is_error(result))
+    return FALSE;
+
+  return result;
+}
+
+#
+# Process the output of "show installer packages installed" to find the
+# most recent Jumbo Hotfix
+#
+
+# let's try with the Check_Point_R77_30_JUMBO_HF_1_Bundle_T342_FULL format
+# also valid....     Check_Point_R80_30_JUMBO_HF_Bundle_T19_sk153152_FULL.tgz
+# also valid....     Check_Point_R80_40_JUMBO_HF_MAIN_Bundle_T118_FULL.tgz
+var jumbo_hf_regex = "Check_Point_(R\d+_\d+)_JUMBO_HF(?:_\d+)?(?:_MAIN)?_Bundle_T(\d+)";
+
+function process_jumbo_hf(cmd_buf, version)
+{
+  var installed_hotfixes = [];
+  var installed_hotfix_names = [];
+  var match_ver, match_take, match_jumbo;
+  var jumbo_hf = 0;
+
+  # Because the Hotfixes buffer sent is a mess of newlines and the word "hotfix"
+  # We first replace the Type column Hotfix/Package with :::, so we can separate by each
+  # actual hotfix installed, and then loop through the chunks.
+  var buf = ereg_replace(pattern:"(?:Hotfix|Package)\s*\n", replace:':::', string: cmd_buf);
+  # replace repeated spaces and newlines to avoid breaking regex
+  buf = ereg_replace(pattern:"[\s\n]+", replace:' ', string: buf);
+  foreach var chunk (split(buf, sep:" :::", keep:FALSE))
+  {
+    var matches;
+
+    # Pull hotfix names
+    matches = pregmatch(pattern:"([hH]otfix for CVE[\S]+)", string:chunk);
+    if (matches)
+    {
+      if ("Type" >< chunk)
+      {
+        matches = split(chunk, sep:"Type ", keep:FALSE);
+	if (matches[1])
+          installed_hotfix_names = make_list(installed_hotfix_names, matches[1]);
+      }
+      else
+      {
+        installed_hotfix_names = make_list(installed_hotfix_names, chunk);
+      }
+    }
+
+    # Pull hotfix numbers
+    matches = pregmatch(pattern:"[hH]otfix for (sk[0-9]+)|(?:R[0-9\.]+\s+)?Take (\d+)\sHotfix", string:chunk);
+    if (matches)
+    {
+      if (!empty_or_null(matches[1]) && !contains_element(var:installed_hotfixes, value:matches[1]))
+      {
+        append_element(value: matches[1], var:installed_hotfixes);
+      }
+
+      else if (!empty_or_null(matches[2]) && !contains_element(var:installed_hotfixes, value:matches[2]))
+      {
+        append_element(value: matches[2], var:installed_hotfixes);
+      }
+    }
+
+    # e.g., R80.30 Gaia 2.6.18 Jumbo Hotfix Accumulator Security Gateway and Standalone (Take 111)
+    # e.g., R80.10 Jumbo Hotfix Accumulator General Availability (Take 169) :::
+    # e.g., Jumbo Hotfix Accumulator General Availability for R77.30 Take 286 :::
+    var pattern = "(R[0-9\.]+)?(?:\s+)?(?:Gaia [\d.]+)?\s*Jumbo Hotfix\s*(?:Accumulator)?[\w\s]+(?:for (R[0-9\.]+)\s*)?.Take (\d+)";
+    matches = NULL;
+    matches = pregmatch(pattern:pattern, string:chunk);
+    if(matches)
+    {
+      if (!isnull(matches[1]))
+        match_ver = matches[1];
+      else
+        match_ver = matches[2];
+
+      match_jumbo = matches[3];
+
+      if (match_ver && match_ver == version && match_jumbo && int(match_jumbo) > int(jumbo_hf))
+      {
+        jumbo_hf = match_jumbo;
+      }
+      else if (match_ver && match_ver == version && match_jumbo && !contains_element(var:installed_hotfixes, value:match_jumbo))
+      {
+        append_element(value: match_jumbo, var:installed_hotfixes);
+      }
+    }
+
+    matches = NULL;
+    matches = pregmatch(pattern:jumbo_hf_regex, string:chunk);
+    if (matches)
+    {
+      match_ver = str_replace(string:matches[1], find:'_', replace:'.');
+      match_take = matches[2];
+      if (match_ver && match_ver == version && match_take && int(match_take) > int(jumbo_hf))
+      {
+        jumbo_hf = match_take;
+      }
+      else if (match_ver && match_ver == version && match_take && !contains_element(var:installed_hotfixes, value:match_take))
+      {
+        append_element(value: match_take, var:installed_hotfixes);
+      }
+
+    }
+  }
+
+  if (!empty_or_null(installed_hotfixes))
+    replace_kb_item(name:"Host/Check_Point/installed_hotfixes", value:join(installed_hotfixes, sep:' '));
+
+  if (!empty_or_null(installed_hotfix_names))
+    replace_kb_item(name:"Host/Check_Point/installed_hotfix_names", value:join(installed_hotfix_names, sep:'\n'));
+
+  return jumbo_hf;
+}
+
+function process_os(os, session, kernel)
+{
+  var err_msg = "";
+
+  if (!isnull(os))
+  {
+    if (!isnull(kernel)) os = 'Linux Kernel ' + kernel + ' on ' + os;
+    replace_kb_item(name:"Host/OS/showver", value:os);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/showver/Type", value:"firewall");
+  }
+  else
+  {
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    err_msg = '\nOS Security Patch Assessment is not available because of the following error :
+
+    ';
+    failure_kb_msg = "Cannot recognize version : ";
+    if (strlen(session.cmd_error))
+      failure_kb_msg += session.cmd_error;
+    else if (strlen(last_error))
+      failure_kb_msg += last_error;
+
+    failure_kb_type = lcx::ISSUES_ERROR;
+    err_msg += failure_kb_msg;
+    report += err_msg;
+  }
+
+  return err_msg;
+
+}
+
+function get_jumbo_hf(session, channel, expert, &failed_cmds, ver)
+{
+  var jumbo_hf = 0;
+  var buf, cmd, matches;
+  var sh = channel.shell_handler;
+  var shell = sshlib::CP_SH_CLISH;
+
+  if(expert)
+    shell = sshlib::CP_SH_EXPERT;
+
+  #There is an expert mode alternative for this command: "da_cli packages info"
+  #however the output is in json an this output is easier to parse.
+  cmd = "show installer packages installed";
+  if(expert)
+  {
+    cmd = 'clish -c "' + cmd + '"';
+  }
+
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:shell);
+
+  if (!session.cmd_error && buf)
+  {
+    replace_kb_item(name:'Host/Check_Point/show_installer_packages_installed', value:buf);
+    jumbo_hf = process_jumbo_hf(cmd_buf:buf, version:ver);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  if(jumbo_hf==0)
+  {
+    cmd = "cpinfo -y all";
+    buf = sh.run_command(session:session,
+                         command:'cpinfo -y all',
+                         channel:channel,
+                         cmd_shell:shell);
+
+    if (!session.cmd_error && buf)
+    {
+      replace_kb_item(name:"Host/Check_Point/cpinfo", value:buf);
+      if(buf =~ "JUMBO_HF")
+      {
+        matches = pregmatch(pattern: "JUMBO_HF\s*Take:\s*(\d+)", string:buf);
+        if(!isnull(matches))
+          jumbo_hf = matches[1];
+      }
+    }
+    else
+    {
+      insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+      session.clear_cmd_error();
+    }
+  }
+
+  #The following commands are expert only
+  if(max_index(failed_cmds) == 0 && jumbo_hf == 0)
+  {
+    if(gaia_ver_compare(version:ver, comparator:'<', cmp_ver:'R80.00'))
+    {
+      cmd = 'installed_jumbo_take';
+      buf = sh.run_command(session:session,
+                           command:cmd,
+                           channel:channel,
+                           cmd_shell:sshlib::CP_SH_EXPERT);
+      if(!session.cmd_error && !empty_or_null(buf))
+      {
+        matches = pregmatch(pattern:"Jumbo Hotfix Accumulator take_(\d+)", string:buf);
+        if(!isnull(matches))
+          jumbo_hf = matches[1];
+      }
+      else
+      {
+        insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+        session.clear_cmd_error();
+      }
+    }
+    else
+    {
+      cmd = 'grep -P "' + jumbo_hf_regex + '" $CPDIR/registry/HKLM_registry.data';
+      buf = sh.run_command(session:session,
+                           command:cmd,
+                           channel:channel,
+                           cmd_shell:sshlib::CP_SH_EXPERT);
+      if (!session.cmd_error && !empty_or_null(buf))
+      {
+        matches = pregmatch(pattern:jumbo_hf_regex, string:buf);
+        if (matches)
+        {
+          var match_version = str_replace(string:matches[1], find:'_', replace:'.');
+          var match_take = matches[2];
+          if (match_version && match_version == ver && match_take && int(match_take) > int(jumbo_hf))
+          {
+            jumbo_hf = match_take;
+          }
+        }
+      }
+      else
+      {
+        insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+        session.clear_cmd_error();
+      }
+    }
+  }
+
+  #jumbo_hf should never be empty or null, but just in case
+  if(!empty_or_null(jumbo_hf))
+    replace_kb_item(name:"Host/Check_Point/jumbo_hf", value:jumbo_hf);
+
+  return jumbo_hf;
+}
+
+
+function get_vpn_enabled(session, channel, expert, &failed_cmds, ver)
+{
+  var vpn_enabled = 0;
+  var buf, cmd;
+  var sh = channel.shell_handler;
+  var shell = sshlib::CP_SH_CLISH;
+
+  if(expert)
+    shell = sshlib::CP_SH_EXPERT;
+
+  cmd = "vpn drv stat";
+  if(expert)
+  {
+    cmd = 'clish -c "' + cmd + '"';
+  }
+
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:shell);
+
+  if (!session.cmd_error && buf)
+  {
+    replace_kb_item(name:'Host/Check_Point/vpn_drv_stat', value:buf);
+    if ("module active" >< buf)
+      vpn_enabled = 1;
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  replace_kb_item(name:"Host/Check_Point/vpn_enabled", value:vpn_enabled);
+  return vpn_enabled;
+}
+
+
+##
+# @remark These functions work equally well in clish or expert shells.
+##
+function set_model_and_configuration(session, channel, expert, &failed_cmds, ver, configuration)
+{
+  var buf, cmd, matches;
+  var shell = sshlib::CP_SH_CLISH;
+  var sh = channel.shell_handler;
+
+  if(expert)
+    shell = sshlib::CP_SH_EXPERT;
+
+  if(gaia_ver_compare(version:ver, comparator:'<', cmp_ver:'R80.30'))
+  {
+    cmd = "cpview -p";
+    buf = sh.run_command(session:session,
+                         command:cmd,
+                         channel:channel,
+                         cmd_shell:shell);
+
+    if (!session.cmd_error && buf)
+    {
+      replace_kb_item(name:"Host/Check_Point/cpview", value:buf);
+      # Configuration
+        matches = pregmatch(pattern:"(?:^|\n)\| Configuration +([A-Za-z ]+) *\|", string:buf);
+        if (matches)
+          replace_kb_item(name:"Host/Check_Point/configuration", value:matches[1]);
+
+        # HW Model
+        matches = pregmatch(pattern:"(?:^|\n)\| HW Model +(Check Point ((SMART-1 )?[0-9A-Za-z\-]+)) *\|", string:buf);
+        if (matches)
+          replace_kb_item(name:"Host/Check_Point/model", value:matches[1]);
+    }
+    else
+    {
+      insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+      session.clear_cmd_error();
+    }
+  }
+  else
+  {
+    cmd = "cpstat os";
+    buf = sh.run_command(session:session,
+                         command:cmd,
+                         channel:channel,
+                         cmd_shell:shell);
+
+    if (!session.cmd_error && buf)
+    {
+      replace_kb_item(name:"Host/Check_Point/cpstat_os", value:buf);
+      matches = pregmatch(pattern:"(?:^|\n)Appliance Name:\s+([^\r\n]*)(?:$|\n|\r)", string:buf);
+      if (matches)
+        replace_kb_item(name:"Host/Check_Point/model", value:matches[1]);
+    }
+    else
+    {
+      insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+      session.clear_cmd_error();
+    }
+
+    #for R80.30 and later, this seems to be the best we can do
+    if (!empty_or_null(configuration))
+      replace_kb_item(name:"Host/Check_Point/configuration", value:configuration);
+  }
+}
+
+
+##
+# Runs expert mode commands that aren't essential to local checks.
+#
+# @return Return a boolean indicating whether an expert mode credential
+#         is configured for the scan.
+##
+function run_additional_expert_cmds(session, channel, expert, &failed_cmds, ver)
+{
+  var buf, cmd, matches, cmd_error;
+  var sh = channel.shell_handler;
+
+  #Failure of any of the following commands will not prevent local checks
+  cmd = "/bin/enabled_blades";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_EXPERT);
+
+  if (!session.cmd_error && !empty_or_null(buf))
+  {
+    replace_kb_item(name:"Host/Check_Point/enabled_blades", value:buf);
+  }
+  else
+  {
+    cmd_error = session.cmd_error;
+    session.clear_cmd_error();
+    if('No expert mode credential' >< cmd_error)
+      return FALSE;
+    else
+      insert_element(idx:0, value:[cmd, cmd_error], var:failed_cmds);
+  }
+
+  cmd = "cat $FWDIR/teCurrentPack/te_ver.ini";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_EXPERT);
+
+  if (!session.cmd_error && !empty_or_null(buf))
+  {
+    matches = pregmatch(pattern:"(\d+\.\d+)",string:buf);
+    if(!isnull(matches))
+      replace_kb_item(name:"Host/Check_Point/te_ver", value:matches[1]);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  return TRUE;
+}
+
+#
+# callback for systems with "Linux checkpoint" in uname -a
+#  and the data provided indicates the Gaia expert shell
+#
+function handle_gaia_expert(session, use_shell_handler, &channel, cmd_res)
+{
+  var buf, matches, os_name = "Checkpoint Gaia";
+  var kernel, ver, cmd;
+  var configuration, os, build, jumbo_hf, vpn_enabled;
+  var failed_cmds = [];
+
+  replace_kb_item(name:"Host/Check_Point/uname", value:cmd_res);
+  replace_kb_item(name:"Host/Check_Point/can_do_expert", value:TRUE);
+  host_info_key_val['host_not_checkpoint_gaia_clish'] = TRUE;
+
+  report += '\nLocal checks have been enabled for Checkpoint Gaia.\n';
+
+  matches = pregmatch(pattern:"^Linux checkpoint[^\s]*\s+([0-9]+\.[0-9]+).*$", string:cmd_res);
+  if (!isnull(matches)) {
+     kernel = matches[1];
+  }
+
+  local_var err_msg, orig_sh;
+
+  if (!channel)
+    channel = session.get_channel();
+  else
+    orig_sh = channel.shell_handler;
+
+  local_var sh = new("sshlib::checkpoint_shell_manager");
+  channel.set_shell_handler(shell_handler:sh);
+
+  if(!isnull(orig_sh))
+    sh.set_gaia_shell(shell:sshlib::CP_SH_EXPERT, handler:orig_sh);
+
+  session.clear_cmd_error();
+  if (!sshlib::session_replace_shell(session:session, channel:channel))
+  {
+    # set support level ERROR, report error to lcx, add error to report, return
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    err_msg = '\nOS Security Patch Assessment is not available because of the following error :
+
+    ';
+    failure_kb_msg = "Unable to establish session : ";
+    if (strlen(session.cmd_error))
+      failure_kb_msg += session.cmd_error;
+    else if (strlen(last_error))
+      failure_kb_msg += last_error;
+
+    failure_kb_type = lcx::ISSUES_ERROR;
+    err_msg += failure_kb_msg;
+    report += err_msg;
+    return NULL;
+  }
+
+  # Attempt to gather Timezone info
+  linux_timezone_check(session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+  # Determine whether or not we are running as root (uid=0).
+  var max_privs = 0;
+  var res = run_command(cmd:"id", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(res && res =~ "(^|\s)uid=0\(")
+    max_privs = 1;
+
+  replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+  #The expert command 'cpstat os' should show all of this, but is broken wrt. Build number
+  #in some versions, so we are forced to use the clish command
+  cmd = 'clish -c "show version all"';
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_EXPERT);
+
+  if (!session.cmd_error && !empty_or_null(buf))
+    matches = pregmatch(pattern:"(?:^|\n)Product version (Check Point [\w]+) (R(?:SP)?[0-9.]+(?:VSEC)?) *(?:$|\n|\r)",
+                        string:buf);
+    if (!isnull(matches)) {
+      configuration = matches[1];
+      ver = matches[2];
+      os = configuration + ' ' + ver;
+      replace_kb_item(name:"Host/Check_Point/version", value:ver);
+      replace_kb_item(name:"Host/Check_Point/show_ver", value:buf);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  # Get Build
+  matches = pregmatch(pattern:"(?:^|\n)OS build (\d+)(?:\n|\r)", string:buf);
+  if (matches)
+    build = matches[1];
+  else
+    build = 0;
+  replace_kb_item(name:"Host/Check_Point/build", value:build);
+
+  var os_err = process_os(os:os, session:session, kernel:kernel);
+  if(!empty_or_null(os_err))
+    return NULL;
+
+  report += '\nThe output of "show version all" is :\n' + buf + '\n';
+
+  jumbo_hf = get_jumbo_hf(session:session,
+                          channel:channel,
+                          expert:TRUE,
+                          failed_cmds:failed_cmds,
+                          ver:ver);
+
+  vpn_enabled = get_vpn_enabled(session:session,
+                          channel:channel,
+                          expert:TRUE,
+                          failed_cmds:failed_cmds,
+                          ver:ver);
+
+  if(max_index(failed_cmds) == 0)
+  {
+    set_model_and_configuration(session:session,
+                                channel:channel,
+                                expert:TRUE,
+                                failed_cmds:failed_cmds,
+                                ver:ver,
+                                configuration: configuration);
+
+  }
+  else
+  {
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    err_msg = '\nOS Security Patch Assessment is not available because:
+
+    ';
+
+    failure_kb_msg = 'command errors: \n';
+    foreach var err (failed_cmds)
+    {
+      failure_kb_msg += '   "' + err[0] + '": ';
+      if(empty_or_null(err[1]))
+        failure_kb_msg += "did not return any result.";
+      else
+        failure_kb_msg += 'failed with "' + err[1] + '"';
+    }
+
+    failure_kb_type = lcx::ISSUES_ERROR;
+    err_msg += failure_kb_msg;
+    report += err_msg;
+    return NULL;
+  }
+
+  run_additional_expert_cmds( session:session,
+                              channel:channel,
+                              expert:TRUE,
+                              failed_cmds:failed_cmds,
+                              ver:ver);
+
+  cmd = "uptime";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_EXPERT);
+
+  if (!session.cmd_error && !empty_or_null(buf))
+  {
+    replace_kb_item(name:"Host/last_reboot", value:buf);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_checkpoint_gaia.static', value: 713);
+  report += '\nOS Security Patch Assessment is available for Checkpoint Gaia.';
+
+  if(max_index(failed_cmds) > 0)
+  {
+    report += '\n\nHowever the following commands failed:\n';
+    foreach err (failed_cmds)
+    {
+      failure_kb_msg += '   "' + err[0] + '": ';
+      if(empty_or_null(err[1]))
+        failure_kb_msg += "did not return any result.";
+      else
+        failure_kb_msg += 'failed with "' + err[1] + '"';
+    }
+  }
+
+  return TRUE;
+}
+
+#
+# callback for systems with "Product version Check Point" in show version all
+#  and the data provided indicates the Gaia clish shell
+#
+function handle_gaia_clish(session, use_shell_handler, &channel, cmd_res)
+{
+  var buf, matches, os_name = "Checkpoint Gaia";
+  var os, configuration, model, ver, kernel;
+  var jumbo_hf, vpn_enabled, build;
+
+  host_info_key_val['host_not_checkpoint_gaia_expert'] = TRUE;
+  matches = pregmatch(pattern:"(?:^|\n)Product version (Check Point [\w]+) (R(?:SP)?[0-9.]+(?:VSEC)?) *(?:$|\n|\r)",
+                      string:cmd_res);
+
+  report += '\nLocal checks have been enabled for Checkpoint Gaia.\n';
+
+  if (!isnull(matches)) {
+    configuration = matches[1];
+    ver = matches[2];
+    os = configuration + ' ' + ver;
+    replace_kb_item(name:"Host/Check_Point/version", value:ver);
+    replace_kb_item(name:"Host/Check_Point/show_ver", value:cmd_res);
+  }
+
+  matches = pregmatch(pattern:"(?:^|\n)OS kernel version ([0-9]+\.[0-9]+)", string:cmd_res);
+  if (!isnull(matches)) {
+     kernel = matches[1];
+  }
+
+  # Get Build
+  matches = pregmatch(pattern:"(?:^|\n)OS build (\d+)(?:\n|\r)", string:cmd_res);
+  if (matches)
+    build = matches[1];
+  else
+    build = 0;
+  replace_kb_item(name:"Host/Check_Point/build", value:build);
+
+  var os_err = process_os(os:os, session:session, kernel:kernel);
+  if(!empty_or_null(os_err))
+    return NULL;
+
+  report += '\nThe output of "show version all" is :\n' + cmd_res + '\n';
+
+  local_var err_msg, orig_sh;
+
+  if (!channel)
+    channel = session.get_channel();
+  else
+    orig_sh = channel.shell_handler;
+
+  local_var sh = new("sshlib::checkpoint_shell_manager");
+  channel.set_shell_handler(shell_handler:sh);
+
+  if(!isnull(orig_sh))
+    sh.set_gaia_shell(shell:sshlib::CP_SH_CLISH, handler:orig_sh);
+
+  session.clear_cmd_error();
+  if (!sshlib::session_replace_shell(session:session, channel:channel))
+  {
+    # set support level ERROR, report error to lcx, add error to report, return
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    err_msg = '\nOS Security Patch Assessment is not available because of the following error :
+
+    ';
+    failure_kb_msg = "Unable to establish session : ";
+    if (strlen(session.cmd_error))
+      failure_kb_msg += session.cmd_error;
+    else if (strlen(last_error))
+      failure_kb_msg += last_error;
+
+    failure_kb_type = lcx::ISSUES_ERROR;
+    err_msg += failure_kb_msg;
+    report += err_msg;
+    return NULL;
+  }
+
+  # determine information about the host
+  local_var cmd, uptime, failed_cmds=[];
+
+  # this command sets the shell window to be unbounded to prevent
+  # "-- More --" prompts on long results
+  cmd = "set clienv rows 0";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_CLISH);
+  if (session.cmd_err)
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  jumbo_hf = get_jumbo_hf(session:session,
+                          channel:channel,
+                          expert:FALSE,
+                          failed_cmds:failed_cmds,
+                          ver:ver);
+
+  vpn_enabled = get_vpn_enabled(session:session,
+                          channel:channel,
+                          expert:FALSE,
+                          failed_cmds:failed_cmds,
+                          ver:ver);
+
+  if(max_index(failed_cmds) == 0)
+  {
+    set_model_and_configuration(session:session,
+                                channel:channel,
+                                expert:FALSE,
+                                failed_cmds:failed_cmds,
+                                ver:ver,
+                                configuration: configuration);
+
+  }
+  else
+  {
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    err_msg = '\nOS Security Patch Assessment is not available because:
+
+    ';
+
+    failure_kb_msg = 'command errors: \n';
+    foreach var err (failed_cmds)
+    {
+      failure_kb_msg += '   "' + err[0] + '": ';
+      if(empty_or_null(err[1]))
+        failure_kb_msg += "did not return any result.";
+      else
+        failure_kb_msg += 'failed with "' + err[1] + '"';
+    }
+
+    failure_kb_type = lcx::ISSUES_ERROR;
+    err_msg += failure_kb_msg;
+    report += err_msg;
+    return NULL;
+  }
+
+  var can_run_expert = run_additional_expert_cmds( session:session,
+                                                  channel:channel,
+                                                  expert:FALSE,
+                                                  failed_cmds:failed_cmds,
+                                                  ver:ver);
+
+  replace_kb_item(name:"Host/Check_Point/can_do_expert", value:can_run_expert);
+
+  cmd = "show uptime";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_CLISH);
+
+  if (!session.cmd_error && buf)
+  {
+    var last = "";
+    foreach var line(split(buf))
+      if (!preg(pattern:"^CLINFR[0-9]+", string:line)) last += line;
+    if (last) replace_kb_item(name:"Host/last_reboot", value:last);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  report += '\nOS Security Patch Assessment is available for Checkpoint Gaia.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_checkpoint_gaia.static', value: 898);
+
+  if(max_index(failed_cmds) > 0)
+  {
+    report += '\n\nHowever the following commands failed:\n';
+    foreach err (failed_cmds)
+    {
+      failure_kb_msg += '   "' + err[0] + '": ';
+      if(empty_or_null(err[1]))
+        failure_kb_msg += "did not return any result.";
+      else
+        failure_kb_msg += 'failed with "' + err[1] + '"';
+    }
+  }
+
+  if(!can_run_expert)
+    report += '\nNo expert mode credential configured in scan.';
+
+  return TRUE;
+}
+
+#
+# callback for systems with "This is Check Point's 1570 Appliance R81.10.08 - Build 683"
+# in show software-version for embedded Gaia clish shell
+#
+function handle_gaia_embedded(session, use_shell_handler, &channel, cmd_res)
+{
+  var buf, matches, os_name = "Gaia Embedded";
+  var os, configuration, model, ver;
+  var build, res, max_privs, err;
+  local_var cmd, uptime, failed_cmds=[];
+
+  matches = pregmatch(pattern:"(?:^|\n)This is Check Point's ([\w]+ Appliance) (R(?:SP)?[0-9.]+(?:VSEC)?)(?: - Build )?([0-9.]+)?(?:$|\n|\r)",
+                      string:cmd_res);
+
+  if (isnull(matches))
+  {
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += '\nOS Security Patch Assessment is not available because of the following error :\n';
+    err = '\nUnable to match output of "show software-version". Got :\n' + cmd_res + '\n' +
+          '\nwhile expecting similar to :\nThis is Check Point\'s 1570 Appliance R81.10.08 - Build 683\n';
+
+    failure_kb_msg = err;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    report += err;
+    return NULL;
+  }
+
+  report += '\nLocal checks have been enabled for Checkpoint Gaia Embedded.\n';
+
+  configuration = 'Check Point ' + matches[1];
+  ver = matches[2];
+  build = matches[3];
+  os = configuration + ' ' + ver;
+  if (!empty_or_null(build))
+    os += ' - Build ' + build;
+  else
+    build = 0;
+  replace_kb_item(name:"Host/Check_Point/version", value:ver);
+  replace_kb_item(name:"Host/Check_Point/show_ver", value:cmd_res);
+  replace_kb_item(name:"Host/Check_Point/build", value:build);
+  replace_kb_item(name:"Host/Check_Point/configuration", value:configuration);
+
+  report += '\nThe output of "show software-version" is :\n' + cmd_res + '\n';
+
+  var os_err = process_os(os:os, session:session);
+  if(!empty_or_null(os_err))
+    return NULL;
+
+  local_var err_msg, orig_sh;
+
+  if (!channel)
+    channel = session.get_channel();
+  else
+    orig_sh = channel.shell_handler;
+
+  local_var sh = new("sshlib::checkpoint_shell_manager");
+  channel.set_shell_handler(shell_handler:sh);
+
+  if(!isnull(orig_sh))
+    sh.set_gaia_shell(shell:sshlib::CP_SH_CLISH, handler:orig_sh);
+
+  session.clear_cmd_error();
+  if (!sshlib::session_replace_shell(session:session, channel:channel))
+  {
+    # set support level ERROR, report error to lcx, add error to report, return
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    err_msg = '\nOS Security Patch Assessment is not available because of the following error :
+
+    ';
+    failure_kb_msg = "Unable to establish session : ";
+    if (strlen(session.cmd_error))
+      failure_kb_msg += session.cmd_error;
+    else if (strlen(last_error))
+      failure_kb_msg += last_error;
+
+    failure_kb_type = lcx::ISSUES_ERROR;
+    err_msg += failure_kb_msg;
+    report += err_msg;
+    return NULL;
+  }
+
+  cmd = "cpstat os";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_CLISH);
+
+  if (!session.cmd_error && buf)
+  {
+    replace_kb_item(name:"Host/Check_Point/cpstat_os", value:buf);
+    matches = pregmatch(pattern:"(?:^|\n)Appliance Name:\s+([^\r\n]*)(?:$|\n|\r)", string:buf);
+    if (matches)
+      replace_kb_item(name:"Host/Check_Point/model", value:matches[1]);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  cmd = "uptime";
+  buf = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_CLISH);
+
+  if (!session.cmd_error && !empty_or_null(buf))
+  {
+    replace_kb_item(name:"Host/last_reboot", value:buf);
+  }
+  else
+  {
+    insert_element(idx:0, value:[cmd, session.cmd_error], var:failed_cmds);
+    session.clear_cmd_error();
+  }
+
+  # Switch to expert mode and determine whether or not we are running as root (uid=0).
+  max_privs = 0;
+  cmd = "id";
+  res = sh.run_command(session:session,
+                       command:cmd,
+                       channel:channel,
+                       cmd_shell:sshlib::CP_SH_EXPERT);
+  if(res && res =~ "(^|\s)uid=0\(")
+    max_privs = 1;
+
+  replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+  if(res && res =~ "(^|\s)uid=")
+    replace_kb_item(name:"Host/Check_Point/can_do_expert", value:TRUE);
+  else
+    report += '\nNo expert mode credential configured in scan.';
+
+  report += '\nOS Security Patch Assessment is available for Checkpoint Gaia.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_checkpoint_gaia.static', value: 1054);
+
+  if(max_index(failed_cmds) > 0)
+  {
+    report += '\n\nHowever the following commands failed:\n';
+    foreach err (failed_cmds)
+    {
+      failure_kb_msg += '   "' + err[0] + '": ';
+      if(empty_or_null(err[1]))
+        failure_kb_msg += "did not return any result.";
+      else
+        failure_kb_msg += 'failed with "' + err[1] + '"';
+    }
+  }
+
+  return TRUE;
+}
+
+#
+# callback for systems without "Product version Check Point" in show version all
+#
+function handle_not_gaia_clish(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler)
+    store_shell_info();
+  host_info_key_val['host_not_checkpoint_gaia_clish'] = TRUE;
+  host_info_key_val['showversion_all_unrecognized'] = cmd_res;
+}
+
+#
+# callback for systems without "Linux checkpoint" in uname -a
+#
+function handle_not_gaia_expert(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler)
+    store_shell_info();
+  host_info_key_val['host_not_checkpoint_gaia_expert'] = TRUE;
+  host_info_key_val['uname-a_unrecognized'] = cmd_res;
+}
+
+#
+# callback for systems without "This is Check Point" in show software-version
+#
+function handle_not_gaia_embedded(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler)
+    store_shell_info();
+  host_info_key_val['host_not_checkpoint_gaia_embedded'] = TRUE;
+  host_info_key_val['show_software-version_unrecognized'] = cmd_res;
+}

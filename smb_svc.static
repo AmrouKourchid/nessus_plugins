@@ -1,0 +1,775 @@
+#TRUSTED b24cebf3e9d49a1df5888639536c41d792e79c856652cba614d82cfa94503e19db1d35b7db52e719cf352c152c55b0fdb3dbeb2db05ce108f69f8851e04ad1718edeac4b1a7e59f92eff64f7ab67c6b5ee444e831bb647d7372f92e77baa1c1b37ecf4764400edeb00e5c3e658420a5a866b880405e1477d8054c8ab3923b765b9c6a6a5172bc9fd83743c62399465eaf7103dbaf5004a9045fe2147a60aa6755ca18bd613000a70dc69d9f045ba31d6d28daf6e11197f2202288f194895f7326733676b8f8ed683f027d42ce52a2844d653194e39b4a181d9d1d6f679de3911f653e9cd0d655fa68468ff10276164e552f9e9052cbb058ced33fe54f63bc358a1b7f467a99b5658bb1bac123d6f1b537b84a272f89107fcf8d89865799494fa963f7f3dece8c225db147e424937bfbcd481cfdbe7ae921aec76842426a26099773304ed9669090c93b51a0c3b7ae42e1f0cceaf66eb902bf07cf998203c8d4466063bc27c1d8c09fdc96419d752a4ffc4977b8b7b0926acf25d0efb22b3ed75b4b9830fabbbe39bdb111d69f80f68f9f9aee102502b97e8949aeca476db775d1b57dc2ef1cfc37f334b3cba41ed761ac2f6114860724e38c5c7fd29801251f3535b75572119b692d7a763f84efb386dcc31fd6d364f89b4d6dbc440dac3c4de23e905a64b5dee2dc97f281b73c69b685224cb0b19b185bd28933cf47a9e4b04
+#TRUST-RSA-SHA256 13b714ca5226cf4fbf576e6bbe093b5b0723e71514e354f5c935fded99aa27779619dee489cc3d9e6913979632d1916640a26ec6098416ad211a6b679be2f3801958ed5adc294f6c331b286ad543d144e8d7f13b22fec971d46e19c8cd45e7d6fdd03d73f2e643fc7dc70e1b727cf85da2167f34b38b56de1f0266159b0bea8618245c66f8fae90f5f7745402c32adb432993a33aa357b0d2c419cf0e20413685dd455395c1443e0b7e28239d84e5c56178f2bf8e3b35d04c52b2697f41b62eff122777e464a58bb3a58880a50bbc2e9271f6de6d41a8bf86600e07e47c9f93385b19e48bdf8616322194b9364da594c7f1615fc956e230760d7852a8ca49454ca13e622b9da6206fde5d76ccfbb053250f3d6bb1d27409f1624cfb4193e855ab2b998d013810bf3ee9052cb5c9cb1f743076db6fdffb1072031b1ae03b1ae54c7db1c95008995ba6670c63c21e642caffa1f52f030500dc72f49a118c83e5163eafdab7c5ab5736d72d014160e11c4de965a5f0e3d5bb9d3f734375fd2ae368ad4663c52f94269a839683c3ddaf23cbc18cd9c7a4e19ef3e96b6dce9df65b0928565f02c479816c38698c8462d7c0c4d1cf73cd32f39642f113021682a47b9a71c50ebb9673510c50cb858aab214cfdcedcd0bf13ac582e0e5997ee511481276368ad31f4099bc7e59665050f3944c286dec8b2a7b529dbf31a825cde840a29
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# smb_svc.inc
+# Revision: 1.9
+#
+
+#==================================================================#
+# Section 9. Service API                                           #
+#==================================================================#
+
+
+#---------------------------------------------------------#
+# Function    : OpenSCManager                             #
+# Description : Open Service Manager                      #
+#---------------------------------------------------------#
+
+function direct_OpenSCManager (access_mode)
+{
+  var fid, ret, data, type, resp, rep, name, opnum;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opening SC Manager');
+
+  fid = bind_pipe(pipe:"svcctl", uuid:"367abb81-9844-35f1-ad32-98f038001003", vers:2);
+  if (isnull (fid))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'bind_pipe()');
+    return NULL;
+  }
+
+
+  if (session_is_unicode() == 1)
+    opnum = OPNUM_OPENSCMANAGERW;
+  else
+    opnum = OPNUM_OPENSCMANAGERA;
+
+  data = raw_dword (d:0x0020000)                       + # ref_id
+         class_name (name:"\\"+session_get_hostname()) +
+         raw_dword (d:0)                               + # NULL database pointer
+         raw_dword (d:access_mode) ;                     # Desired Access
+
+  data = dce_rpc_pipe_request(fid:fid, code:opnum, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:fid, data:data);
+  if (!rep || (strlen (rep) != 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:20);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = substr (rep, 0, 19);
+  ret[1] = fid;
+  ret[2] = 1;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opened');
+  return ret;
+}
+
+
+
+#---------------------------------------------------------#
+# Function    : OpenService                               #
+# Description : Open the given service                    #
+# Return      : ret[0] service handle                     #
+#               ret[1] FID                                #
+#               ret[2] reserved                           #
+#---------------------------------------------------------#
+
+function direct_OpenService (handle, service, access_mode)
+{
+  var data, resp, rep, tmp, ret, len, opnum;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opening service ' + service);
+
+  if (session_is_unicode() == 1)
+    opnum = OPNUM_OPENSERVICEW;
+  else
+    opnum = OPNUM_OPENSERVICEA;
+
+  data = handle[0]                     +  # Handle
+         class_name(name:service)      +  # service name
+         raw_dword (d:access_mode) ;
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:opnum, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  # response structure :
+  # Policy handle (20 bytes)
+  # return code (dword)
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) != 24))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:24, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:20);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = substr (rep, 0, 19);
+  ret[1] = handle[1];
+  ret[2] = 0;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Opened');
+  return ret;
+}
+
+
+#---------------------------------------------------------#
+# Function    : GetService                                #
+# Description : Return service information                #
+# Return      :                                           #
+#                                                         #
+#  BYTE  Name[];                                          #
+#  BYTE  Description[];                                   #
+#  DWORD dwServiceType;                                   #
+#  DWORD dwCurrentState;                                  #
+#  DWORD dwControlsAccepted;                              #
+#  DWORD dwWin32ExitCode;                                 #
+#  DWORD dwServiceSpecificExitCode;                       #
+#  DWORD dwCheckPoint;                                    #
+#  DWORD dwWaitHint;                                      #
+#---------------------------------------------------------#
+
+function GetService (service)
+{
+  var tab, ret, pos, name, desc, s;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Getting service ' + service);
+
+  ret = NULL;
+
+  pos = 0;
+  name = desc = NULL;
+
+  while (ord(service[pos]) != 0x01)
+  {
+    name += service[pos];
+    pos++;
+  }
+
+  pos++;
+
+  while (ord(service[pos]) != 0x01)
+  {
+    desc += service[pos];
+    pos++;
+  }
+
+  pos++;
+
+  ret[0] = name;
+  ret[1] = desc;
+  ret[2] = get_dword(blob:service, pos:pos);
+  ret[3] = get_dword(blob:service, pos:pos+4);
+  ret[4] = get_dword(blob:service, pos:pos+8);
+  ret[5] = get_dword(blob:service, pos:pos+12);
+  ret[6] = get_dword(blob:service, pos:pos+16);
+  ret[7] = get_dword(blob:service, pos:pos+20);
+  ret[8] = get_dword(blob:service, pos:pos+24);
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Got service');
+  return ret;
+}
+
+
+#---------------------------------------------------------#
+# Function    : EnumServicesStatus                        #
+# Description : Enumerate services                        #
+# Return      : array of ENUM_SERVICE_STATUS              #
+#               Use GetService to parse each elem         #
+#---------------------------------------------------------#
+
+function direct_EnumServicesStatus (handle, type, state)
+{
+  var data, resp, rep, ret, length, pos, name_pt,
+            desc_pt, service_status, opnum, i, array, num;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Enumerating service status');
+
+  if (session_is_unicode() == 1)
+    opnum = OPNUM_ENUMSERVICEW;
+  else
+    opnum = OPNUM_ENUMSERVICEA;
+
+  # We must first send a 0 byte array else if we use a 0xFFFF length array
+  # Windows will return 0xFFFF bytes instead of the real buffer size ...
+
+  data = handle[0]                +  # Handle
+         raw_dword (d:type)       +  # service type
+         raw_dword (d:state)      +  # service state
+         raw_dword (d:0)          +  # buffer size
+         raw_dword (d:0x00020000) +  # pointer
+         raw_dword (d:0);            # NULL pointer
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:opnum, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen(rep) < 10))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:10);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != ERROR_MORE_DATA)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME, status:'error more data');
+    return NULL;
+  }
+
+  length = get_dword(blob:rep, pos:4);
+
+  data = handle[0]               +  # Handle
+         raw_dword(d:type)       +  # service type
+         raw_dword(d:state)      +  # service state
+         raw_dword(d:length)     +  # buffer size
+         raw_dword(d:0x00020000) +  # pointer
+         raw_dword(d:0);            # NULL pointer
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:opnum, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request() (2)');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen(rep) < 4))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:4);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  length = get_dword(blob:rep, pos:0);
+  pos = 4 + length + length%4;
+
+  if (strlen(rep) != pos+20)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:pos+20, operator:'is not');
+    return NULL;
+  }
+
+  array = substr(rep, 4, length+4-1);
+
+  # unknown1 = get_dword(blob:rep, pos:pos);
+
+  num = get_dword(blob:rep, pos:pos+4);
+
+  # ref_id = get_dword(blob:rep, pos:pos+8);
+  # pointer = get_dword(blob:rep, pos:pos+12);
+
+  pos = 0;
+  ret = NULL;
+
+  # for each service
+  for (i=0; i<num; i++)
+  {
+    name_pt = get_dword(blob:array, pos:pos);
+    desc_pt = get_dword(blob:array, pos:pos+4);
+
+    # SERVICE_STATUS structure : length = 28
+    service_status = substr(array, pos+8, pos+35);
+
+    pos += 36;
+
+    ret[i] = get_string(blob:array, pos:name_pt) + raw_byte(b:0x01) +
+             get_string(blob:array, pos:desc_pt) + raw_byte(b:0x01) +
+             service_status;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Enumerated');
+  return ret;
+}
+
+
+#---------------------------------------------------------#
+# Function    : ControlService                            #
+# Description : Send control message to service           #
+#---------------------------------------------------------#
+
+function direct_ControlService (handle, control)
+{
+  var data, resp, rep, ret;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Controlling service');
+
+  data = handle[0]                     +  # Handle
+         raw_dword (d:control) ;          # Info level
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_SERVICECONTROL, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 10))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:10);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = get_dword(blob:rep, pos:0);    # service type
+  ret[1] = get_dword(blob:rep, pos:4);    # current state
+  ret[2] = get_dword(blob:rep, pos:8);    # controls accepted
+  ret[3] = get_dword(blob:rep, pos:12);   # exit code
+  ret[4] = get_dword(blob:rep, pos:16);   # service specific exit code
+  ret[5] = get_dword(blob:rep, pos:20);   # check point
+  ret[6] = get_dword(blob:rep, pos:24);   # wait hint
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+#---------------------------------------------------------#
+# Function    : CreateService                             #
+# Description : Add a new service                         #
+#---------------------------------------------------------#
+
+function direct_CreateService (handle, service_name, display_name, desired_access, service_type, start_service, error_control, path, load_order_group, service_start_name, password)
+{
+  var data, resp, rep, ret, unknown, opnum, name;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Creating service ' + service_name);
+
+  if (session_is_unicode() == 1)
+    opnum = OPNUM_CREATESERVICEW;
+  else
+    opnum = OPNUM_CREATESERVICEA;
+
+  data = handle[0]                            +  # Handle
+         class_name (name:service_name)       +  # Service Name
+         raw_dword (d:0x00020000)             +  # Ref ID
+         class_name (name:display_name)       +  # Display Name
+         raw_dword (d:desired_access)         +  # Desired Access
+         raw_dword (d:service_type)           +  # Service Type
+         raw_dword (d:start_service)          +  # StartService
+         raw_dword (d:error_control)          +  # ErrorControl
+         class_name (name:path)               +  # Path
+         class_name (name:load_order_group)   +  # LoadOrderGroup
+         raw_dword (d:0)                      +  # pointer to tagid
+         raw_dword (d:0)                      +  # array of string
+         class_name (name:service_start_name) +  # Service Start Name
+         class_name (name:password)           +  # Password (depend of Service Start Name)
+         raw_dword (d:0)                      +  # unknown
+         raw_dword (d:0) ;                       # unknown
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:opnum, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 28))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:28);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  unknown = get_dword(blob:rep, pos:0);
+
+  ret = NULL;
+  ret[0] = substr (rep, 4, 23);
+  ret[1] = handle[1];
+  ret[2] = 0;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Service created');
+  return ret;
+}
+
+
+#---------------------------------------------------------#
+# Function    : StartService                              #
+# Description : Start a service                           #
+#---------------------------------------------------------#
+
+function direct_StartService (handle)
+{
+  var data, resp, rep, ret, unknown, opnum, name;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Starting service');
+
+  if (session_is_unicode() == 1)
+    opnum = OPNUM_STARTSERVICEW;
+  else
+    opnum = OPNUM_STARTSERVICEA;
+
+  data = handle[0] + #handle
+         raw_dword (d:0) + # NULL pointer
+         raw_dword (d:0) ; # NULL pointer
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:opnum, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) != 4))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:4, operator:'is not');
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:0);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Started');
+  return 1;
+}
+
+
+#---------------------------------------------------------#
+# Function    : DeleteService                             #
+# Description : Delete a service                          #
+#---------------------------------------------------------#
+
+function direct_DeleteService (handle)
+{
+  var data, resp, rep;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Deleting service');
+
+  data = handle[0] ; # Handle
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_DELETESERVICE, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 4))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:4);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:0);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Deleted');
+  return resp;
+}
+
+
+
+#---------------------------------------------------------#
+# Function    : CloseServiceHandle                        #
+# Description : Close service handle                      #
+# Return      : 1 on success                              #
+#---------------------------------------------------------#
+
+function direct_CloseServiceHandle (handle)
+{
+  var data, rep, code, ret;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Closing handle');
+
+  code = NULL;
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_CLOSESERVICE, data:handle[0]);
+  if (data)
+  {
+    rep = dce_rpc_parse_response(fid:handle[1], data:data);
+    if (rep && (strlen (rep) == 24))
+    {
+      # NULL handle (useless) + code
+      # Return code
+      code = get_dword(blob:rep, pos:20);
+    }
+  }
+
+  if (handle[2] == 1)
+    ret = smb_close (fid:handle[1]);
+
+  if (isnull (code) || (code != STATUS_SUCCESS) || (ret != 1))
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Closed');
+  return 1;
+}
+
+
+#---------------------------------------------------------#
+# Function    : QueryServiceStatus                        #
+# Description : Query service status                      #
+#---------------------------------------------------------#
+
+function direct_QueryServiceStatus (handle)
+{
+  var data, resp, rep, ret;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Checking service status');
+
+  data = handle[0] ;  # Handle
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_QUERYSERVICE, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 10))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:10);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  ret = NULL;
+  ret[0] = get_dword(blob:rep, pos:0);    # service type
+  ret[1] = get_dword(blob:rep, pos:4);    # current state
+  ret[2] = get_dword(blob:rep, pos:8);    # controls accepted
+  ret[3] = get_dword(blob:rep, pos:12);   # exit code
+  ret[4] = get_dword(blob:rep, pos:16);   # service specific exit code
+  ret[5] = get_dword(blob:rep, pos:20);   # check point
+  ret[6] = get_dword(blob:rep, pos:24);   # wait hint
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return ret;
+}
+
+
+
+#---------------------------------------------------------#
+# Function    : GetServiceDisplayName                     #
+# Description : Get Service Display Name                  #
+#---------------------------------------------------------#
+
+function direct_GetServiceDisplayName (handle, service)
+{
+  var data, resp, rep, len, max_count, offset, actual_count, opcode;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Getting displayname for service ' + service);
+
+  if (session_is_unicode ())
+    opcode = OPNUM_SERVICEDISPLAYNAMEW;
+  else
+    opcode = OPNUM_SERVICEDISPLAYNAMEA;
+
+  #
+  # [MS-SCMR]
+  #
+  # DWORD RGetServiceDisplayNameW(
+  # [in] SC_RPC_HANDLE hSCManager,
+  # [in, string, range(0, SC_MAX_NAME_LENGTH)]
+  # wchar_t* lpServiceName,
+  # [out, string, range(1, 4*1024+1), size_is(*
+  # lpcchBuffer +1)]
+  # wchar_t* lpDisplayName,
+  # [in, out] DWORD* lpcchBuffer
+  # );
+  #
+  data = handle[0] +  # Handle
+         class_name (name:service) +
+         raw_dword (d: 4 * 1024);
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:opcode, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 10))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:10);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  # name array
+  max_count = get_dword(blob:rep, pos:0);
+  offset = get_dword(blob:rep, pos:4);
+  actual_count = get_dword(blob:rep, pos:8);
+
+  if (session_is_unicode ())
+    len = actual_count * 2;
+  else
+    len = actual_count;
+
+  if (strlen(rep) < 12 + len)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:12 + len);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Displayname for service ' + service + ' is ' + get_string2 (blob:rep, pos:12, len:len));
+  return get_string2 (blob:rep, pos:12, len:len);
+}
+
+
+#---------------------------------------------------------#
+# Function    : QueryServiceObjectSecurity                #
+# Description : Query service security                    #
+#---------------------------------------------------------#
+
+function direct_QueryServiceObjectSecurity (handle, secinfo)
+{
+  var data, resp, rep, ret, size, buffer_size;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Running QueryServiceObjectSecurity');
+
+  data = handle[0]        +  # Handle
+         raw_dword (d:secinfo)  +  # level (DACL|SACL)
+         raw_dword (d:0);    # buffer size
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_QUERYSERVICESECURITY, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request()');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 12))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() return', length:12);
+    return NULL;
+  }
+
+  # buffer too small
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != 0x7A)
+  {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME, status:'0x7A');
+    return NULL;
+  }
+
+  buffer_size = get_dword(blob:rep, pos:4);
+
+  data = handle[0]        +  # Handle
+         raw_dword (d:secinfo)  +  # level (DACL|SACL)
+         raw_dword (d:buffer_size);    # buffer size
+
+  data = dce_rpc_pipe_request(fid:handle[1], code:OPNUM_QUERYSERVICESECURITY, data:data);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_pipe_request() (2)');
+    return NULL;
+  }
+
+  rep = dce_rpc_parse_response(fid:handle[1], data:data);
+  if (!rep || (strlen (rep) < 12))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() (2) return', length:12);
+    return NULL;
+  }
+
+  resp = get_dword(blob:rep, pos:strlen(rep)-4);
+  if (resp != STATUS_SUCCESS)
+   {
+    _debug_smb_status_not_success(fname:FUNCTION_NAME);
+    return NULL;
+  }
+
+  size = get_dword(blob:rep, pos:0);
+  if (strlen(rep) < (size+8))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'dce_rpc_parse_response() (2) return', length:size+8);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Success');
+  return parse_security_descriptor (blob:substr(rep, 4, strlen(rep)-5));
+}

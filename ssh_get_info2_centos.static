@@ -1,0 +1,253 @@
+#TRUSTED 2656f7418cefdd2c5deb1fafbda766a59aca710e020a35d57695d3df5aaab7e72b039b5f2f0a83418ceb5a9a73fb1284c991a791ebcf2aa31d91cada732493f3f1bd36c00d107cf633bb63cf3780f98cb8f3d9d3908677ac8396f8b402fe9a659f2d4db2c92f87c35413d602f3a81fb77c889a8d5f8cb881a781372e076df55b2d51d339d587f15593b49f521ee80e0677087657b593b6fd3859d9b3c177df24361681c465c55e525045888c8b34b12f59be52379ea93ab88866d4c141f489a0b839e425d0bb2bd1aecd7260ee8ad6bdff4907f6f8601a4add1b9a071cca0c6cc8c858e27bc6fd32645ce344f9328b21bcb2424bb7f84507a8493be59d491b7e1ea977456113daad022e4a1f736fbbc4f654202f2369e6b18aed4ff06625ce0105341170fb26c8c2965edccf07dd7598e4230a7a053a7ebf1223655a7910d42a424f47462d08201e9ed076b312a5cadef6ff6b383f6f12cc8824ba12a81ccdc1704b772bb178ea161bfcbfb068093b6c3cb12d9fe43ead57ca5a80a9b37918e061922ec049b5fa4bbb4a5baee42af53ea1a21a3e4de97f78bdad1501f0fff9ef184d9618bc07c933aacd65dc668b11a7483946bbbbb6582a1802496ded6841e2febd77d58a756dfd977525aa1aff61a13615ce6a451df6afe39838a8987f02af9c2feb2330b3e2155eb270a6cdebd1f388ce87f07531078083d78bb1d824932f
+#TRUST-RSA-SHA256 10e298bef5b4b723935cf5919a3fa9ee0c311b56ada0f9f157ab5631722f2e08b1ae21ca5a13a9dcc88a81ae4fc6c18da1151c9d3fe6f9f500b1e881c95b9451811e2f58b7be88d5122d71fbf18a61685f0debbc0b8aff3d60f7146c2bc30fbc0c0e47fe6bbd9ea9e06722ce16e569212b993f72e24678a470153600fde79ce14581a89af9bd4d2171dbbc8451029f79625a3d15271a0bc3c66026890724fda5e2d3fab16618380163fb77371b29ff20eef834f1d61c0bcae33ed821c11d19f99e8922c68d234bd39a734887b28421e6ec2b1513ee3a55c8e2379845de232bf0de7961ac2c413575b49a67fc55f41efcad0ac3f4fe2732609d24cd674ec00ef0b8a270ba6b7a9f79c011d11a97d46de3e0b1a6039b5cdbe5341aa396dddc1253453ac04379ec76671d4d1dea7c232a3e6da696b0bb4d1e62ec8d1831ca2a602c2fc0242d02e8292fe6014f88738860601f743ab3155a0f0f06e04978ab981ef3643d641b3353d102b014580f011917b99b3a19a91889f05d38887f9032e94c3dbc37b08e8b6d39504422cc821d45bc8d49887b267d67dbec25a0d37ab54405fe5e72ae206dca9e67c35dfc1730f7b72dc7af1529e8b2b7c29766ed78b7489a1ab7f23695552ae77d9cd1c395465813552b836971e507918396510ad1621adae990cdd4f4e6ad0c232e1086f7883b2c6c2c911df61a83892c56f892753c087e73
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+
+# CentOS helper functions
+
+function handle_centos_os(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name: "Host/etc/redhat-release", value:cmd_res);
+
+  # Check for F5 BIG-IP/BIG-IQ, not currently handled by this plugin
+  var f5_buf = run_command(cmd:"cat /VERSION",
+                           session:session,
+                           use_shell_handler:use_shell_handler,
+                           channel:channel);
+  if(f5_buf && strlen(f5_buf) && 'BIG-I' >< f5_buf)
+  {
+    # F5 is handled later in handle_linux_os()
+    return FALSE;
+  }
+
+  # Check for McAfee Linux, not currently handled by this plugin
+  var mcafee_buf = run_command(cmd:"cat /etc/system-release",
+                           session:session,
+                           use_shell_handler:use_shell_handler,
+                           channel:channel);
+  if(mcafee_buf && strlen(mcafee_buf) && 'McAfee Linux' >< mcafee_buf)
+  {
+    # McAfee Linux is handled later in handle_linux_os()
+    return FALSE;
+  }
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"CentOS");
+
+  var sysname = "CentOS";
+  var is_avaya = FALSE;
+  if(!isnull(get_kb_item("Host/Avaya/Product")))
+  {
+    is_avaya = TRUE;
+    sysname = get_kb_item("Host/Avaya/Product");
+  }
+
+  report += '\nThe remote ' + sysname + ' system is :\n' + egrep(pattern:"^CentOS", string:cmd_res);
+
+  replace_kb_item(name:"Host/CentOS/release", value:cmd_res);
+
+  var cpu = host_info_key_val['cpu'];
+
+  var found = FALSE;
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_centos.static', value: 72);
+    found = found_centos_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Register OS
+  if(is_avaya)
+    register_avaya(product:sysname, cpu:cpu);
+  else
+    register_centos_os(release_info:cmd_res, cpu:cpu);
+
+  return TRUE;
+}
+
+function found_centos_os(session, use_shell_handler, &channel)
+{
+  var repo_ls, ls_split, ls_line, repo_match, repo_name, centos_repo, repo_data;
+  # misc commands
+
+  # Retrieve list of repositories from the host
+  repo_ls = run_command(cmd:"ls -1 /etc/yum.repos.d/*.repo",
+            session:session,
+            use_shell_handler:use_shell_handler,
+            channel:channel);
+  if (!empty_or_null(repo_ls))
+  {
+    repo_ls = ereg_replace(pattern:'\r', replace:'', string:repo_ls);
+    ls_split = split(repo_ls, sep:'\n', keep:FALSE);
+    foreach ls_line (ls_split)
+    {
+      repo_match = pregmatch(pattern:"\/([^\/]+)\.repo$", string:ls_line);
+      if (!empty_or_null(repo_match) && !empty_or_null(repo_match[1]))
+      {
+        repo_name = repo_match[1];
+        # There should not be command ending symbols in these filenames, but play it safe.
+        # Strip them out rather than risk a dangerous situation.
+        repo_name = ereg_replace(string:repo_name, pattern:"[;\|&]", replace:"");
+        centos_repo = run_command(cmd:"cat /etc/yum.repos.d/" + repo_name + ".repo",
+                         session:session,
+                         use_shell_handler:use_shell_handler,
+                         channel:channel);
+        if (!empty_or_null(centos_repo))
+        {
+          if (preg(string:centos_repo, pattern:"^\[.*\]", multiline:TRUE))
+          {
+            foreach repo_data (split(centos_repo, sep:'[', keep:FALSE))
+            {
+              if (empty_or_null(repo_data))
+              {
+                continue;
+              }
+              if (preg(string:repo_data, pattern:"\nenabled\s*=\s*1\s*\n", multiline:TRUE))
+              {
+                repo_data = ereg_replace(string:repo_data, pattern:"\].*$", replace:"");
+                if (!empty_or_null(repo_data))
+                {
+                  replace_kb_item(name:'Host/CentOS/repo-list/' + repo_data, value:TRUE);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return TRUE;
+}
+
+##
+# Register Avaya appliance including parsing and standardizing.
+#
+# @param [product:string] Avaya product name
+# @param [cpu:string]     CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_avaya(product, cpu)
+{
+  var version = get_kb_item("Host/Avaya/Version");
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'Avaya LLC',
+    product     : product,
+
+    version     : version,
+    target_hw   : cpu
+  );
+}
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [cpu:str]         CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_centos_os(release_info, cpu)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    CentOS Linux 8
+  #    CentOS Stream 8
+  #    CentOS Linux 7 (Core)
+  #    CentOS Linux 7 (AltArch)
+  #    CentOS Linux 7.9.2009 (Core)
+  #    CentOS 6.9 (Final)
+  #    CentOS 6.10 (Final, ELS by Cloudlinux)
+  #
+  #  - Match groups:
+  #    1: Product (i.e. Linux or Stream)
+  #    2: Release (e.g. 6, 7, 8)
+  #    3: Version (e.g. .9, .9.2009)
+  #    4: Edition (e.g. Core, Final, AltArch)
+  var pattern = 'CentOS( Linux| Stream)?(?: release)? ([0-9]+)(\\.[0-9.]+)? *(?:\\(([^)]+)\\))?';
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Product
+  #  - Default to Linux if neither are specified.
+  var product = 'CentOS Linux';
+  if ('stream' >< tolower(matches[1]))
+    product = 'CentOS Stream';
+
+  # Release
+  var release = matches[2];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version = release;
+  if (!empty_or_null(matches[3]))
+    version += matches[3];
+
+  # Edition
+  var edition = matches[4];
+
+  # OS Name
+  var os_name = strcat(product, ' ', version);
+  if (!empty_or_null(edition))
+    os_name += strcat(' (', edition, ')');
+
+  # Extended support
+  var extended_support;
+
+  if ('ELS by Cloudlinux' >< edition)
+    extended_support = 'ELS by Cloudlinux';
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:/o:centos:centos:6.9
+  #    cpe:/o:centos:stream:8
+  var cpe_attributes = [];
+
+  if ('Stream' >< product)
+    append_element(var:cpe_attributes, value:'stream');
+  else
+    append_element(var:cpe_attributes, value:'centos');
+
+  var cpe = 'cpe:/o:centos:' + join(cpe_attributes, sep:':');
+
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'The CentOS Project',
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_edition  : edition,
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    extended_support : extended_support,
+
+    cpe         : cpe
+  );
+}

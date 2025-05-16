@@ -1,0 +1,114 @@
+#TRUSTED 5dad995a3498aab46cbf8b236a8e54d6f1455ae5e9706bc64c9f31fc2e580d319d1e3fc6d6547eddc813283d197a013d7074802ff45be8db1b1b0358ed8e96ad807411c80b7210bbfa2379974a749530748e8bc0749ea39e29573706ccfd325298b722af0aa44f1ed581829d7c5a84b693bc294d08819cab32d9278e6df480e97d0249ef5b00795218c600c318dd266770a8e268ae3e22b6dcce8563cc4af74d196cf392195657c9e8147c89d1ac89f9d6c983e90627ce564c68259ae287c8f16cd9babb0c35d614d8595ae320e5850c2b86fc55ff6e90430047de9455e37c8c5199f7dfae298513d4f48fa719ecf1f17b597160e0ae0e769e6ca2e37061e40c40d43ed20235b66667c58329c8ed003596b6b099a779c1e1febf3fbebee58a3563920a248e977fd0ebabb8a8001d21bb46876e021c4e075b926098c713e9513c0ca4c7e75ca9007fbeca1ca571e594a9d7f80d868398583c6a995a52d84811592e1cd63bf878e913641fd8954b542a286df02d7895419078f36c1be3a4e894d6dacd2fbc78e157c369f97e44d474bbaacb0d95e2067dfe74cedffafda8d97608e88792ebbb4962d916dc8480e801602366f730a81b4b3bf671251a40beb3100254b2feb6507651fcaf992c44b61e99a3bb3ce1acd26ac4d4f3eb7b9bf0b7f4ef87daa94c134efe712f5e59ce78e4f27718d3fff25a402800b630e46b1d86a0ba
+#TRUST-RSA-SHA256 4404ac00d34d3e7ecea18f82b726592d68c29bf1b1b5fe796c85aab3563efda356a3068fb0088800178efd936d04bb5649712c168bc564fe2b4f95e7d6268d1d96ba22552edb8b81151a2f96782dede4cda98d669e05b8b29137a8d2d5c827963d97ccb68796f9f0db090eef44de551a226eedef58397a9e844c7f02fe792821f2b6471c4334d0658dc125ea0bfe63668e6e51fae91c8b7e1346ec917c8e5610db738a179f0d5f87cdda0f72ff28979815efccee00834c2f49a9066b3dbff0e3b20f656e53fe8dd5c01c05c1e32ec5e3b2a1a98d1406f4d6902f2c3da32e882f4c2052d2d7d937d2635d5d75d011819a7415f487a8307bf48f7971ef2a4dafaedea20b2d795bfd940a751f4dbea5411d31eb098a98a4fd807e21399bbdfce07e19f2a7d2aeca5d4dfc332795106b1fa893f81f74e361a0bb82c109f5b40c8a64a0aa2328d22da5c20627b9481907248252ec810e34b5102e932729126db630a73532136d83f09b9ba698e65eb262d958dbfa323b7fbcf71f1bafb427035427aa9933a9792dec05554172b2c94bb58f384af1da301e1c6529cb50c8ac5b6213c90c9fbfc3df2d3dcefde0e2d2fd89f0a17c434bc03907e0402f6035e767bef2ba25fe36bacade6ba7e72ec50a91940f62ffa51f53dbb263508728e7b77b83351e3ccc78f7626067aad83cdd05f9ad6bcea399a668b89db72d234b04443062db6e
+
+# (C) Tenable Network Security, Inc.
+
+##
+# check if target is ScreenOS
+##
+function is_screenos()
+{
+  if("-NetScreen" >< host_info_key_val['remote_ssh_banner'])
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# check if this is a screenos device based on information collected.
+##
+function screenos_pre_check_fail()
+{
+  # If we already know this isn't screenos
+  if(!is_screenos() || host_info_key_val['host_not_screenos'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['get_system_unrecognized']) &&
+     host_info_key_val['get_system_unrecognized'] !~ screenos_check['test_cmd_regex'])
+    return TRUE;
+
+  # verify target is not another product based on SSH banner etc
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_viptela_ssh() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "File Name: screenos_image, Checksum: " or
+# "File Name: screenos_image, Checksum: " in the output of 'get system'
+##
+function handle_screenos(session, use_shell_handler, channel, cmd_res)
+{
+  var os = "Juniper ScreenOS";
+  report += '\nLocal checks have been enabled for this host.';
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+
+  # Try to get full version needed for ScreenOS OS Security Patch Assessment checks
+  var pat = "(?:\n|^)Software Version: ([0-9][^, ]+),";
+  var match = pregmatch(string:cmd_res, pattern:pat, icase:TRUE);
+
+  if (!isnull(match) && !isnull(match[1]))
+    os += ' ' + match[1];
+
+  report += '\nThe remote system is : ' + os + '\n';
+
+  replace_kb_item(name:"Host/Juniper/ScreenOS/get_system", value:cmd_res);
+  replace_kb_item(name:"Host/OS/get_system", value:os);
+  replace_kb_item(name:"Host/OS/get_system/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/get_system/Type", value:'firewall');
+
+  if (isnull(match))
+  {
+    failure_kb_msg =
+      'Failed to parse the product version from the result of command "get system".\n' +
+      'The product version may be missing from the output or in an unexpected\n' +
+      'format not yet supported by this plugin.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report +=
+      '\nOS Security Patch Assessment is not available for this host because' +
+      '\nof the following issue :' +
+      '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  report += '\nOS Security Patch Assessment is available for this host.\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_juniper_screenos.static', value: 94);
+  return NULL;
+}
+
+##
+# callback for systems without "File Name: screenos_image, Checksum: " or
+# "File Name: screenos_image, Checksum: " in the output of 'get system'
+##
+function handle_not_screenos(session, use_shell_handler, channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    # store more details for other handlers to use.
+    host_info_key_val['get_system_unrecognized'] = cmd_res;
+  }
+
+  host_info_key_val['host_not_screenos'] = TRUE;
+}

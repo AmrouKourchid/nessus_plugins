@@ -1,0 +1,80 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(204909);
+  script_version("1.3");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/05/05");
+
+  script_cve_id("CVE-2024-39695");
+  script_xref(name:"IAVA", value:"2024-A-0397-S");
+
+  script_name(english:"libexiv2 0.28.x < 0.28.3 (GHSA-38rv-8x93-pvrh)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote host is missing a security update.");
+  script_set_attribute(attribute:"description", value:
+"The version of libexiv2 installed on the remote host is prior to 0.28.3. It is, therefore, affected by a vulnerability
+as referenced in the GHSA-38rv-8x93-pvrh advisory.
+
+  - Exiv2 is a command-line utility and C++ library for reading, writing, deleting, and modifying the metadata
+    of image files. An out-of-bounds read was found in Exiv2 version v0.28.2. The vulnerability is in the
+    parser for the ASF video format, which was a new feature in v0.28.0. The out-of-bounds read is triggered
+    when Exiv2 is used to read the metadata of a crafted video file. The bug is fixed in version v0.28.3.
+    (CVE-2024-39695)
+
+Note that Nessus has not tested for this issue but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://github.com/Exiv2/exiv2/security/advisories/GHSA-38rv-8x93-pvrh");
+  script_set_attribute(attribute:"solution", value:
+"Upgrade libexiv2 based upon the guidance specified in GHSA-38rv-8x93-pvrh.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:P/I:N/A:P");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:L");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2024-39695");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2024/07/08");
+  script_set_attribute(attribute:"patch_publication_date", value:"2024/07/08");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2024/07/31");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"x-cpe:/a:exiv2:libexiv2");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_set_attribute(attribute:"thorough_tests", value:"true");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2024-2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("libexiv2_nix_installed.nbin");
+  script_require_keys("installed_sw/libexiv2");
+
+  exit(0);
+}
+
+include('vcf.inc');
+
+var app_info = vcf::get_app_info(app:'libexiv2');
+
+vcf::check_all_backporting(app_info:app_info);
+
+var constraints = [
+  { 'min_version' : '0.28', 'fixed_version' : '0.28.3' }
+];
+
+vcf::check_version_and_report(
+    app_info:app_info,
+    constraints:constraints,
+    severity:SECURITY_WARNING
+);

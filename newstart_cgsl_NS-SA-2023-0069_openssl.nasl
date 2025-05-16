@@ -1,0 +1,129 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The descriptive text and package checks in this plugin were
+# extracted from ZTE advisory NS-SA-2023-0069. The text
+# itself is copyright (C) ZTE, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(187324);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2024/01/02");
+
+  script_cve_id("CVE-2022-2068");
+  script_xref(name:"IAVA", value:"2022-A-0257-S");
+
+  script_name(english:"NewStart CGSL MAIN 5.04 : openssl Vulnerability (NS-SA-2023-0069)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote NewStart CGSL host is affected by a vulnerability.");
+  script_set_attribute(attribute:"description", value:
+"The remote NewStart CGSL host, running version MAIN 5.04, has openssl packages installed that are affected by a
+vulnerability:
+
+  - In addition to the c_rehash shell command injection identified in CVE-2022-1292, further circumstances
+    where the c_rehash script does not properly sanitise shell metacharacters to prevent command injection
+    were found by code review. When the CVE-2022-1292 was fixed it was not discovered that there are other
+    places in the script where the file names of certificates being hashed were possibly passed to a command
+    executed through the shell. This script is distributed by some operating systems in a manner where it is
+    automatically executed. On such operating systems, an attacker could execute arbitrary commands with the
+    privileges of the script. Use of the c_rehash script is considered obsolete and should be replaced by the
+    OpenSSL rehash command line tool. Fixed in OpenSSL 3.0.4 (Affected 3.0.0,3.0.1,3.0.2,3.0.3). Fixed in
+    OpenSSL 1.1.1p (Affected 1.1.1-1.1.1o). Fixed in OpenSSL 1.0.2zf (Affected 1.0.2-1.0.2ze). (CVE-2022-2068)
+
+Note that Nessus has not tested for this issue but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://security.gd-linux.com/notice/NS-SA-2023-0069");
+  script_set_attribute(attribute:"see_also", value:"https://security.gd-linux.com/info/CVE-2022-2068");
+  script_set_attribute(attribute:"solution", value:
+"Upgrade the vulnerable CGSL openssl packages. Note that updated packages may not be available yet. Please contact ZTE
+for more information.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:F/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:F/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2022-2068");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2022/06/21");
+  script_set_attribute(attribute:"patch_publication_date", value:"2023/05/26");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2023/12/27");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:zte:cgsl_main:openssl");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:zte:cgsl_main:openssl-debuginfo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:zte:cgsl_main:openssl-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:zte:cgsl_main:openssl-libs");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:zte:cgsl_main:openssl-perl");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:zte:cgsl_main:openssl-static");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:zte:cgsl_main:5");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"NewStart CGSL Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2023-2024 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/ZTE-CGSL/release", "Host/ZTE-CGSL/rpm-list", "Host/cpu");
+
+  exit(0);
+}
+
+include('rpm.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+
+var os_release = get_kb_item('Host/ZTE-CGSL/release');
+if (isnull(os_release) || os_release !~ "^CGSL (MAIN|CORE)") audit(AUDIT_OS_NOT, 'NewStart Carrier Grade Server Linux');
+
+if (os_release !~ "CGSL MAIN 5.04")
+  audit(AUDIT_OS_NOT, 'NewStart CGSL MAIN 5.04');
+
+if (!get_kb_item('Host/ZTE-CGSL/rpm-list')) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$") audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'NewStart Carrier Grade Server Linux', cpu);
+
+var flag = 0;
+
+var pkgs = {
+  'CGSL MAIN 5.04': [
+    'openssl-1.0.2k-25.el7_9.cgslv5.0.3.g09406dc',
+    'openssl-debuginfo-1.0.2k-25.el7_9.cgslv5.0.3.g09406dc',
+    'openssl-devel-1.0.2k-25.el7_9.cgslv5.0.3.g09406dc',
+    'openssl-libs-1.0.2k-25.el7_9.cgslv5.0.3.g09406dc',
+    'openssl-perl-1.0.2k-25.el7_9.cgslv5.0.3.g09406dc',
+    'openssl-static-1.0.2k-25.el7_9.cgslv5.0.3.g09406dc'
+  ]
+};
+var pkg_list = pkgs[os_release];
+
+foreach (pkg in pkg_list)
+  if (rpm_check(release:'ZTE ' + os_release, reference:pkg)) flag++;
+
+if (flag)
+{
+  security_report_v4(
+    port       : 0,
+    severity   : SECURITY_HOLE,
+    extra      : rpm_report_get()
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'openssl');
+}

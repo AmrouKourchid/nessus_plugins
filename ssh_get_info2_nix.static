@@ -1,0 +1,158 @@
+#TRUSTED 45eb8ee2c32c3319187f5e6e1d735c0528c779a26e015ac4706b9a3bae9188d07698d4e4e36d981f98ca84f57454ee4049bba6e5ed70ab94c4d30411eefa29467b9ca17f8ae5f66912f2e2da2cd6c050ca7f82b8755c19f85508ef8be355fbdbc24fb1ed84f2349eaabc80b861e24e7fdd30acd5abeace3441582fa120d0856e43da3314c631410fe3a541fa0f781c6266cb4d77bd75c965e18b78535d1906a50e0165fea077fa8f7b2144a94520ee6fc8619fd531053366e07ca2fbd80667626933caba06ab0b72ed082313bcb792c96c2022a857e920e973e7ba089900d1a2d56fe4e1e8abf445386a20b63af877f4c6dd55bcad80b09a2c43bb2314b049bae9f8307800177841ce4381e45e2114a536a8cab241cde66341becd7d30f689e6d6b0bc42c1aac280263e47860f772c17ff13cbcc750eaeaa1b638e83b8037423217b4d2915668d5177020e459ec4c94be90bcbb5962fbcdedb2899ffc69283cf40e2bcbcb9fd616531d44e8371148bb6cf3887cc8dfd37d1426b9dea88ae289598417a2e16dabc552d7cd7c85aa6c8daf402f5448b4824b1a68a76b027123e15c415aad07c327ca42457c2a67f0817987ed6a3df1edce86728d3293936dfad04bf0ee54d40b6f439513d53b803fdc0fdff88f0021dcc12b7bbdb62982efea3877cdde1af4c76f809347234a87fc349a5d289032b92eb551d252043e5b4a9192e
+#TRUST-RSA-SHA256 a5ab0b9d4590e847e09c71ab75ae7c839b371582a84f29167c1dec649208993d1a636284f5195ac27a982154382bc55f68d8a119aef77094a23240d2b27c340e27199916886db4e96e31c2ba5fd81e3df77d32c96ce9ecf5f25258a4e7feceafe116758974018dc84eca8cdbafb88de2f1ea1e0315d5b87a9f86210e208526b1f6f143b610df1b78d6bf162ce9e5266c0861b9d64476df1e1474481ffe03e52f4c474bcfe9c9f4d42ab36efb1294a61965c08c972afcb0ce75c2569e8cd7eebb07564738f00645c05ab3c588225bae4b205b11e160afa14a958b713052c466fa95135a620ac0a1958e4a5ec5e1e611569b61c45c6ec82e418f1dfd19b76d7de97e074bd8084122760981c296cd384163682d11e818ff18800f55cfc09d3d9039fc43f1e00ad72bb124ae32c779f2b43f06658e9895730460c399ec56427def8d953453adfeb3febb454e91d344845cf885f3fe0c2dfaff3ff79a963b09599987ad576be6ff26ce006ce3387f8b4df87f663a139b11ce9c74f3d66186e0d0b69ff10b9b7a8c32b48b1034ae5763efe5f0b26afdb7ba4e7fa4282ecd7a92762fbef36b13266f7203baeac6f62a1de3a2dd325b3c8c5caf0838cd1956fc1c8976ae8400371c2915bb830c4849a60484bb94a3bcb738b18ea783ed4e22a4b1d7ec7ab706357bafd83d2627817d046e7b14a0c954d213fab11269181617a66f28c39b
+#
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.16
+#
+# General helper functions for Linux / UNIX handlers
+#
+
+
+##
+# This function is called by Linux / UNIX check 'pre_check_fail_cb'
+# functions to check existing information about the target for data
+# that rules out the target being Linux or UNIX.
+#
+# @return [bool] TRUE if the checks indicate the target is not
+#                Linux / UNIX, else FALSE
+##
+function not_nix()
+{
+  var fn = 'not_nix()';
+
+  # Not linux/unix if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_dell_idrac() ||
+      is_exos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# This function is called by Linux / UNIX check 'pre_check_fail_cb'
+# functions to check for an existing uname -a response or error that
+# rules out the OS that is being checked for.
+#
+# @param [regex:string] The regex to match against, e.g.
+#                       aix_check['test_cmd_regex']
+#
+# @return [bool] TRUE if the response or error is available and rules
+#                out the target OS, else FALSE
+##
+function uname_error_or_mismatch(regex)
+{
+  var fn = 'uname_error_or_mismatch()';
+  if (!regex)
+  {
+    dbg::log(src:fn, msg:'Missing required arg "regex", ' +
+      'not checking for cached "uname -a" result.');
+    return FALSE;
+  }
+
+  # Not the target OS if we already have uname -a output and it
+  # doesn't match the expected regex
+  if(host_info_key_val['uname-a_unrecognized'])
+  {
+    if (host_info_key_val['uname-a_unrecognized'] !~ regex)
+    {
+      dbg::log(src:fn, msg:
+        'Cached "uname -a" result does not match expected regex.' +
+        '\n  Result   : ' + host_info_key_val['uname-a_unrecognized'] +
+        '\n  Expected : ' + regex);
+      return TRUE;
+    }
+  }
+  # Not the target OS if uname -a produced no output, only error
+  else if (host_info_key_val['uname-a_error'])
+  {
+    dbg::log(src:fn, msg:'Cached "uname -a" result is an error :\n' +
+      host_info_key_val['uname-a_error']);
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# This function is called by Linux / UNIX check 'cmd_fail_cb'
+# functions to validate the uname -a response and store / report /
+# cache the result or error for plugin output and subsequent checks.
+#
+# If uname -a result is valid:
+# - The result is stored in the KB
+# - The result is cached in host_info_key_val for subsequent checks
+# - The result is added to the plugin report, only if it hasn't been
+#   added yet
+#
+# If uname -a result is invalid:
+# - The result or error is cached in host_info_key_val as an error
+#   for subsequent checks
+#
+# If both uname -a result and error are empty or NULL:
+# - Nothing is done; the wrong command method or shell handler may
+#   have been used, or an error unrelated to the command may have
+#   occurred. Nothing is cached to prevent the command being retried.
+#
+# @param [cmd_res:string] The command result
+# @param [session:object] The sshlib session object
+# @param [use_shell_handler:bool] TRUE for shell, FALSE for exec
+#
+# @return NULL
+##
+function store_and_report_uname(cmd_res, session, use_shell_handler)
+{
+  var fn = 'store_and_report_uname()';
+
+  if (use_shell_handler) store_shell_info();
+
+  # We only want to use session.cmd_error for exec - if the shell
+  # handler was used, session.cmd_error may contain handler-related
+  # errors rather than command errors
+  var cmd_err = NULL;
+  if (!use_shell_handler) cmd_err = session.cmd_error;
+
+  if (!cmd_res)
+  {
+    if (cmd_err)
+    {
+      dbg::log(src:fn, msg:'"uname -a" returned an error : ',
+        ddata:cmd_err);
+      host_info_key_val['uname-a_error'] = cmd_err;
+      host_info_key_val['host_not_linux'] = TRUE;
+    }
+    return NULL;
+  }
+
+  cmd_res = chomp(cmd_res);
+  var lines = split(cmd_res);
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+  host_info_key_val['uname-a_error'] = cmd_res;
+  host_info_key_val['uname-a_unrecognized'] = cmd_res;
+
+  if (cmd_err) host_info_key_val['uname-a_error'] += '\n' + cmd_err;
+
+  dbg::log(src:fn, msg:'"uname -a" unrecognized: ',
+    ddata:host_info_key_val['uname-a_error']);
+
+  return NULL;
+}

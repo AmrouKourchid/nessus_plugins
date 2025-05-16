@@ -1,0 +1,115 @@
+#TRUSTED 9d96f07ce24c3f459fe2db76c990e2ba667877067022e5e0b12671dc9e7e385eeb93dfb770bca98f6d7584e3881876ae3438875028175690ceb1ee5aeb13c2b7f32e1fdc1909960e58d5e8ded082ca922cbdd9edf0f9fa743a488ff33e31c79249556cfe93f015dc4ff150709e8d46dae7c5f8467bf7ccc0c1fc2b8944d14ed3a91de60e6e5a898c9a9e09dd6147922f1b1287567a0c2b167f5a4489e4eddcd56a2e5f2ecc741bc0f7f1ceedcfb3b3eec50ea242213fc1246853b1299e0a23fa201d8c063f189be58978a60d672f0c88ac8fbbf43d641d2f03ec3d5197bd1cef019f8b7d6a06eb097f728d5380a8e6ecd601bd9e502e31a1cec7d3c57463e53901c4d29cdeb3b4a6bd151cbee12a81ce11c14bebd7c9a7b9c6bfd9541a1a8fbbd2f9aacdf90974caa85d4431390488692dff2eb96194204f0894bc6e873a0cf3594812bb95f5955b5a34370f9b3a89a8ea191eb831535875633a1c0439e5b143dbea94d56aff9204eb5a90bea68cd77ef59d02837888488414c87157d43bf68a6694d54a324da264e7f5d54855e04243af8358ed78ef59eec166c64f6db22e1f4bdfb2f91eac3bbb48899738af29dd254dd8fa7a83640a767d70163160e8afb2ab7de2287149e9a3f3aff9438836222e107b1cd7b80415f86247be925042934969fabc40e4f096c0e8fe92fb09bda2f705893b2f955835c2bbf8fec32cc8335c
+#TRUST-RSA-SHA256 6e6e6cdbf2509ff6fe385541ffb358850225b034be45a7abe46ce8c27c673007f4726f4186d80cee0586898d7130167d1ff86da17a5d6cf696f3758f6fe052f5f4ca98fd8e401a6d217d68e69823518f3752a8da1f3d0aa2233b4041cc9706c72c90124263898cad67d9032a9f663ef3a28f8e50cf9ebb1ca74b66d3e0f7d5f480ef6a4b1f746d3f921e472ba35e1c3b800546ec6cbecb8a7735ef3b7e68fa65a5b248aa678e19eeaedd4f1ae8a7b267a55213b41622aa42a2f517c7cc6d17cd0b5d22f0a4787457a310eb5c4972748d11b11d86606fd8ce1cd200b53d87a9af340861e414bba017d3d6a2a9a806e5c1d410cb0f3ec7eaab083248c92451fe846fa7b2846f0adc66c78230d270ac3ac1ec94016b7cf3f88ae2ec90c184e8d74bdd2948f95f16f989d106473635df2784dce1f3297eb317a6ee8cd594d5be7ce9880a15c891396fa36d82bd1655547302b1cc0f694cf6e609b90deece0a28d9a9fb7e620bac018e07fedff88b9c4a0bd246bc2a8a1df81f3696fc645bbd1891d94d1fba36ea6deafc1738b3c3e5e90fc5986d0bd6eea74e7db417f19b18bb88a771e804ebd74f896a1a5186786d4d02cf9542eedc2c4c2d468b96d616d1e7e11acf085db0c81f128e3a4abdfc62f3d057cb7ff10d13049baff4f3ee7169acdb291d95923cc057c2b77d0c39414c4d70e272743a34ecbaab9f26eaecab327cb493
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.4
+
+#Scientific Linux helper functions
+
+
+function handle_scientific_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  # calculate Red Hat minor version
+  var sl_array;
+  # RHEL 3.x
+  sl_array = pregmatch(pattern:"Scientific Linux.*release 3 .*pdate (\d+).*", string:cmd_res);
+  # RHEL 4.x
+  if(!sl_array)
+    sl_array = pregmatch(pattern:"Scientific Linux.*release 4 .*pdate (\d+).*", string:cmd_res);
+  # RHEL x.x
+  if(!sl_array)
+    sl_array = pregmatch(pattern:"Scientific Linux.*release \d+\.(\d+).*", string:cmd_res);
+
+  if(sl_array)
+    replace_kb_item(name:"Host/RedHat/minor_release", value:sl_array[1]);
+
+
+  var res = handle_rpm_generic_os(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                  cmd_res:cmd_res, internal_label:"RedHat", display_label:"Scientific Linux",
+                                  release_file:"/etc/redhat-release");
+
+  register_scientific_linux_os(release_info:cmd_res);
+
+  return res;
+}
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_scientific_linux_os(release_info)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Scientific Linux release 7.9 (Nitrogen)
+  #
+  #  - Match groups:
+  #    1: Release (e.g. 7)
+  #    2: Version (e.g. .9)
+  #    3: Codename (e.g. Nitrogen)
+  var pattern = 'Scientific Linux(?: release)? ([0-9]+)(\\.[0-9.]+)? *(?:\\(([^)]+)\\))?';
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Product
+  var product = 'Scientific Linux';
+
+  # Release
+  var release = matches[1];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version = release;
+  if (!empty_or_null(matches[2]))
+    version += matches[2];
+
+  # Codename
+  if (!empty_or_null(matches[3]))
+  {
+    var display_version = strcat(version, ' (', matches[3], ')'); 
+  }
+
+  # OS Name
+  var os_name = product;
+  if (!empty_or_null(display_version))
+    os_name += ' ' + display_version;
+  else
+    os_name += ' ' + version;
+
+  # Base CPE
+  #  - Example:
+  #    cpe:/o:fnal:scientific_linux:7.9
+  var cpe = 'cpe:/o:fnal:scientific_linux';
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'Fermilab',
+    product     : product,
+
+    release     : release,
+    version     : version,
+    display_version : display_version,
+    os_name     : os_name,
+    target_hw   : get_kb_item("Host/cpu"),
+
+    cpe         : cpe
+  );
+}

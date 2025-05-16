@@ -1,0 +1,710 @@
+#TRUSTED a9ad399ac9dcd664586a0eea0934164219b835edbaa7adb450bd4a97f8a0700479a52d787acde23ee2fc17fd6581a884ba2d94a036dff16ab31466e8164a79d6bf1ede997ef8c61df06bc699f90cfb08a6aebfefc06702c93552085abb4db809738180866d6950b90af1d2774ed26224bcabbb9f4d14f897ba82866348c997916d61862ad143b9843f4c1a9b0af43897b1e65d697100bc9a4f9b3d9697a47033cec561b7499549cce55261563770be8954fd3aa50a42fb34f0c37146850a07a41ea4bd50c8147e4e0234f38d8fa936653d57d925439731f21d88414216992dc5ae5faa40471c2071abb73863db541ac74707eae2535752567f52f48a4bead796596d09043cad4b09ce2b70e562c5fdf280df8dfb3aefc0abb3973c1649c9b7849c55ed21ef21bfea38ecb97df8ea9589efca8ea7dcba53f86cffdbb67cbe33392ff5a1bce1b50f1ec714b87fcb568f251bcddf7ac1e34cebfae95a7449524f5120abdb1e908d5da8e17d5761bc79217e90d77fdf03d22fe39952c65b44ba5eda1227d1a27917b846f7697349f7ab707e32e6fe4071c2689de0c133cbce9805fd6161c74c9992629fd3ffe6ed35fa70c4acab01b00085fcc5aeba148f397a6f6e985f7b23b6c2f2cd8b77cb11c29e4679b14e2d3bb0c9649be8442bfaf22d112273adc7d36788be9b777d9db085bd076e6a3ec9021341c619de139472d84a20b3
+#TRUST-RSA-SHA256 72c66b025a061460904eeaef796dc58377b103d8d07cc09ee4aeeea7f051850e6ebcd8f809635c3affeafb7efb103f8c22ded6edb5f638da66a5234cd7497c788bfcf76c7f01e99c06879e48908df144204d11383e1752f289d0da504a61d5bcccfac2c9895191290994f7bf86132cad3d06a207988a40343f6fde7ce984593f7cfafcb9ff8dfcc44aa72933382e6172563c8fefe66f72e64697f8e4b436762a83be8fc24f189c498bbed3076b9b884a2b1dbb77a46cd794787e24ae34c4730db307ce9aeea4160b95d1f3a659ab6ae6c739567b20542f4a3e00bbb74674018b7c6ad48296a528b1ad2090388533ea05ad353e588556e7b6c87b7938ad7ca008f2834ee7f6c29993864619d2ce8805b1a2d146ea037b6976980baf84af91f089486d3b4a1c6faf57596eb14f70681fac3f2b788f8c3bddb2948e3b39205a4d6d26ce3b08cf53265b87ec5319985ae7082da23f9667387f5546c8c7ee936c4f5e057f026399de956a402672b21bcde7bf21362191e6d8d0bab01557e3c0b4ae891fedf0e9ac8a2a8ace7862d4cd6bb9b0c502db916dc09c0f0d2823fd64fceef92adaf381c9eacfc589b83411af15b2578bfb127af3b3604a8a08f0c84891d48ea26542d72f8e0448b4adecb1259c6d6b3d77013498a5595b10e302f0b58589cb1ff9760880c35881584ed607e0f75c28e930b3dff33f410022cb072484029b41
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.16
+###
+
+namespace hashicorp
+{
+  object HashicorpConfig : integrations::IntegrationConfig
+  {
+    var vault_type;
+    var auth_url;
+    var kv_url;
+    var vault_namespace;
+    var secret;
+    var username_source;
+    var username_key;
+    var password_key;
+    var domain_key;
+    var passphrase_key;
+    var role_id;
+    var secret_id;
+    var custom_header_key;
+    var custom_header_value;
+    var escalation_account_secret;
+    var elevate_with;
+    var login_token;
+    var kerb_domain; # Kerberos Domain
+
+    ##
+    # Initialize Hashicorp config.
+    #
+    # @param [prefix:string] The preference prefix
+    # @param [postfix:string] The preference postfix
+    # @param [secret_override:string] The secret name override
+    # @param [username:string] The manually-entered username
+    #
+    # @return [boolean] TRUE
+    ##
+    public function init(prefix, postfix, secret_override, username)
+    {
+      var vault_settings;
+
+      int_name = 'Hashicorp Vault';
+      integrations::logger(msg:"Initializing Settings for Hashicorp Vault", lvl:2, config:this);
+      prefix += "Hashicorp Vault ";
+      host = script_get_preference(prefix+'Host'+ postfix);
+      port = script_get_preference(prefix+'Port'+ postfix);
+      ssl = integrations::boolean(script_get_preference(prefix+'SSL'+postfix));
+      ssl_verify = integrations::boolean(script_get_preference(prefix+'Verify SSL Certificate'+postfix));
+      vault_type = script_get_preference(prefix+'Type'+postfix);
+      auth_url = script_get_preference(prefix+'Authentication URL'+postfix);
+      kv_url = script_get_preference(prefix+'KV Engine URL'+postfix);
+      vault_namespace = script_get_preference(prefix+'Namespace'+postfix);
+      secret = script_get_preference(prefix+'Secret'+postfix);
+      username_source = script_get_preference(prefix+'Username Source'+postfix);
+      username_key = script_get_preference(prefix+'Username Key'+postfix);
+      password_key = script_get_preference(prefix+'Password Key'+postfix);
+      domain_key = script_get_preference(prefix+'Domain Key'+postfix);
+
+      role_id = script_get_preference(prefix+'Role ID'+postfix);
+      secret_id = script_get_preference(prefix+'Role Secret ID'+postfix);
+      _set_elevation_settings(prefix:prefix, postfix:postfix);
+      _set_kerb_domain(prefix:prefix, postfix:postfix);
+
+      # as of 9/2024 Passphrase Key does not exist in the UI, but this adds support
+      # for it in the future. Therefore, it needs to have a default value of 'passphrase'.
+      passphrase_key = script_get_preference(prefix+'Passphrase Key'+postfix);
+      if (empty_or_null(passphrase_key))
+      {
+        passphrase_key = 'passphrase';
+      }
+
+      # Set this to NULL until login token is fetched.
+      login_token = NULL;
+
+      vault_settings = 'HashiCorp Vault Settings ~' +
+        '\nHashicorp Vault Host : ' + host +
+        '\nHashicorp Vault Port : ' + port +
+        '\nUse SSL : ' + ssl +
+        '\nVerify SSL Certificate : ' + ssl_verify +
+        '\nVault Type : ' + vault_type +
+        '\nAuthentication URL : ' + auth_url +
+        '\nKV Engine URL : ' + kv_url +
+        '\nVault Namespace : ' + vault_namespace +
+        '\nSecret Name : ' + secret +
+        '\nUsername Source : ' + username_source;
+      # Make it very clear in the logs when username and domain key are used,
+      # i.e. don't log them if Manual Entry is used, because with Manual Entry
+      # you instead use literal username and domain values. See: CS-62877.
+      if (username_source != 'Manual Entry')
+      {
+        vault_settings += '\nUsername Key : ' + username_key +
+          '\nDomain Key: ' + domain_key;
+      }
+      else
+      {
+        # With Manual Entry, log the literal, manually-entered username instead of the username key.
+        # Note: with Windows in this case, the domain is also manually entered. The integration
+        # doesn't see this value at the moment; the only purpose to passing it into the integration
+        # would be to log it here.
+        vault_settings += '\nUsername : ' + username;
+      }
+      vault_settings += '\nPassword Key : ' + password_key +
+        '\nPassphrase Key : ' + passphrase_key +
+        '\nRole ID : ' + role_id +
+        '\nElevate privileges with : ' + elevate_with +
+        '\nEscalation Credential ID : ' + escalation_account_secret;
+
+      integrations::logger(msg:vault_settings, config:this, lvl:3);
+
+      if (vault_type == 'AD')
+      {
+        integrations::logger(
+          msg:"Vault type is AD, so setting username_key:'username' "
+              "and password_key:'current_password'.",
+          config:this, lvl:3
+        );
+        username_key = 'username';
+        password_key = 'current_password';
+      }
+      else if (vault_type == 'LDAP')
+      {
+        integrations::logger(
+          msg:"Vault type is LDAP, so setting username_key:'username' "
+              "and password_key:'password'.",
+          config:this, lvl:3
+        );
+        username_key = 'username';
+        password_key = 'password';
+      }
+      if (empty_or_null(vault_type))
+      {
+        integrations::logger(
+          msg:"No vault type specified, using default of KV1.",
+          config:this, lvl:3
+        );
+        vault_type = 'KV1';
+      }
+      if (!empty_or_null(secret_override))
+      {
+        integrations::logger(
+          msg:"Setting secret name to: " + secret_override,
+          config:this, lvl:2
+        );
+        secret = secret_override;
+      }
+
+
+      _set_cert_settings(prefix:prefix, postfix:postfix);
+
+      return TRUE;
+    }
+
+    ##
+    # Process Kerberos settings for Domain.
+    #
+    # @remark This function sets kerberos instance variables:
+    #
+    # - kerb_domain
+    #
+    # @param [prefix:string] The preference prefix
+    # @param [postfix:string] The preference postfix
+    # @return true
+    ##
+    function _set_kerb_domain(prefix,postfix)
+    {
+      prefix = str_replace(string:prefix, find:'Hashicorp Vault ', replace:'PAM ');
+      this.kerb_domain = script_get_preference(prefix + "KDC Domain" + postfix);
+
+
+      return true;
+    }
+
+
+    ##
+    # Process settings related to privilege escalation.
+    #
+    # @remark This function sets instance variables of the class, namely:
+    #
+    # - elevate_with
+    # - escalation_account_secret
+    #
+    # @param [prefix:string] The preferences' prefix
+    # @param [postfix:string] The preferences' postfix
+    # @return [boolean] TRUE
+    ##
+    function _set_elevation_settings(prefix, postfix)
+    {
+      var elevate_with_pref_prefix, cred_id_pref_prefix;
+      if ("Additional" >!< prefix)
+      {
+        # Looking for settings "Elevate privileges with" and "SSH PAM Escalation Credential ID"
+        elevate_with_pref_prefix = '';
+        cred_id_pref_prefix = 'SSH PAM ';
+      }
+      else
+      {
+        # Looking for settings "Additional Elevate privileges with"
+        # and "Additional SSH PAM Escalation Credential ID"
+        elevate_with_pref_prefix = 'Additional ';
+        cred_id_pref_prefix = 'Additional SSH PAM ';
+      }
+      elevate_with = script_get_preference(elevate_with_pref_prefix + 'Elevate privileges with' + postfix);
+      escalation_account_secret = script_get_preference(cred_id_pref_prefix + 'Escalation Credential ID' + postfix);
+
+      return TRUE;
+    }
+
+    ##
+    # Process settings related to client certificates.
+    #
+    # @remark This function sets instance variables of the class, namely:
+    # - cert
+    # - key
+    # - passphrase
+    # - custom_header_key
+    # - custom_header_value
+    #
+    # @param [prefix:string] The preferences' prefix
+    # @param [postfix:string] The preferences' postfix
+    # @return [boolean] TRUE
+    ##
+    function _set_cert_settings(prefix, postfix)
+    {
+      var tmp_file;
+
+      if('Certificates' >< script_get_preference(prefix+'Authentication Type'+postfix))
+      {
+        integrations::logger(
+          msg:"Using certificate-based authentication",
+          config:this, lvl:2
+        );
+        cert = script_get_preference_file_location(prefix+'Client Certificate To Use'+postfix);
+        key = script_get_preference_file_location(prefix+'Private Key To Use'+postfix);
+        passphrase = script_get_preference(prefix+'Passphrase For Private Key'+postfix);
+        if(isnull(passphrase))
+        {
+          passphrase = '';
+        }
+      }
+      if (integrations::boolean(get_kb_item('Host/Datapower/Hashicorp')))
+      {
+        integrations::logger(
+          msg:"Using IBM DataPower Gateway configuration for Hashicorp.", lvl:2, config:this
+        );
+        custom_header_key = get_kb_item('Secret/Datapower/headerkey');
+        custom_header_value = get_kb_item('Secret/Datapower/headervalue');
+        if (empty_or_null(cert))
+        {
+          cert = get_kb_item('Secret/Datapower/cert');
+          key = get_kb_item('Secret/Datapower/key');
+          passphrase = get_kb_item('Secret/Datapower/passphrase');
+        }
+        else
+        {
+          integrations::logger(
+            msg:"Cannot use Hashicorp Vault certificate authentication with IBM DataPower Gateway.",
+            report:TRUE, config:this, lvl:1
+          );
+        }
+      }
+      if (cert)
+      {
+        read_cert_and_key();
+        integrations::logger(
+          msg:'Client Certificate MD5 sum: ' + md5_cert + '\n' +
+              'Client Certificate Private Key MD5 sum: ' + md5_key,
+          config:this, lvl:3
+        );
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Removes sensitive data from logs
+    # @param [msg:string] msg to remove sensitive data from
+    # @return [string] cleaned msg
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(
+        msg:msg,
+        '"auth":{(.+?)}',
+        '"data":{(.+?)}'
+      );
+
+      return msg;
+    }
+
+    ##
+    # Set the config's login_token attribute.
+    #
+    # @param [token:string] the login token
+    # @return [boolean] TRUE
+    ##
+    public function set_login_token(token)
+    {
+      login_token = token;
+      return TRUE;
+    }
+  }
+
+  ##
+  # Get the error from the result of a HashiCorp API call.
+  #
+  # @param [result:array] array of result data from the API.
+  # @param [config:HashicorpConfig] array of config items
+  # @return [string] A string representation of the error.
+  ##
+  function _get_error_from_result(result)
+  {
+    # The integrations lib response handler will return errors in
+    # the body, but in two different ways.
+    # * In the case of a connection error or SSL error, it returns:
+    #   {'message': 'server did not respond to request'}
+    # * In the case of an API error (e.g. 404, 400, etc) it returns:
+    #   {'message': <response_body>}
+    # * In the case of vault, the response body contains a list of errors, so the
+    #   whole response looks like (for example):
+    #   {'message' {'errors': ['Permission Denied']}}
+
+    if (typeof(result.message) == 'array' && !isnull(result.message.errors))
+    {
+      return "Error from HashiCorp API. Please review credential configuration. " + result.message.errors[0];
+    }
+    else if ("404" >< result.response_code)
+    {
+      # In some 404 cases the hashicorp API does not return an error array as described above,
+      # for example doing a GET on a KV V2 resource that does not exist.
+      # In these cases, look for the response code indicating "not found".
+      return "Resource was not found. Please review credential configuration.";
+    }
+    else
+    {
+      return "Failed to connect. Please review Vault host/port connectivity and SSL. " + result.message;
+    }
+  }
+
+  ##
+  # Convert KV URL and secret into a cache key.
+  #
+  # @remark Remove leading/trailing slashes so that no double
+  #         slashes appear in the key, as they cause a warning
+  #         in get_kb_item.
+  #
+  # @param [kv_url:string] URL path to the secret.
+  # @param [secret:string] The name of the secret.
+  ##
+  function _get_cache_key(kv_url, secret)
+  {
+    var cache_key;
+    cache_key = ereg_replace(string:kv_url, pattern:"^/", replace:"");
+    cache_key = ereg_replace(string:cache_key, pattern:"/$", replace:"");
+    cache_key = cache_key + '/' + secret;
+    return cache_key;
+  }
+
+  ##
+  # Get a secret from vault.
+  #
+  # This is a wrapper around _login and _get_kv that does the following:
+  # - stores login token in global variable.
+  # - caches results and checks cache.
+  #
+  # @param [config:HashicorpConfig] array of config items.
+  # @param [secret:string] The name of the secret to get.
+  # @return [array] A dictionary of {success:bool, kv:dict}
+  ##
+  function _get_secret(config, secret)
+  {
+    var login_result, secret_result;
+    # Check cache for secret
+
+    secret_result = integrations::get_cache(secret:_get_cache_key(kv_url:config.kv_url, secret:secret));
+
+    # If we don't have a cached copy, fetch from vault.
+    if (empty_or_null(secret_result))
+    {
+      if (empty_or_null(config.login_token))
+      {
+        login_result = _login(config:config);
+        if (!login_result.success)
+        {
+          return login_result;
+        }
+        config.set_login_token(token:login_result.token);
+      }
+      secret_result = _get_kv(config:config, token:config.login_token, secret:secret);
+    }
+    else
+    {
+      integrations::logger(
+        msg:"Cache hit for secret "+secret+", no need to fetch from vault.",
+        config:config, lvl:2
+      );
+    }
+    if (!secret_result.success)
+    {
+      return secret_result;
+    }
+    if (!secret_result['cached'])
+    {
+      integrations::set_cache(
+        secret:_get_cache_key(kv_url:config.kv_url, secret:secret),
+        kv:secret_result['kv']
+      );
+    }
+    return secret_result;
+  }
+
+  ##
+  # Get Credential
+  #
+  # @remark Intializes, then looks for cached credentials. If not found it
+  #         will authenticate and query from Hashicorp.
+  #
+  # @param [username:string] optional username value if should not come from KV
+  # @param [prefix:string] string to append to the beginning of a preference key
+  # @param [postfix:string] string to append to the end of a preference key
+  # @param [secret_override:string] string to override the secret name, used in database_settings.inc
+  # @return [array] an object with {success: TRUE | FALSE, username: the username from KV or supplied, password: the password from KV}
+  ##
+  function _get_credential(username, prefix, postfix, secret_override)
+  {
+    var config, cred_result, sudo_password_result, sudo_password, return_username, return_domain, return_creds;
+    config = new hashicorp::HashicorpConfig();
+    config.init(
+      prefix:prefix,
+      postfix:postfix,
+      secret_override:secret_override,
+      username:username
+    );
+
+    cred_result = _get_secret(config:config, secret:config.secret);
+    if (!cred_result.success)
+    {
+      integrations::logger(
+        msg:"Failed to retrieve credentials. " + cred_result.message,
+        config:config, report:TRUE, lvl:1
+      );
+      return {success:FALSE};
+    }
+
+    # Process sudo - if elevating with something other than "Nothing"
+    if (!empty_or_null(config.elevate_with) && config.elevate_with != "Nothing")
+    {
+      if (empty_or_null(config.escalation_account_secret))
+      {
+        integrations::logger(
+          msg:"No secret specified for escalation account, assuming same password as login password.",
+          config:config, lvl:2
+        );
+        sudo_password = cred_result['kv'][config.password_key];
+      }
+      else if (config.escalation_account_secret == config.secret)
+      {
+        integrations::logger(
+          msg:"The secret specified for escalation account is the same as the login credentials' secret.",
+          config:config, lvl:3
+        );
+        sudo_password = cred_result['kv'][config.password_key];
+      }
+      else
+      {
+        integrations::logger(
+          msg:"Fetching privilege escalation password from secret " + config.escalation_account_secret,
+          config:config, lvl:2
+        );
+        sudo_password_result = _get_secret(config:config, secret:config.escalation_account_secret);
+        if (!sudo_password_result.success)
+        {
+          integrations::logger(
+            msg:"Failed to retrieve privilege escalation password. " + sudo_password_result.message,
+            config:config, report:TRUE, lvl:1
+          );
+          return {success:FALSE};
+        }
+        sudo_password = sudo_password_result['kv'][config.password_key];
+      }
+    }
+
+    # Process username. This may come from manual entry or from the secret.
+    if ("Manual Entry" >< config.username_source)
+    {
+      return_username = username;
+    }
+    else if (empty_or_null(cred_result['kv'][config.username_key]))
+    {
+      integrations::logger(
+        msg:"Failed to retrieve credentials. Username does not exist for given secret.",
+        config:config, lvl:1
+      );
+      return { success:FALSE };
+    }
+    else if ("\" >< cred_result['kv'][config.username_key])
+    {
+      # If username in the secret was of format 'DOMAIN\username', then split username and domain.
+      var cred = split(sep:"\", cred_result['kv'][config.username_key], keep:FALSE);
+      return_domain = cred[0];
+      return_username = cred[1];
+    }
+    else
+    {
+      return_username = cred_result['kv'][config.username_key];
+    }
+
+    # If we got a kerberos domain, that's the one we're going to use, overriding the other domain values.
+    if (!empty_or_null(config.kerb_domain))
+    {
+      integrations::logger(
+        msg:"Overriding domain with domain supplied by Kerberos settings.", config:config, lvl:2
+      );
+      return_domain = config.kerb_domain;
+    }
+    # If given a domain key and a value was returned, return the value found in vault.
+    # Log a warning if this conflicts with the domain specified in DOMAIN\username.
+    else if (!empty_or_null(config.domain_key) && !empty_or_null(cred_result['kv'][config.domain_key]))
+    {
+      if (return_domain != cred_result['kv'][config.domain_key])
+      {
+        if (!empty_or_null(return_domain))
+        {
+          integrations::logger(
+            msg:"Warning: domain " + return_domain + " specified in format DOMAIN\username will be ignored.",
+            config:config, lvl:1
+          );
+        }
+        return_domain = cred_result['kv'][config.domain_key];
+      }
+    }
+    # If we specified a domain key but one was not returned, log a warning.
+    # Indicate if we will fall back on the one found in the DOMAIN\username format.
+    else if (!empty_or_null(config.domain_key))
+    {
+      var warning_message = "Warning: Domain key " + config.domain_key + " was " +
+        "specified but value was not found in vault.";
+      if (!empty_or_null(return_domain))
+      {
+        warning_message += " Using domain found in DOMAIN\username format in username.";
+      }
+      integrations::logger(msg:warning_message, lvl:1, config:config);
+    }
+
+    if (empty_or_null(cred_result['kv'][config.password_key]))
+    {
+      integrations::logger(msg:"Did not retrieve a password. This indicates either A) a null password value for the correct password key or B) an unexpected password key name.",
+                           config:config, lvl:1);
+
+      return {success:FALSE};
+    }
+
+    return_creds = {
+      success:TRUE,
+      username:return_username,
+    };
+
+    if ('PRIVATE KEY' >< cred_result['kv'][config.password_key])
+    {
+      return_creds['private_key'] = cred_result['kv'][config.password_key];
+    }
+    else
+    {
+      return_creds['password'] = cred_result['kv'][config.password_key];
+    }
+
+    if (cred_result['kv'][config.passphrase_key])
+    {
+      return_creds['passphrase'] = cred_result['kv'][config.passphrase_key];
+    }
+
+    if (!empty_or_null(return_domain))
+    {
+      return_creds['domain'] = return_domain;
+    }
+    if (!empty_or_null(sudo_password))
+    {
+      return_creds['sudo_password'] = sudo_password;
+    }
+
+    return return_creds;
+  }
+
+  ##
+  # Get Credential using MUTEX_LOCK
+  #
+  # @remark This function employs MUTEX_LOCK so that only one credential may be gathered at one time.
+  #         The intention of this is to avoid race conditions with the cache.
+  #
+  # @param [username:string] optional username value if should not come from KV
+  # @param [prefix:string] string to append to the beginning of a preference key
+  # @param [postfix:string] string to append to the end of a preference key
+  # @param [secret_override:string] string to override the secret name, used in database_settings.inc
+  # @return [array] an object with {success: TRUE | FALSE, username: the username from KV or supplied, password: the password from KV}
+  ##
+  function get_credential(username, prefix, postfix, secret_override)
+  {
+    mutex_lock(SCRIPT_NAME);
+    var result = _get_credential(username:username, prefix:prefix, postfix:postfix, secret_override:secret_override);
+    mutex_unlock(SCRIPT_NAME);
+    return result;
+  }
+
+  ##
+  # Login to Hashicorp API and get an AuthToken
+  # @param [config:HashicorpConfig] array of config items
+  # @return [array] an object with {success: TRUE | FALSE, token: the auth token}
+  ##
+  function _login(config)
+  {
+    var result, data, error_message;
+    var headers = {};
+
+    if (!empty_or_null(config.vault_namespace))
+    {
+      headers['X-Vault-Namespace'] = config.vault_namespace;
+    }
+    if (!empty_or_null(config.custom_header_key))
+    {
+      headers[config.custom_header_key] = config.custom_header_value;
+      integrations::logger(
+        msg:"Custom IBM DataPower Gateway Header Key : " + config.custom_header_key,
+        config:config, lvl:2
+      );
+      integrations::logger(
+        msg:"Custom IBM DataPower Gateway Header Value : " + config.custom_header_value,
+        config:config, lvl:2
+      );
+    }
+    if (!isnull(config.role_id) && !isnull(config.secret_id))
+    {
+      data['role_id'] = config.role_id;
+      data['secret_id'] = config.secret_id;
+    }
+    integrations::logger(msg:"Sending login request", lvl:3, config:config);
+    result = integrations::post(
+      config:config, command:config.auth_url, data:data, json:TRUE, headers:headers
+    );
+
+    if (!result.success)
+    {
+      error_message = _get_error_from_result(result:result);
+      return {success:FALSE, message:"Failed to login. " + error_message};
+    }
+    return {success:TRUE, token:result.body.auth.client_token};
+  }
+
+  ##
+  # Get KV/AD Item3
+  # @param [config:HashicorpConfig] hashicorp config data
+  # @param [token:string] auth token returned from _login
+  # @param [secret:string] the name of the secret
+  # @return [array] an object with {success: TRUE | FALSE, kv: the full retrieved kv}
+  ##
+  function _get_kv(config, token, secret)
+  {
+    var result, endpoint, headers, result_data, error_message;
+    result['cached'] = FALSE;
+    if (empty_or_null(secret))
+    {
+      integrations::logger(msg:"No secret specified for request.", lvl:1, config:config);
+      return { success: FALSE };
+    }
+    headers = {
+      'X-Vault-Token': token
+    };
+    if (!empty_or_null(config.vault_namespace))
+    {
+      headers['X-Vault-Namespace'] = config.vault_namespace;
+    }
+    if (!empty_or_null(config.custom_header_key))
+    {
+      headers[config.custom_header_key] = config.custom_header_value;
+    }
+
+    if (config.vault_type == "KV2")
+    {
+      endpoint = config.kv_url+'/data/'+secret;
+    }
+    else
+    {
+      endpoint = config.kv_url+'/'+secret;
+    }
+    result = integrations::get(config:config, command:endpoint, headers:headers);
+
+    if (!result.success)
+    {
+      error_message = _get_error_from_result(result:result);
+      return {success:FALSE, message:"Failed getting secret from vault. " + error_message};
+    }
+
+    if (config.vault_type == "KV2")
+    {
+      result_data = result.body.data.data;
+    }
+    else
+    {
+      result_data = result.body.data;
+    }
+
+    return {success: TRUE, kv: result_data};
+  }
+}

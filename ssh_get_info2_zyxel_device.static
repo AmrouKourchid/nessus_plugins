@@ -1,0 +1,141 @@
+#TRUSTED 5e5e9b2587ab21463680915c96bc2d27a57e4224139d47b5fe1074af698e3231fd559d6861634abf0158ef1ddff8ed036c714f1ca943d2c7ac33f4e559e99e4a3bbc9fe71e893df57ca69bcdb0bd3292078505b59451406bea3a864b1b7243f8b441ffc522f2efe124adaad258f012b76915a9fc81835f98ae63d0ea62c5fbe3d39f7323ac38e3de7e09fa8f4a30ae0fda882a7190c59690245dcf7b1084d8dd299a919ced4c7b3f111ac40214a376d4b40d4770105f0003783ff871093903e20b6f3e116e4db83550c8d9043520f9e055439f55293304eb988290a69ad9d9cc2b8b0200991ab3e4362b56b292fbe249bf9e5e6dda6c705c2cdfbf697ac2c7c98fdcf11676ca575c3269faa2b9e6640cd27155447c90f5b48d72c027bc30f2b4c1a6dbc7987c46bb1b622b5c25aa7cbd8d68f0f352ec415523acbe19d5a9175e44cb5c7a8d6436b86fd296216be9ff79f29155eb3c13a9e28d901e703797f256d5aa40ce8a0bc74039d824130a60542431f54cae9c3a1edd6ab2ac909329b3f017610a271e05a0299ca9832aaf9a6ad8bc9848060922e956f32933af0cc51f2cc4ea181af09a6e3f3691c303e26c129553ca2c26cef58d5b694c32b784b862489f510d04a383943f4c28ab3954457fa81c2d116cb281746e005ded944194a61f5b0685dfc3ff9b12a63f1851f4c3afaf1890769fc3c25bdfcde496a17cfdca00
+#TRUST-RSA-SHA256 7c2a280ff2b01f1140a96465a0797aea802123d08184b40ec661b07257d43127a9e2b25319f59ba3f45ca7179610fdcfd9a29be57e73056355530fedc728d9033438924cedd518952bb0c178e6f6ae8259620617986d15ad6d5643770448a4eb428a5d52852ebf561b13a42d54ed853d40718faf32fa0720dcced0aeed2c056e9507b46679e466f10681f2b402911abe1a03e958f9c07d45e5f5cdc80031d2277e61ecd663eb929887845b4506f096f09ed35ea99b5bf7b38010eed60d0a60000e85d142b0302e9fd8a4a55465e4cc53efc0162af5fd4f5a6bc21b300a77a5e7515825b4abc784ec4e8df6cf80158ec67f95acdd2533a962d39ca42a5020883784451e473b3db9fde5e5557e968067e54fe691429edf123fbb9036ad23f76529add2e341991bf0336b8cfc678f2a14aa87f04878ba8dfa3f3762a35098a381a02247f3be488a9f2f36674a24a6f50ab30d0f0c5892acd8974e3b29af93e7f5bcfb4ebc2013b5d9a2e2b41be61dd3fb4d713a5e364d34bf417871abdbfe34f773be28fef5a8f7d23b2019ebf1d35bf983dea36ccdaea2b6d4e1719fcbf3e2b2547f6ad3fc6553d62a5da8713208e7c9f031b063bdaa31966305d7fce838f2a73bf2bb78ae647a6cbe1a372fe08e8786995f453fa72422339717a668fff6d294228ee7395b4cb4deae56c2ae15e4e23bf03aa23262c6bbdf8284b447f763c52705
+###
+# (C) Tenable, Inc.
+#
+# Revision: 1.7
+#
+###
+
+##
+# Check if this is Zyxel Device based on information collected
+#
+# @return Returns TRUE if we know this is not Zyxel Device  FALSE otherwise.
+##
+function zyxel_device_pre_check_fail()
+{
+  # Have we already checked that the host is not Zyxel Device 
+  if (host_info_key_val['host_not_zyxel_device'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['cat_fwversion_unrecognized']) &&
+     host_info_key_val['cat_fwversion_unrecognized'] !~ zyxel_device_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Zyxel Device if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_dell_idrac() ||
+      is_staros() ||
+      is_arrayos()
+    )
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# callback for systems with "Acme Packet OS VM SCZ" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return TRUE if this is a Zyxel Device NULL otherwise
+##
+function handle_zyxel_device(session, use_shell_handler, &channel, cmd_res)
+{
+  var product, firmware_version;
+  var os, matches, pattern;
+
+  #Local checks just means we can run commands on the target host.
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  ##
+  #  Zyxel Device includes command validation
+  #   Dev testing showed that it is usually best
+  #   to just reissue commands fresh for this target
+  ##
+  session.clear_cmd_error();
+  cmd_res = run_command(cmd:'cat /etc/modelname',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+  cmd_res = preg_replace(pattern:"\n", replace:"", string:cmd_res);
+  var model_name = cmd_res;
+  replace_kb_item(name:'Host/Zyxel/model', value:model_name);
+
+  cmd_res = run_command(cmd:'cat /firmware/mnt/info/fwversion',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  cmd_res = preg_replace(pattern:"\n", replace:"", string:cmd_res);
+  replace_kb_item(name:'Host/Zyxel/firmware_version', value:cmd_res);
+
+  ##
+  # veryify the firmware regex matches
+  # V5.21(AAZF.12)
+  ##
+  pattern = "V[0-9]+\.[0-9]+\([a-zA-Z.0-9]+\)";
+  matches = pregmatch(pattern:pattern, string:cmd_res, icase:TRUE);
+
+  if (!empty_or_null(matches) )
+  {
+    replace_kb_item(name:'Host/Zyxel/matches', value: obj_rep(matches));
+    firmware_version = matches[1];
+    if(!empty_or_null(model_name))
+      os = strcat('Zyxel ', model_name, ' Firmware Version ', firmware_version);
+    else
+    {
+      model_name = 'unknown';
+      os = strcat('Unknown Zyxel Model running Firmware Version:', firmware_version);
+    }
+
+    report += strcat('\nThe remote host is running ', os, '\n');
+
+    replace_kb_item(name:'Host/Zyxel', value: TRUE);
+    replace_kb_item(name:strcat('Host/Zyxel/', model_name, '/version'), value:firmware_version);
+
+    session.clear_cmd_error();
+
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+    report += '\nOS Security Patch Assessment is not supported for Zyxel Device \n';
+
+    return TRUE;
+  }
+  else
+    return NULL;
+}
+
+##
+# Callback for systems without a version in /firmware/mnt/info/fwversion
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_zyxel_device(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:'Host/cat_fwversion_unrecognized', value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['cat_fwversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_zyxel_device'] = TRUE;
+  }
+}

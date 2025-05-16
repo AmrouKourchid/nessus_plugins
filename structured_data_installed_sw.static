@@ -1,0 +1,94 @@
+#TRUSTED 6339173792de43d95191ee0eb367f0f74884a78eeb750135c2b6137f3e00562c437c77e22e8fc9ce6d86974c48ef53b6012ec4d1e7a84ffc625311939e6efe526d6c4b490c64d8094f9aee95a2a6beb6875af315624ea175b8614cb46b30b17921f628a35e107d32a9f03500891c195ce7c6808f52109e226299f3479f20867e1a0256421d05e429221166277f31ed6c9c3332064f3fe48fc7c163daa3efc74b066ea714fc98d72527573ca5d0f1c6f158c8b6e98f546e8edb40c5b5a86c853ff51b193bdce3280a2b4d058c47fb3142bb994a5979d1d699687f67619e4691f31378f120a2cc116a118d124b403a55e7236d1bfce19d89661d9604c7482f25b59d13ad9ee7daff09ab95cafbcbd87ea7f8294cd79a532dc7fb593a7e0c1e53f18aeb2efeb8c566196a9bea33925a5b03d57af3d194ff74fedcf401842fd2cbc1491e9c75cbb4f98e54da0ffd1554e892770a61b0fa6edf43f3a4f879f2be4e083c5e04bbe420adaf7183675f1efee6d449013d066f44cb6c93fecbd5a0f99d4dac40c90757e42ba6bca33fa97e56532db164b451e56b5a230907ccd6fa54b517ad54ce0198b024734673fa36778ff3ad0dbd799a1aae8a727ea3df26a68d49f2bef2918ed74e8e80f473f28c9bc4072cf96cd22a7b80daa78a19586abf11716c43aaec798040e21377c404c0cc5417bed3d9785470ef66524eaaa314a5096ec4
+#TRUST-RSA-SHA256 a522e840287ac9ccb62e68aec5e1cb06423f9a4afa5497a0b0d01a53d25c6d35b3aae9080ddb9a7a44b2ec579b8d0d79b98d7f4cac79b75a4ea46f8c73eaad29f24d1d806da6c6cccff1cb39a8d271004be54698f1231cc813ae3dc5bcc1ef4f1a3f5b07b6480951b7bf0cfccb2d31b59613df7cc822e1a0087b937509389672338e573f896a149b827f7ae063d255ba09b4969ddc8c11f83fe1fe7f631e1453b2d5fb17f5b54f6d2009c0c39356147615de9cdbcb05ef050ce684fcc050b49109c3dfa26f79a6294e6b2e1d9f6c1d4b42833eacd6d9d6d1d9f40fa9fcae2ea23a62f3817c3a2992f1a5dd8f83e262e1cc6bb11443dcc4241ea9f9190e4fc96e53215f97d3c564560ba2f1d19b28c750b8317d884aa4c4d48741ef2da9ff6233320cc25130b2eda1c72ed17de9fbb896ae6f4d7ca15b1578722ea60812d5a25e8df37493f566edbc765491b37edd97591c6f0b2a5fdb1ef2992a0e5862e5e980dd45cf4ca73625fe03be7752028a89ec992595eae74cf644eb955ca724c0686765930040be8c6bdd8dcb74f1fd67a098bb89602c7564a90c449b9c001b688536cc95da940bbcdc7c19ef50f168a3d74978c69269ca6d55f7fa8d603c4b24c3e97ff0fba5ea6cc1a5b3251337f68bfbdfae375c436dff51e2dea1c683b7379230a281c204cc82468026e4581b7618310f21a4ed8e7b3f859351136e386883d6d4
+##
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+#
+# @NOGPL@
+#
+# structured_data_installed_sw.static
+#
+# Revision: 1.5
+#
+##
+
+object structured_data_installed_sw : structured_data_base {
+  function structured_data_installed_sw() : super({
+    installs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          string_id: {
+            type: 'string',
+          },
+          app_name: {
+            type: 'string',
+          },
+          vendor: {
+            type: 'string',
+          },
+          product: {
+            type: 'string',
+          },
+          product_version: {
+            type: 'string',
+          },
+          version: {
+            type: 'string',
+          },
+          display_version: {
+            type: 'string',
+          },
+          update: {
+            type: 'string',
+          },
+          language: {
+            type: 'string',
+          },
+          sw_edition: {
+            type: 'string',
+          },
+          target_sw: {
+            type: 'string',
+          },
+          target_hw: {
+            type: 'string',
+          },
+          path: {
+            type: 'string',
+          },
+          cpe_part: {
+            type: 'string',
+          },
+          cpev23: {
+            type: 'string',
+          }
+        }
+      }
+    },
+    packages: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          purl: {
+            type: 'string',
+            pattern: "^pkg:.+?/(?:.+?/)?.+?(?:@.+?)?(?:\?.+?)?(?:#.+?)?$"
+          },
+          child_packages: {
+            type: 'array',
+            items: {
+              type: 'string'
+            }
+          }
+        }
+      }
+    }
+  }, 'installed-sw', _FCT_ANON_ARGS[0]){}
+}
+

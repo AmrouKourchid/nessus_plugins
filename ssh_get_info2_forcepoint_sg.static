@@ -1,0 +1,50 @@
+#TRUSTED 65198ff3461ad48dbfa19b408c75c8784c0190dc1e6b39b34e8ad30d3273ce1356ad977c24860935d5145bc04cc1866853db777dd6f307d64992fd9bde6182c992de514bb4c643ef75fe986fa587fe405c12019e756414e63d98ee1ea5de3c38e7682bf1f7e4acebc34885d47a29559f38201587127e8b9ef4e8ba4a17c298217148d8409ee6c55265ce8b0252b56e8b5f70fec085f80fe9fabda81ca11d7af3e75ad1664814c1c8b76d8b14ad41bac52b7745f9e595d56ad1bdb3411c6ff0794c3da9c56620d88ed122611c0367e2d550db6c86a42ac5b3c4daad0ef2e23269c4b8c45cf37db7da475edb1cf1d4b96fa8025ba2fc8a768d1f07a6dde6015dc7386148af7a5591b2ffae962ae45650bdeb3759b124c14392f662f81677a9f02bd4d086f9fe36b213dc706a4904e385ecc9542f0c907cc0d66264478b76bbbeaea95a8817df6fedc831b27c69398a0dd743bfd50c234c5920c9e4407b94a1eda4cfdae3fb2311008062e7b611c99459db0b5255d0b1b744187a080d59a8f7279d17108279cf8cb20d258f638b19615f8cefb9366061cbf76fb0b83159254658d7b279cc8d3e24a30da6c733e5acc92cbfbcccbbc04d245a9b80138bf9365d164c1812b732141fdb5e6c1995a9da9bb5c07f90b10015cd1beb11cf28292f7597d91a94b01196f3d982f15b1db43de9a9a625a2bcc2fafda9c15b2fbfc069735a07
+#TRUST-RSA-SHA256 ab0c70704d7f3c8364636178366d8ee24e24ab57cd664d23e93ba579fd1f7a12bb846180b36871a3642ba854aca065829519567bbef32f0429c82fc9759416c892fb6db815fec83456cbce0a6c7936910cdb7d2a3572ce106585c914f304087759442d7d48291d3acf5150126a111c67a633c17641d44d85961421ae7d2a32c8ca4d0e61611884598f0b7688b083368d3a3528708c682c9b9ebf6cf372599a76ee321a3debf5c318e7540f8dea2231cf0edd5616f3457d0d8abea483a7395a1b65d4035ce9c821d7726e6b2d7ac105a2ff3a1ee7900c12e1cbbc3856fa06bb618c86439fc6d8c7b21ef04f9502dde7e5663069d324969b65ba71fa19f7b89b5b2f0d9a8e05cabe930e6dfd014189d0e7fe9db52bc40f7cb06084fd630eed5af22ff1a6e6a3b06b143b3e68d3f8531152aa2a2998f055591ac772d52dc833a376677311e054154b4324dbafc18154f78e358a354f224f63892fb164917fb3c333c95763944cf03613c94bc71793d026e60ed322c9ca49ec4ddea8cd1b885034b9e8f21b72a5c8752fa8d79111e9bc8127833a8794ce4f579f30c79b851a532af617e56d71926ce8b6e359b1dd5a987c985d1f09c5c27820e4cbcdaba6aa2e810df8a7343223914960aaf99f5b27b0e0d6f19a91e4830f5688a5ea4bdd0de5d523612f50bebed6c4611cdf3675abd047711fc2831cda18a4da3e3d63cf71512804
+# (C) Tenable Network Security, Inc.
+
+# Revision: 1.2
+
+##
+# callback for systems with "Software version: (Stonesoft|Forcepoint)" in response to sg-status
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "sg-status"
+#
+# @return @Returns TRUE if this the Stonesoft Engine or Forcepoint
+##
+function handle_forcepoint_sg(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name:"Host/Stonesoft/sg-status", value:cmd_res);
+
+  var os_name = chomp(pgrep(string:cmd_res, pattern:"Software version:"));
+  if(!empty_or_null(os_name))
+  {
+    os_name -= "Software version: ";
+    report += '\nThe remote target is : ' + os_name + '\n';
+    replace_kb_item(name:"Host/OS/sgstatus", value:os_name);
+    replace_kb_item(name:"Host/OS/sgstatus/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/sgstatus/Type", value:"firewall");
+
+    # Uptime.
+    var match = pregmatch(pattern:"System startup: (.*)", string:cmd_res);
+    if(!isnull(match) && !isnull(match[1]))
+      replace_kb_item(name:"Host/last_reboot", value:match[1]);
+
+  }
+  else
+  {
+    report += '\nThe remote system appears to based off of the Stonesoft Engine, but ' +
+              '\nwe could not determine version or device information.' +
+              '\nOS Security Patch Assessment is not available\n';
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  report += '\nOS Security Patch Assessment is available.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_forcepoint_sg.static', value: 48);
+  return TRUE;
+}

@@ -1,0 +1,70 @@
+#TRUSTED 157d3626d8d3f9a033df70be5f199bcc427ca3f8ed543dda889522cb739a6ebaa498e63888cf778f22062abef2bf4f3b821d867a0c22c2d9f1a7f60c503e4812d5465f73094b3342344bdd1e3580174fb45b59a1f93d4f2e1b16f4088ca8db8128ed5c96783c945fb22d9576aed3e299b60efedd2b2cde85aca7235cffc0fb90eef1f609133fdfc221e9c6558133f4a80d436ec4f140a2c605d33562b9b4a129b445d22a7d3d2acd60619e2c31c6240737354fe284b6820db2665eafa269e1bad6092fcb616b40d397cd7429204e4f154ee35f7d83c1b2aa3ba08a62d34ad3128ebe4c813f0754943d7867484a783d1cbb8e0d5972461eae3cf5ff65aa5f983f6cc1451804733073f1261e334440c8ba9a379a1c4049307fc8906b2af926b06c2b5a1b8c1d33c0e886b9dcc90c7e3af9863f9d3ff32e434598e2ba85d0b642b07f88184372089e8fff5d793d7e233f8e913bb35cb92c952a18d9b914e227c9b3ea689a96a8ee2a05b0d4b1ea699f06d136680a3372ec64853c070db6e6f4918380b294e03644a6bee1674acbf9cd7e9bceec501c2f13d4b8b259ccb4a9856abc731aa33e553658902febd433857e088ffed99dd7e87ed363c1a17ad92774d4376eba4801d28a3fe0976d55182fb800aed23145c94f681f5154b62925656d8c692c3306ac1708d13e7c3042d3927c280db69949f21863757f2d0f42815911e397
+#TRUST-RSA-SHA256 4d8d7c825a4c981846745bdc2dee4d27a56d38006bc524d882edf0c73b4a66fda269574de3e89396cda3c5f8a59b0d73e6d6c0eccf01d0bdaad52591aa08cc495ef9daf0ccd4f778e953f4842f1a8d58089148c549f40ff0026ad8fc8b6c820b16d867c59cfdaa30f0f2abfcbd646acbd65da33ce56ed7517bb7ef86c2349322ed59484d4a99bf0f3aa22eeac90a385ec84c1cb2e93186a1d82de8bac5d4bd088778b52fc1ab0303fd17d59d4fd881e1de8c8a0cae9ac0949f201b33f9c40cdd8cdb8f14c916b5dadaee0b648c1825187f13a1208444e0001a886a3b49b340ed6521fa49e605b50d9fd6f4b13e92ce20ef8f7002e5b4058b20c361a543acf9d69c26caf1acf9982118fba5f28b18119e17f506ac646875e669ecd7bf142d4bc3cc5a2ff40af071191cb0a6bed179f0193235aeb8565698a5f8635189169c0f15357f25d925c2834d4b95cc1483a71ba61e6a83404073dd94f133b48647f1344c0907e5bed18baeeae008fa961d9048589176f568ba4589d9259db6a177f67ef13ec47cf86e69719b95f97b6af89ed7d0ce87deea0a8507fcaa93b6fe0d2d81f6ca9474c79ea8ca2b93e73146f13ecf8a2241bd44d12256c1519e44cc75a05f8dd016459db415e042244f0bec3356297ce3c2974fe94e6ce3230162024f034027f16d173957850c674d96772e096d3a46cbab38bed82f8c723f08480b25626bf1
+
+function handle_citrix_xen(session, use_shell_handler, &channel, cmd_res)
+{
+  var buf, match, inventory, patches;
+  var failure_pretext = 'OS Security Patch Assessment is not available because';
+
+  report += '\nThe remote Citrix XenServer system is :\n' + cmd_res;
+  report += '\nLocal checks have been enabled for this host.\n';
+
+  match = pregmatch(string:cmd_res,
+                    pattern:"((X|x)en(S|s)erver|(C|c)itrix (H|h)ypervisor) release (\d+(?:\.\d+)*)\D");
+  if (!isnull(match))
+    replace_kb_item(name:"Host/XenServer/release", value:"XS"+match[1]);
+
+  # Get XenServer data.
+  inventory = run_command(
+    cmd:'cat /etc/xensource-inventory',
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel);
+
+  if (inventory)
+    replace_kb_item(name:"Host/XenServer/xensource-inventory", value:inventory);
+
+  # Get XenServer patch data.
+  patches = run_command(
+    cmd:'xe patch-list',
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel);
+
+  if (patches)
+    replace_kb_item(name:"Host/XenServer/patch-list", value:patches);
+
+  if(session.cmd_error || !inventory || !patches)
+  {
+    if(session.cmd_error)
+      failure_kb_msg = failure_pretext + ' of the following error :' + session.cmd_error;
+    else if (!inventory)
+      failure_kb_msg = failure_pretext + '\nthe command "/etc/xensource-inventory" failed to produce any results.';
+    else if (!patches)
+      failure_kb_msg = failure_pretext + '\nthe command "xe patch-list" failed to produce any results.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  var rpm = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                            internal_label:"XenServer");
+
+  var cpu = host_info_key_val['cpu'];
+
+  if (inventory && patches && rpm && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_citrix_xen.static', value: 61);
+    register_rpm_generic_os(release_info:cmd_res,
+                         vendor:"Citrix Cloud Software Group",
+                         cpe:"cpe:/a:citrix:xenserver");
+    return TRUE;
+  }
+
+  return TRUE;
+}
+

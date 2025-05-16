@@ -1,0 +1,597 @@
+###
+# bson is the data format mongodb uses.
+# This file can be used to serialize nasl objects to bson
+# and to convert bson to nasl objects.
+#
+# If this is used as a general serializer for nasl objects,
+# know that it treats strings as c strings, so they should not
+# contain nulls ('\0').
+#
+###
+
+##
+#
+#  Namespace mongodb
+#    Provides an encapsulated naming scope for mongodb functions and objects
+#
+##
+namespace mongodb {
+
+  global_var BSON_FLOATING_POINT = 0x01;
+  global_var BSON_STRING         = 0x02;
+  global_var BSON_DOCUMENT       = 0x03;
+  global_var BSON_ARRAY          = 0x04;
+  global_var BSON_BINARY         = 0x05;
+
+  global_var BSON_OBJECTID       = 0x07;
+  global_var BSON_BOOL           = 0x08;
+  global_var BSON_DATETIME       = 0x09;
+
+  global_var BSON_JAVASCRIPT     = 0x0D;
+  global_var BSON_DEPRECATED     = 0x0E;
+
+  global_var BSON_INT32          = 0x10;
+  global_var BSON_TIMESTAMP      = 0x11;
+  global_var BSON_INT64          = 0x12;
+
+  ##
+  # Make a bson document from a given nasl structure.
+  #
+  # @anonparam <structure> The nasl structure.
+  # @param <order> (optional) A list of keys in the order they should be encoded.
+  # @remark The order parameter only works for the outer-most array (not nested ones).
+  # @remark http://bsonspec.org/spec.html
+  # @returns The bson version of a given NASL structure, else
+  #          if NULL structure, detailed_log and return NULL, else
+  #          if unsupported structure, detailed_log and return empty string
+  # @category mongodb
+  ##
+  function bson_document_from_nasl_structure(order)
+  {
+    var structure = _FCT_ANON_ARGS[0];
+    var result = '';
+    var length;
+
+    if (typeof(structure) == 'string' || typeof(structure) == 'data')
+    {
+      result = bson_cstring(structure);
+      length = mkdword(strlen(result), order:BYTE_ORDER_LITTLE_ENDIAN);
+      return length + result;
+    }
+    else if (typeof(structure) == 'array')
+    {
+      result += bson_document_from_nasl_array(structure, order:order);
+      result += '\0';
+      length = mkdword(strlen(result) + 4, order:BYTE_ORDER_LITTLE_ENDIAN);
+      return length + result;
+    }
+    else if (typeof(structure) == 'int')
+    {
+      result = mkdword(structure, order:BYTE_ORDER_LITTLE_ENDIAN);
+      return result;
+    }
+    else if (typeof(structure) == 'undef')
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        'WARNING: Outer NULL type not implemented: undef');
+    }
+    else
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        'WARNING: Outer type not implemented: ' + typeof(structure));
+      return result;
+    }
+  }
+
+  ##
+  # Make a bson document from a given nasl array.
+  #
+  # @anonparam <structure> The nasl array.
+  # @param <order> (optional) A list of keys in the order they should be encoded.
+  # @remark The order parameter only works for the outer-most array (not nested ones).
+  # @remark http://bsonspec.org/spec.html
+  # @returns The bson version of a given NASL array
+  # @category mongodb
+  ##
+  function bson_document_from_nasl_array(order)
+  {
+    var array = _FCT_ANON_ARGS[0];
+    var key;
+    var structure_keys = keys(array);
+    var result = '';
+
+    if (is_list(order))
+    {
+      structure_keys = order;
+    }
+
+    foreach (key in structure_keys)
+    {
+      result += get_bson_type(array[key]);
+      result += bson_cstring(key);
+      result += bson_document_from_nasl_structure(array[key]);
+    }
+    return result;
+  }
+
+  ##
+  # Determine the nasl type of anonparam and return the appropriate BSON byte designator.
+  #
+  # @anonparam <structure> The nasl structure.
+  # @remark http://bsonspec.org/spec.html
+  # @returns The bson type byte of a given NASL structure, else
+  #          NULL if undefined or not implemented
+  # @category mongodb
+  ##
+  function get_bson_type()
+  {
+    var item = _FCT_ANON_ARGS[0];
+    var item_type = typeof(item);
+    if (item_type == 'string' || item_type == 'data')
+    {
+      return mkbyte(BSON_STRING);
+    }
+    else if (item_type == 'array')
+    {
+      if (is_list(item))
+      {
+        return mkbyte(BSON_ARRAY);
+      }
+      else
+      {
+        return mkbyte(BSON_DOCUMENT);
+      }
+    }
+    else if (item_type == 'int')
+    {
+      return mkbyte(BSON_INT32);
+    }
+    else if (item_type == 'undef')
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        'WARNING: Inner NULL type not implemented: undef');
+      replace_kb_item(name:"Testing/MongoDB/bson_type_parsing", value:FUNCTION_NAME + ': WARNING: Inner NULL type not implemented: undef');
+    }
+    else
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+        'WARNING: Inner type not implemented: ' + item_type);
+      replace_kb_item(name:"Testing/MongoDB/bson_type_parsing", value:FUNCTION_NAME + ': WARNING: Inner type not implemented: ' + item_type);
+    }
+  }
+
+  ##
+  # Make a nasl structure from a given bson document.
+  #
+  # @anonparam <structure> The bson document
+  # @remark The first two bytes are the length
+  # @remark http://bsonspec.org/spec.html
+  # @returns The nasl version of a given bson document, else
+  #          an error if the specified byte length does not match the actual byte length
+  # @category mongodb
+  ##
+  function nasl_structure_from_bson()
+  {
+    var bson = _FCT_ANON_ARGS[0];
+    var length_given = getword(blob:bson, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    var length_actual = strlen(bson);
+    if (length_given != length_actual)
+    {
+      return 'Invalid BSON - Incorrect length. given: ' + length_given + ' actual: ' + length_actual;
+    }
+
+    var result = parse_bson_document(bson);
+    return result.data;
+  }
+
+  ##
+  # Parse the next available bson document from the available bytes
+  #
+  # @anonparam <structure> The bson document
+  # @remark http://bsonspec.org/spec.html
+  # @returns the parsed version of the data in the "data" array index, and the remaining bytes in the "remaining" array index
+  #          an error if the bson does not have a training null byte
+  # @category mongodb
+  ##
+  function parse_bson_document()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var tmp;
+    var e_list = {};
+    var length;
+
+    tmp = parse_bson_length(remaining_bson);
+    length = tmp.data;
+    remaining_bson = tmp.remaining;
+
+    if (length > 5)  # 5 is the length of an empty document
+    {
+      tmp = parse_bson_e_list(remaining_bson);
+      e_list = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+
+    if (strlen(remaining_bson) > 0 && remaining_bson[0] != '\0')
+    {
+      return 'Invalid BSON - Could not find terminating null';
+    }
+
+    return {'data':e_list, 'remaining':consume_bytes(remaining_bson, 1)};
+  }
+
+  ##
+  # Parse the bson element list until a \0 or NULL is encountered
+  #
+  # @anonparam <structure> The bson element list
+  # @remark http://bsonspec.org/spec.html
+  # @returns all successfully parsed data as a nasl array as well as any remaining unprocessed bytes,
+  #          up until either \9, NULL, or when the length stops decreasing
+  # @category mongodb
+  ##
+  function parse_bson_e_list()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var tmp, type, element, bson_length, remaining_length;
+    var elist = {};
+
+    while (getbyte(remaining_bson) != '\0' &&
+           getbyte(remaining_bson) != NULL)
+    {
+      bson_length = strlen(remaining_bson);
+      tmp = parse_element(remaining_bson);
+      element = tmp.data;
+      remaining_bson = tmp.remaining;
+      remaining_length = strlen(remaining_bson);
+
+      if (!isnull(element[0]))
+        elist[element[0]] = element[1];
+
+      if (remaining_length >= bson_length)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:
+          'ERROR: bson parsing within while loop is not decreasing in size! remaining_bson is: ' +
+           remaining_bson);
+        return {'data':elist, 'remaining':remaining_bson};
+      }
+    }
+
+    return {'data':elist, 'remaining':remaining_bson};
+  }
+
+  ##
+  # Parse a given bson element
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @remark Not all elements are supported by this method; just the ones neccessary for plugins and audits
+  # @remark Key/value pairs are being returned as a list, and are reassembled correctly by parse_bson_e_list
+  # @returns Parse element in the data array index, with all remaining unparsed elements in the remaining array index
+  # @category mongodb
+  ##
+  function parse_element()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var length = 0;
+    var key, value, tmp;
+    var type;
+
+    tmp = parse_byte(remaining_bson);
+    type = tmp.data;
+    remaining_bson = tmp.remaining;
+
+    tmp = parse_cstring(remaining_bson);
+    key = tmp.data;
+    remaining_bson = tmp.remaining;
+
+    if (type == BSON_STRING ||
+        type == BSON_JAVASCRIPT ||
+        type == BSON_DEPRECATED)
+    {
+      tmp = parse_word(remaining_bson);
+      length = compliance_forward_compat::int_from_hex(compliance_forward_compat::hex_from_data(compliance_forward_compat::big_endian_from_little_endian(tmp.data)));
+      remaining_bson = tmp.remaining;
+
+      tmp = parse_cstring(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+
+      if (length != strlen(value)+1)
+      {
+        dbg::detailed_log(
+          lvl:2,
+          src:FUNCTION_NAME,
+          msg:'WARNING: bson cstring was the wrong length',
+          msg_details:{
+             "key":{"lvl":2, "value":key},
+             "length":{"lvl":2, "value":length},
+             "actual":{"lvl":2, "value":strlen(value)+1}
+          });
+        replace_kb_item(name:"Testing/MongoDB/parse_element_length", value:FUNCTION_NAME +
+                             ': WARNING: bson cstring was the wrong length for key: ' +
+                             key + 'length: ' + length + ' actual: ' + (strlen(value)+1));
+      }
+    }
+    else if (type == BSON_DOCUMENT || type == BSON_ARRAY)
+    {
+      tmp = parse_bson_document(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else if (type == BSON_INT32)
+    {
+      tmp = parse_int32(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else if (type == BSON_FLOATING_POINT)
+    {
+      tmp = parse_floating_point(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else if (type == BSON_BOOL)
+    {
+      tmp = parse_bool(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else if (type == BSON_DATETIME || type == BSON_INT64 || type == BSON_TIMESTAMP)
+    {
+      tmp = parse_int64(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else if (type == BSON_OBJECTID)
+    {
+      tmp = parse_objectid(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else if (type == BSON_BINARY)
+    {
+      tmp = parse_binary(remaining_bson);
+      value = tmp.data;
+      remaining_bson = tmp.remaining;
+    }
+    else
+    {
+      dbg::detailed_log(
+        lvl:2,
+        src:FUNCTION_NAME,
+        msg:'ERROR: bson value type not implemented',
+        msg_details:{
+           "key":{"lvl":2, "value":key},
+           "hex":{"lvl":2, "value":hexstr(type)},
+           "raw":{"lvl":2, "value":type}
+        });
+        replace_kb_item(name:"Testing/MongoDB/parse_element_bad_type", value:FUNCTION_NAME +
+                             ': ERROR: bson value type not implemented for key of "' + key +
+                             '" - hex: "' + hexstr(type) + '" raw: "' + type + '"');
+
+    }
+
+    return {'data':make_nested_list(key, value), 'remaining':remaining_bson};
+  }
+
+  ##
+  # Consume two bytes to determine the length of the following bson element
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns element length in the data array index, with the remaining unparsed element in the remaining array index
+  # @category mongodb
+  ##
+  function parse_bson_length()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var length = getword(blob:remaining_bson, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    return {'data':length, 'remaining':consume_bytes(remaining_bson, 4)};
+  }
+
+  ##
+  # Consume a c-string (ends in \0) to determine the key of the following bson element
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key name in the data array index, with the remaining unparsed element in the remaining array index
+  # @category mongodb
+  ##
+  function parse_cstring()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+
+    var end_of_string_id = stridx(remaining_bson, '\0');
+    var c_string = substr(remaining_bson, 0, end_of_string_id-1);
+    var length = end_of_string_id + 1;
+
+    return {'data': c_string, 'remaining':consume_bytes(remaining_bson, length)};
+  }
+
+  ##
+  # Consumes an int32 worth of bytes and returns the value result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_int32()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var bytes = getdword(blob:remaining_bson, pos:0, order:BYTE_ORDER_LITTLE_ENDIAN);
+    var result = int(bytes);
+    return {'data':result, 'remaining':consume_bytes(remaining_bson, 4)};
+  }
+
+  ##
+  # Consumes an int64 worth of bytes and returns the value result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_int64()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var bytes = compliance_forward_compat::big_endian_from_little_endian(substr(remaining_bson, 0, 7));
+    var result = compliance_forward_compat::decimal_string_from_int64(compliance_forward_compat::int64_from_data(bytes));
+    return {'data': result, 'remaining':consume_bytes(remaining_bson, 8)};
+  }
+
+  ##
+  # Consumes a byte and returns the value result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_byte()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var byte = getbyte(blob:remaining_bson, pos:0);
+    return {'data':byte, 'remaining':consume_bytes(remaining_bson, 1)};
+  }
+
+  ##
+  # Consumes an word worth of bytes and returns the value result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_word()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+
+    var word = substr(remaining_bson, 0, 3);
+    return {'data':word, 'remaining':consume_bytes(remaining_bson, 4)};
+  }
+
+  ##
+  # Consumes a byte and returns the NASL bool result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_bool()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var value = getbyte(blob:remaining_bson, pos:0);
+    var bool_value;
+    if (value == 0)
+    {
+      bool_value = FALSE;
+    }
+    else
+    {
+      bool_value = TRUE;
+    }
+    return {'data':bool_value, 'remaining':consume_bytes(remaining_bson, 1)};
+  }
+
+  ##
+  # Returns an ingested UUID
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @remark We only currently support ingesting UUIDs, which are stored in binary. More may be added in the future
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_binary()
+  {
+    # This function is currently only prepared to handle UUID binary return types.
+    # It will destroy the rest of the meaningful remaning_bson if it receives binary data that isn't a UUID.
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var length = ord(substr(remaining_bson, 0, 1));
+    var subtype = ord(substr(remaining_bson, 1, 4));
+    if (length != 16 || subtype != 4)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+      'WARNING: Expected length 16 is ' + int(length) + ' and expected subtype 4 is ' + int(subtype) + '.');
+      replace_kb_item(name:"Testing/MongoDB/UUID_parsing", value:FUNCTION_NAME + ': WARNING: Expected length 16 is ' + int(length) + ' and expected subtype 4 is ' + int(subtype) + '.');
+    }
+    var uuid = '';
+    uuid += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:5, order:BYTE_ORDER_BIG_ENDIAN));
+    uuid += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:9, order:BYTE_ORDER_BIG_ENDIAN));
+    uuid += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:13, order:BYTE_ORDER_BIG_ENDIAN));
+    uuid += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:17, order:BYTE_ORDER_BIG_ENDIAN));
+    uuid = substr(uuid,0,7) + '-' + substr(uuid,8,11) + '-' + substr(uuid,12,15) + '-' + substr(uuid,16,19) + '-' + substr(uuid,20);
+    return {'data':uuid, 'remaining':consume_bytes(remaining_bson, 21)};
+  }
+
+  ##
+  # Consumes an objectid's worth of bytes and returns the NASL parsed result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_objectid()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var result = '';
+    result += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:0, order:BYTE_ORDER_BIG_ENDIAN));
+    result += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:4, order:BYTE_ORDER_BIG_ENDIAN));
+    result += compliance_forward_compat::hex_from_int(getdword(blob:remaining_bson, pos:8, order:BYTE_ORDER_BIG_ENDIAN));
+    return {'data':result, 'remaining':consume_bytes(remaining_bson, 12)};
+  }
+
+  ##
+  # Consumes a float's worth of bytes and returns the NASL parsed result
+  #
+  # @anonparam <structure> The bson element
+  # @remark http://bsonspec.org/spec.html
+  # @remark Little endian only! Spec doesn't say to expect big-endian here.
+  # @returns key value in the data array index, with the remaining unparsed bson in the remaining array index
+  # @category mongodb
+  ##
+  function parse_floating_point()
+  {
+    var remaining_bson = _FCT_ANON_ARGS[0];
+    var raw_floating_point = substr(remaining_bson, 0, 7);
+
+    var result = compliance_forward_compat::parse_floating_point_little_endian(raw_floating_point);
+
+    return {'data':result, 'remaining':consume_bytes(remaining_bson, 8)};
+  }
+
+
+  ##
+  # Truncates the first <consume> <bytes> and returns the remainder
+  #
+  # @anonparam <bytes> The bytes to be consumed and return
+  # @anonparam <consume> The amount of bytes to consume
+  # @returns <bytes> with the first <consume> bytes stripped off, else
+  #          NULL if <consume> > number of <bytes> remaining
+  # @category mongodb
+  ##
+  function consume_bytes()
+  {
+    var string_to_be_consumed = _FCT_ANON_ARGS[0];
+    var number_to_consume = _FCT_ANON_ARGS[1];
+    if (strlen(string_to_be_consumed) <= number_to_consume)
+    {
+      return NULL;
+    }
+    return substr(_FCT_ANON_ARGS[0], _FCT_ANON_ARGS[1]);
+  }
+
+  ##
+  # Adds a \0 terminator
+  #
+  # @anonparam <byte> The bytes to add null termination to
+  # @returns <bytes> + '\0'
+  # @category mongodb
+  ##
+  function bson_cstring()
+  {
+    return _FCT_ANON_ARGS[0] + '\0';
+  }
+}

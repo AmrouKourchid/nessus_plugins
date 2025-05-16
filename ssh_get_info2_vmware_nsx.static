@@ -1,0 +1,199 @@
+#TRUSTED 2b477b686e530a82e3dacce096c978374cf20cb88ed641482323dd4577ac8b4fa9c000b8f7598c049dd5ef42c1bad4aad9a051096c51a2b7222edead01c6bb900f099e32d7bfe0a6bf7d2890dcf0e8114c1d6dfeec21762e7142f645ce1e5be565f818a5f0d210a8746c036a9fabf06eefa8995c7611b95f906d44ac4c2f6cb0371707c9b19ad485a61aa04d0d8decd723a39d02f97c90c9dd42b803a7dad2e3f2b243292e81737d09dd0c9406e9973c969dd8f862fdc2da32a884c9680224485d5596ac641d9c643673353252e1840b07f60bf79291d0870a8af94ea907b26ddc72123156b8924ad91b4e5c8426a3012defb7f10902925457608b62673a241f3a5aa6c8ce292a61b4f20f56dce0f07bfa9ea15ba6b5b38384771288f94f0d37997b91aed48e3bdddddc426fe5304f01fa82d064f16628369fda934e2d9f9a3b482bccfbbb4f31195026e024746344b27b85fffd51e0f238a30f4e36cf832a8b5b49f2426c237e29dae2465e10a60abb635fc360289f8214462d7baef61c3eab6195f52a7f0254fa2705431601a04260748454b5692f622991f00b4c94f12325c2a69799df6d057a00fc841cd3f6b7d9b363de030f62f0d09b6a737f063416e9fdab7f6c08772e49b61f6cfbffc9e9905b2392fb809db605b322cfb842d228664966bfc45b1859da1f837c92b21dd8a1787bfa92fcd78e68502fd75d71fbac7e
+#TRUST-RSA-SHA256 abebded525cd60b45d742640f0377b92612ce9382c4ab9ccfe4bd7ed432efe88a7459d7403577dea023cd9af0e9ce8eee88fa206a8a1fc306658ed73dbe2ae74d0ee66c5568a0eddde58839efba69e870ca7c787c3ee5eac2ea206f2797daab7059b4de5bd3f805a9fe5baa47120d6121808d75889d97d2093a99d0ef7793a0bb8a48d63479a01b6b5a141ffc89cdcaa05f63c4adfe21cc4519da755015ad187b068948223ef0a6eb71d30730ff45d885a794d4c442f4e51b947bcee480ff8afd575b12be711c6a389219e0ef890e45968a10b04fa04f2b877e5605ba4159f9d37e328bebc787ea16bd496c33be313e2f27d2dc09f107737df55146e6adee78d734df2a326e52bac53924c2a9d80aacaa13adf56c651c045f6990f38db3392291eb8feb1c2d5086c759da21b7e9c5b8f8016fd781b93fb7f990195a0fe97686b15aac00b50fd790e91be73eb39e93d25253825586d768cb5dab4d6534b17c61e66aad6403b0a3a86989534ec4bc4cab56bd77fce15c598b4e3730851e9743e98c66758a08e6e187169adb1f4b1b4bc356a27e9bdd0da773aae9b5fae84e4a383ae0e0aa9e0271f9b64e636a253fae14a86f7b549f4e6b8432996fea89330e94eff42085c55e2f8b3ebd52e466407330ecd0ce62be3591fd91d10c5a4aac93ce7122375dfcbc28ddca3ab7b77ff5256827913a0f53779a1be336ac56ba1fcc6f3
+
+
+##
+# check if this is a VMWare NSX device based on information collected
+#
+# @return Returns TRUE if we know this is not VMWare NSX, FALSE otherwise.
+##
+function vmware_nsx_pre_check_fail()
+{
+  # have we already checked that the host is not VMware NSX?
+  if(host_info_key_val['host_not_vmware_nsx'])
+  {
+    # already checked that host is not NSX, no need to check again
+    return TRUE;
+  }
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     (host_info_key_val['showversion_unrecognized'] >!< "NSX Manager" &&
+      host_info_key_val['showversion_unrecognized'] >!< "vShield Edge"))
+    return TRUE;
+
+  # Not VMware NSX if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "NSX Manager" or "vShield Edge" in show version
+#
+# @param  [session:object]          A session object for current SSH connection.
+# @param  [use_shell_handler:bool]  Flag to enable shell handler in run_command. (unused)
+# @param  [channel:object]          A channel object for the current SSH connection.
+# @param  [cmd_res:data]            Command result from ssh_get_info2: "show version"
+#
+# @return [bool|NULL]  TRUE if this is a VMWare NSX, NULL otherwise
+##
+function handle_vmware_nsx(session, use_shell_handler, &channel, cmd_res)
+{
+  var os, version, build, kernel, nsx_product;
+  var buf, chunk, items, line, lines;
+  var nsx_manager_regex = 'System type:[\\s\\S]*NSX Manager';
+  var nsx_vshield_regex = 'Name:(.|\\r|\\n)*vShield Edge';
+  var value, manager_data, vshield_data;
+  var sslvpn = "unknown";
+
+  manager_data = pregmatch(pattern:nsx_manager_regex, string:cmd_res);
+  vshield_data = pregmatch(pattern:nsx_vshield_regex, string:cmd_res);
+
+  if (!isnull(manager_data))
+  {
+    os = "VMware NSX";
+    nsx_product = "Manager";
+
+    value = pregmatch(pattern:'[0-9\\.]+(?=-?[\\s\\S]*$)', string:cmd_res);
+
+    if (!isnull(value))
+      version = value[0];
+
+    value = pregmatch(pattern:'-[0-9]+(?=[\\s\\S]*$)', string:cmd_res);
+
+    if (!isnull(value))
+      build = value[0];
+  }
+  else if (!isnull(vshield_data))
+  {
+    os = "VMware NSX";
+    nsx_product = "Edge";
+
+    lines = split(cmd_res, sep:'\n', keep:FALSE);
+    foreach line (lines)
+    {
+      if ("Version:" >< line)
+      {
+        value = pregmatch(string:line, pattern:'^Version:[\\s\\t]*([0-9]+(?:\\.[0-9]+)*)$');
+
+        if (!isnull(value) && value[1])
+          version = value[1];
+      }
+      else if ("Build number:" >< line)
+      {
+        value = pregmatch(string:line, pattern:'^Build number:[\\s\\t]*([0-9]+)$');
+
+        if (!isnull(value) && value[1])
+          build = value[1];
+      }
+      else if ("Kernel:" >< line)
+      {
+        value = pregmatch(string:line, pattern:'^Kernel:[\\s\\t]*([0-9]+(?:\\.[0-9]+)*)$');
+
+        if (!isnull(value) && value[1])
+          kernel = value[1];
+      }
+    }
+
+    buf = run_command(
+      cmd:'show service sslvpn-plus',
+      session:session,
+      use_shell_handler:use_shell_handler,
+      channel:channel);
+
+    if (buf)
+    {
+      set_kb_item(name:"Host/VMware NSX/show_service_sslvpn-plus", value:buf);
+
+      if ("is not running" >< buf) sslvpn = FALSE;
+      else if ("is running"  >< buf) sslvpn = TRUE;
+    }
+    set_kb_item(name:"Host/VMware NSX/SSLVPN-Plus", value:sslvpn);
+  }
+
+  if (os)
+  {
+    report += '\nCommand execution for VMware NSX device successful.';
+
+    set_kb_item(name:"Host/VMware NSX/showversion", value:cmd_res);
+    set_kb_item(name:"Host/VMware NSX/Product", value:nsx_product);
+
+    set_kb_item(name:"Host/OS/showver", value:os);
+    set_kb_item(name:"Host/OS/showver/Confidence", value:100);
+    set_kb_item(name:"Host/OS/showver/Type", value:"embedded");
+
+    os = os + " " + nsx_product;
+    report += '\nProduct: ' + os + '\n';
+
+    if (!isnull(version))
+    {
+      os = os + " " + version;
+      set_kb_item(name:"Host/VMware NSX/Version", value:version);
+
+      if (build)
+      {
+        build = build - '-';
+
+        os = os + " Build " + build;
+        set_kb_item(name:"Host/VMware NSX/Build", value:build);
+      }
+
+      if (kernel)
+        set_kb_item(name:"Host/VMware NSX/Kernel", value:kernel);
+
+      report += '\nOS Security Patch Assessment is available for '+os+'.';
+      sshlib::enable_local_checks();
+      replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_vmware_nsx.static', value: 165); 
+    }
+    else
+    {
+      failure_kb_msg =
+        'The remote operating system appears to be a VMware NSX device.\n' +
+        'However, we could not detect the version from the output of "show version",\n' +
+        'and Local Checks will not be enabled at this time.\n';
+
+      failure_kb_type = lcx::ISSUES_INFO;
+      report += '\n' + failure_kb_msg + '\n';
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    }
+  }
+
+  return NULL;
+}
+
+
+#
+# callback for systems that are not VMWare NSX
+#
+function handle_not_vmware_nsx(session, use_shell_handler, &channel, cmd_res)
+{
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_vmware_nsx'] = TRUE;
+  }
+}

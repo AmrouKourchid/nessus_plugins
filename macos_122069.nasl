@@ -1,0 +1,137 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(214661);
+  script_version("1.9");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/20");
+
+  script_cve_id(
+    "CVE-2024-44172",
+    "CVE-2024-44243",
+    "CVE-2024-54497",
+    "CVE-2024-54509",
+    "CVE-2025-24086",
+    "CVE-2025-24092",
+    "CVE-2025-24093",
+    "CVE-2025-24094",
+    "CVE-2025-24099",
+    "CVE-2025-24100",
+    "CVE-2025-24102",
+    "CVE-2025-24103",
+    "CVE-2025-24106",
+    "CVE-2025-24109",
+    "CVE-2025-24112",
+    "CVE-2025-24114",
+    "CVE-2025-24115",
+    "CVE-2025-24116",
+    "CVE-2025-24118",
+    "CVE-2025-24120",
+    "CVE-2025-24121",
+    "CVE-2025-24122",
+    "CVE-2025-24123",
+    "CVE-2025-24124",
+    "CVE-2025-24127",
+    "CVE-2025-24130",
+    "CVE-2025-24136",
+    "CVE-2025-24137",
+    "CVE-2025-24138",
+    "CVE-2025-24139",
+    "CVE-2025-24146",
+    "CVE-2025-24149",
+    "CVE-2025-24151",
+    "CVE-2025-24154",
+    "CVE-2025-24156",
+    "CVE-2025-24159",
+    "CVE-2025-24160",
+    "CVE-2025-24161",
+    "CVE-2025-24163",
+    "CVE-2025-24174",
+    "CVE-2025-24176",
+    "CVE-2025-24185"
+  );
+  script_xref(name:"APPLE-SA", value:"122069");
+  script_xref(name:"IAVA", value:"2025-A-0068-S");
+
+  script_name(english:"macOS 14.x < 14.7.3 Multiple Vulnerabilities (122069)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote host is missing a macOS update that fixes multiple vulnerabilities");
+  script_set_attribute(attribute:"description", value:
+"The remote host is running a version of macOS / Mac OS X that is 14.x prior to 14.7.3. It is, therefore, affected by
+multiple vulnerabilities:
+
+  - An out-of-bounds write was addressed with improved input validation. This issue is fixed in macOS Ventura
+    13.7.3, macOS Sonoma 14.7.3, visionOS 2.3, iOS 18.3 and iPadOS 18.3, macOS Sequoia 15.3. An attacker may
+    be able to cause unexpected system termination or corrupt kernel memory. (CVE-2025-24154)
+
+  - A privacy issue was addressed with improved private data redaction for log entries. This issue is fixed in
+    macOS Ventura 13.7.3, macOS Sonoma 14.7.3, macOS Sequoia 15. An app may be able to access contacts.
+    (CVE-2024-44172)
+
+  - A configuration issue was addressed with additional restrictions. This issue is fixed in macOS Sequoia
+    15.2. An app may be able to modify protected parts of the file system. (CVE-2024-44243)
+
+  - The issue was addressed with improved checks. This issue is fixed in iPadOS 17.7.4, macOS Ventura 13.7.3,
+    macOS Sonoma 14.7.3, visionOS 2.2, tvOS 18.2, watchOS 11.2, iOS 18.2 and iPadOS 18.2, macOS Sequoia 15.2.
+    Processing web content may lead to a denial-of-service. (CVE-2024-54497)
+
+  - An out-of-bounds write issue was addressed with improved input validation. This issue is fixed in macOS
+    Sonoma 14.7.2, macOS Sequoia 15.2, macOS Sonoma 14.7.3. An app may be able to cause unexpected system
+    termination or write kernel memory. (CVE-2024-54509)
+
+Note that Nessus has not tested for these issues but has instead relied only on the operating system's self-reported
+version number.");
+  script_set_attribute(attribute:"see_also", value:"https://support.apple.com/en-us/122069");
+  script_set_attribute(attribute:"solution", value:
+"Upgrade to macOS 14.7.3 or later.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:N/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:POC/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:P/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2025-24154");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2024/12/11");
+  script_set_attribute(attribute:"patch_publication_date", value:"2025/01/27");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/01/27");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:apple:mac_os_x:14.0");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:apple:macos:14.0");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"MacOS X Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl");
+  script_require_ports("Host/MacOSX/Version", "Host/local_checks_enabled", "Host/MacOSX/packages/boms");
+
+  exit(0);
+}
+
+include('vcf.inc');
+include('vcf_extras_apple.inc');
+
+var app_info = vcf::apple::macos::get_app_info();
+
+var constraints = [
+  { 'fixed_version' : '14.7.3', 'min_version' : '14.0', 'fixed_display' : 'macOS Sonoma 14.7.3' }
+];
+
+vcf::apple::macos::check_version_and_report(
+    app_info:app_info,
+    constraints:constraints,
+    severity:SECURITY_HOLE
+);

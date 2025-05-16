@@ -1,0 +1,162 @@
+#TRUSTED a0104fb9f89c232fce39ec774c9a11966d8ea68829e62de6b3b82bcc155d1ffb5af7445ba6e31e08e9ca33cc0f71e777ba7a6fddc2696ba0771b6d3c7f06ebe78dc8ed9662596c0ca73ab8fe9fb493e30117925ec142ee07dd019ec8c73c18d349004836dda58a892b469cd7bdd42771933e42ceb10634b4b6afa88689937599b2a29d672f7989620c0e01b17275150829eea1fcac45c55783d18c1557aeaedb2e9a7ad332a871d600710cc6967e2525c9a1a95d8298b0e1c7a4c944b6d7f1448de85dfeefbe8f28e3643d285ab66985c73b2672623277c08531e11a7f73ec5760d6cad083e3ba033e005e7db5c0f2ca228cef47da661c4543dd10020faeeee3a0b7cb911ae3b84c1120d47a0ab3b42cd9bc836008e44195df92a7b9157bbd60d46e0a51efbc350d57cf0f9e5665387446031edd3d20fe433c67c9e4980b166e6a27d12f4ab4cda67ab22a5134401be0cc71e4a426e4021d4331d7d8801c4b9fa164885c9d1a1af0358ebffbb7d2e03acef37121f957513f4b984113ea7b2261ebb345c127cf26295eb2f2e3983edafe8d008a7c8f21543d75cbfa33ee3cb47cb36526de0fd949cfa446f18a4914b335d0adbda30be9c668514221696d26d330c1d7ef08c37efd419bc4b0d5d28234686f8c3312e6589f92e738d47563fd79dd70492a5534f7fbb934873769a603f6b97eacf498f25cbc829263530135e1bb62
+#TRUST-RSA-SHA256 35153dde0817a8daa1a0b9b08faf63bff21aadfdeff6f04c038f6108228f7bfa073137d0cf40717b8c43f1fc4c52495563bef2fbed14fb1aaf8d2c531df08a119ba6b5761ad05265444428c812b08a5786ac6e98a3d0e4ab0f3bcba8877df88d55e8551c1793f0c3581159ab6de901a6a649604bb8a0e90c92a09c43bf33cc8a92d1aa7f368ab1bbec642420c6b0879c9f448e6161232048126eeacf0c4d23e645cfe0a43039136231fa2b2022113ac73f215a7b242a2f7f7ce77bef0773d2e14f196b46f772302b1566efeca6f0e7057ce31e5e10964964c1ccdb13c324548d7316466829b760636739f9b900f2be4e326ae44b3e3a6ab1c8fd8d9796de45b31bb0dbd752044e52524298ce69537aef65463e9e9b0e35c4afab7acac739b1508c15b8d4ea39fee2ce6e0f948440caeccf66f39c95b20227ae08a2fb7b53ca1cfa605c8ff80f167510df166c90ce5fd716d259ee57f982f3a9edfccf458874082434f842275332b224c22a3bc6ffbdb9e6c78c484879c2b619217e98926d61aa120ddc61412b4dd1caddfeeaf4e828e743765f0767981a0f41c2f07f528eb89800c6f867694b471165bdf33a81e23bf998586afbe12e589419bb080cddc4d19404066a104969bae5646d9d74bc7e265c784de345732c588e75eb9c1c4adf51dd8039dc5d1425a9dda6e5abc5d47de4b2f926b640b8edba82b21d3da0e793283e
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision 1.0
+
+function fabricos_pre_check_fail()
+{
+  # we've already checked that the host is not Fabric OS previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_fabricos'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['version_unrecognized']) &&
+     host_info_key_val['version_unrecognized'] !~ fabricos_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Fabric OS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+function save_fabricos_fingerprint(os)
+{
+  report += '\nThe remote operating system appears to be ' + os + '.\n';
+
+  replace_kb_item(name:"Host/OS/showver", value:os);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"switch");
+}
+
+function handle_fabricos(session, use_shell_handler, &channel, cmd_res)
+{
+  var os = "Fabric OS";
+
+  replace_kb_item(name:"Host/FabricOS/version", value:cmd_res);
+
+  var ver_match = pregmatch(pattern: "\nFabric OS: +v([0-9a-zA-Z._-]+?)\r?\n", string: cmd_res);
+  # Kernel version should be on first line of version output
+  var ker_match = pregmatch(pattern: "^Kernel: +([0-9a-zA-Z._-]+?)\r?\n", string: cmd_res);
+
+  if(isnull(ver_match) || isnull(ver_match[1]))
+  {
+    save_fabricos_fingerprint(os:os);
+
+    var err_msg = '\nHowever, we could not detect the version from the output of "version".' +
+                  '\nOS Security Patch Assessment is not available.';
+    failure_kb_msg = "Could not parse Fabric OS version from 'version' output.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+
+    return TRUE;
+  }
+
+  os += ' ' + ver_match[1];
+
+  if(!isnull(ker_match) && !isnull(ker_match[1]))
+  {
+    os = 'Linux Kernel ' + ker_match[1] + ' on ' + os;
+  }
+
+  var cmd_set, cmd_output;
+  var err = FALSE;
+  var cmd_list = [
+    {
+      "cmd": "configshow -all",
+      "kb": "Host/Brocade/FabricOS/configshow_-all",
+      "err_kb": "Host/Brocade/FabricOS/errmsg/configshow_-all"
+    },
+    {
+      "cmd": "ipfilter --show",
+      "kb": "Host/fwrules/output/ipfilter_show",
+      "err_kb": "Host/fwrules/errmsg/ipfilter_show"
+    },
+    {
+      "cmd": "uptime",
+      "kb": "Host/last_reboot",
+      "err_kb": "Host/Brocade/FabricOS/errmsg/uptime"
+    }
+  ];
+
+  foreach cmd_set (cmd_list)
+  {
+    # sanity check which should absolutely never happen
+    if (empty_or_null(cmd_set['cmd']) || empty_or_null(cmd_set['kb']) || empty_or_null(cmd_set['err_kb']))
+      continue;
+    
+    cmd_output = run_command(cmd:cmd_set['cmd'],
+      session:session,
+      use_shell_handler:use_shell_handler,
+      channel:channel);
+    if(empty_or_null(cmd_output))
+    {
+      set_kb_item(name: cmd_set['err_kb'], value: "The command failed to produce any output.");
+      err = TRUE;
+      continue;
+    }
+    set_kb_item(name: cmd_set['kb'], value: cmd_output);
+  }
+
+  # Attempt to gather Timezone info
+  linux_timezone_check(session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+  if(err)
+  {
+    failure_kb_msg =
+      'The remote operating system appears to be a type of ' + os + '.\n' +
+      'However, at least one command has run into unexpected errors and local checks\n' +
+      'will not be enabled at this time.\n';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  save_fabricos_fingerprint(os:os);
+
+  report += '\n' + 'Nessus was able to run commands in support of OS' +
+            '\n' + 'fingerprinting.' +
+            '\n';
+}
+
+function handle_not_fabricos(session, use_shell_handler, &channel, cmd_res)
+{
+	if (use_shell_handler) store_shell_info();
+  host_info_key_val['host_not_fabricos'] = TRUE;
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/version", value:cmd_res);
+    host_info_key_val['version_unrecognized'] = cmd_res;
+  }
+}

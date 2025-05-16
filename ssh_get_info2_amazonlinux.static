@@ -1,0 +1,165 @@
+#TRUSTED 9aa01be349bcc7a0b53d25f20b0098f0b81a1e2fd534b58b375aab30fee1779bcab39a7fda092e525b64cae25db896d72ca151c732dec4a2a3c9fc15931ff0996a19752b866952a1a23ef97c44050811ca92a3969feac9939e9abd48f4e06b34cf17e22e9ba16e5b6fdc3cb9c4375f40a0d35370891ddc0eb264971837f2693dc5e9d95ffdeeab09d7260f3e8deaf12d33e0239c00d6fe04c19cb591d94f53f5800781c63751547d424a6e95f7e1fdb862c9f192bc2a162221bf1d86e647380baef6eefeafa1454a98c381fc7e23d7c386b6469037849d2b6d43134e25338061dc6f8940d253c9b85734014c1b17be57a82b8bbce4494108445f6964073ecdb2fea8774a5731f95d0bd91ecd450b9c25c0da6a668dc53d671de5642069494ff864f6c7d8317588ae700f0057128ca36553ef13bb75eb72dd4328637acdff6b3784645bf3d52729c3ecc8307f903bff9c0ee03ebca9248545878fcc7803f691e9dc69470e74aa7afc5cf1a2a4f9b9f029469d7d6c12c04d16ad83731c86bd3bb287284ce0cd7e9d96582dc4bac2cbbe84d1db68f327d1898fae009be468c8db97baf62ddaa90b199b2f69779818444f74be4cab2b5a2256edd00217e7940bd9a5500f0f68469c0af4ec93f30cd15dc4b59add8655ee8b552e50511fe39463fb10bfcfe43efaac18a3d1a48ebf73953c37d40a985c562066f1a075fa93ead8b9ad
+#TRUST-RSA-SHA256 0eb97db88f0fde64760d7a4770df35b43969a6e690ab94cc930dce3cba957aa2021da59268db0b992f170c73864393f1258dc75cacdefd78e0e7e3aed9ed104c65d5af258c4f7ff3ab7c7035df70a9a92e68de2b935060c4fb3df00b299b81659f60c8d6568c3826f534b6746229c1257e73393e958e979fe2868c4bc3964381c1746103b848f5408c3668c259e80735b8535571873d3a987487ba679903616a9f549fb5d3ec252cefe0dfcd6c1cb9491452aaf6e55a816910534c3857a068f21423eebd2fd3be26e48893374d1a3b4261e0cddf1fcc6bd063eda622bb5c559e24497c085a723da4f83448a41f562b4eca1714b3215a25b8e95be9aed2534ec405255efdb8283eb1a39f668f2dbccf94e939de4da4e9f8a344f282a40d4d26ef506f2e94fcc5eeaa7ba47102a2adc15be448ce04dab470147991ded1aaa7392971ad45aa537f1dc8d569d4ae1bdf14940cc6f45509f01222b45100b9020b62eb0d3b5b7daf5a7ec36d7bb8626c8ee3c78b65fd20b1a023703f23b044ea9ebeff27b6f06ca2ea56e1c11880496fe10092fc4723013cf1793d0284a1c51a4af6f52ea080968504818887086a883ca2ac3b4f2168160e5e1c0705b5772a140feabb5521a64b4698c265e61a25c9deba4b22488d184cd511528ce7337b24f6abe4363082c656ea7a5b8fa616fbd7878ada9de431f030dafa44318578e15275c3c73a
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.12
+
+# AmazonLinux helper functions
+
+function handle_amazonlinux_os(session, use_shell_handler, &channel, cmd_res)
+{
+  var match, version_check_dictionary, version_check_regex, prefix, kb_value, year;
+  var repo_list, extras_list, repo_ls, ls_split, ls_line, repo_match, repo_name;
+  var repo_cont, repo_data, repo_label;
+  var br_cmd_res;
+  var bottlerocket = FALSE;
+
+  if (cmd_res && "/etc/system-release" >!< cmd_res )
+    replace_kb_item(name:"Host/etc/system-release", value: cmd_res);
+
+  br_cmd_res = run_command(cmd:"cat /etc/bottlerocket-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if(pgrep(pattern:"(^|\n)NAME=Bottlerocket($|\n)", string:br_cmd_res))
+  {
+    replace_kb_item(name: "Host/etc/bottlerocket-release", value:br_cmd_res);
+    bottlerocket = TRUE;
+  }
+
+  version_check_dictionary = {
+    "Amazon Linux AMI release ([0-9.]+)([^0-9]|$)":'ALA',
+    "^Amazon Linux release 2(?:\.[0-9])? \(([0-9.]+)\)":'AL2-',
+    "^Amazon Linux release 2 \(([\w\s]+)\)":'AL2-',
+    "^Amazon Linux 2$":'AL2-',
+  };
+
+  for(year = 2022; year < 2030; year++)
+  {
+    version_check_dictionary["^Amazon Linux release " + year + "\.([\d]\.[\d]+)"] = 'AL-' + year + '-';
+    version_check_dictionary["^Amazon Linux release " + year + " \(([0-9.]+)\)"] = 'AL-' + year + '-';
+    version_check_dictionary["^Amazon Linux release " + year + " \(([\w\s]+)\)"] = 'AL-' + year + '-';
+    version_check_dictionary["^Amazon Linux " + year + "$"] = 'AL-' + year + '-';
+  }
+
+  foreach version_check_regex (sort(keys(version_check_dictionary)))
+  {
+    match = pregmatch(pattern:version_check_regex, string:cmd_res);
+
+    if(!empty_or_null(match))
+    {
+      prefix = version_check_dictionary[version_check_regex];
+      if (len(match) > 1)
+      {
+        kb_value = prefix + match[1];
+      }
+      else
+      {
+        kb_value = prefix + "UncertainVer";
+      }
+      break;
+    }
+  }
+
+  if(!empty_or_null(kb_value))
+  {
+    replace_kb_item(name:"Host/AmazonLinux/release", value:kb_value);
+  }
+  else
+  {
+    # /etc/system-release output for Amazon Linux may have changed (again)
+    failure_kb_msg = "Amazon Linux version does not match known patterns.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\nThe output of "cat /etc/system-release" is :\n' + cmd_res + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+  # Enumerate enabled repos - itemize and list extras separately from core repos
+  repo_list = [];
+  extras_list = [];
+  repo_ls = run_command(cmd:"ls -1 /etc/yum.repos.d/*.repo",
+            session:session,
+            use_shell_handler:use_shell_handler,
+            channel:channel);
+  if (!empty_or_null(repo_ls))
+  {
+    repo_ls = str_replace(find:'\r', replace:'', string:repo_ls);
+    ls_split = split(repo_ls, sep:'\n', keep:FALSE);
+    replace_kb_item(name:'Host/AmazonLinux/repo_label_list',   value:'none');
+    replace_kb_item(name:'Host/AmazonLinux/extras_label_list', value:'none');
+
+    foreach ls_line (ls_split)
+    {
+      repo_match = pregmatch(pattern:"\/([^\/]+)\.repo$", string:ls_line);
+      if (!empty_or_null(repo_match) && !empty_or_null(repo_match[1]))
+      {
+        repo_name = repo_match[1];
+        repo_cont = run_command(cmd:"cat /etc/yum.repos.d/" + repo_name + ".repo",
+                         session:session,
+                         use_shell_handler:use_shell_handler,
+                         channel:channel);
+        if (!empty_or_null(repo_cont))
+        {
+          if (preg(string:repo_cont, pattern:"^\[.*\]", multiline:TRUE))
+          {
+            repo_cont = str_replace(find:'\r', replace:'', string:repo_cont);
+            foreach repo_data (split(repo_cont, sep:'[', keep:0))
+            {
+              if (empty_or_null(repo_data)) continue;
+              if ((preg(string:repo_data, pattern:"enabled\s*=\s*1\s*", multiline:TRUE)))
+              {
+                repo_label = ereg_replace(string:repo_data, pattern:"\].*$", replace:"");
+                if(!empty_or_null(repo_label))
+                {
+                  if (repo_label !~ "amzn2extra-(.*)$")
+                  {
+                    set_kb_item(name:'Host/AmazonLinux/enabled_repos_label', value:repo_label);
+                    append_element(var:repo_list, value:repo_label);
+                  }
+                  else
+                  {
+                    set_kb_item(name:'Host/AmazonLinux/enabled_extras_label', value:repo_label);
+                    append_element(var:extras_list, value:repo_label);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  # Establish repos and extras lists
+  if (!empty_or_null(repo_list))
+  {
+    replace_kb_item(name:'Host/AmazonLinux/repo_label_list', value:serialize(sort(list_uniq(repo_list))));
+  }
+  if (!empty_or_null(extras_list))
+  {
+    replace_kb_item(name:'Host/AmazonLinux/extras_label_list', value:serialize(sort(list_uniq(extras_list))));
+  }
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"AmazonLinux");
+
+  report += '\nThe remote Amazon Linux AMI system is :\n' + cmd_res;
+
+  if(bottlerocket)
+    report += '\nThis host is the admin container of an AWS Bottlerocket instance.\n';
+
+  var cpu = host_info_key_val['cpu'];
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_amazonlinux.static', value: 80);
+  }
+
+  return TRUE;
+}

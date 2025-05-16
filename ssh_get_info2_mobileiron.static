@@ -1,0 +1,149 @@
+#TRUSTED 914d7c094172c6c7c9f22242b6fd8f96f34e346c6f9094e15c31776dfc61f4ba412c689bfa89c680d7afa8c50ad8fb39fc1db7a776953a8ff332d5b657e4f764e9da7e502811499cbc1160c5cbd498380fe4e93b87904776cbbbf4e2ec57dece4161be661e8f9367368e8efe177ea281f7aaf4ae7f9bd9a21cfae42dd6319a253a90aeda9f913550d2f3baf131219cdada9a86d80b38090abb2b968d433a06570c7527b06e59c1f5c1eaae0bbf41e1ef791ae9d801eb1ca886cb76bced37a8f9e42c87d289cb0f71967b53237168b73c91b5e060475cb2121c692a41b03f936947aa62f19264652e32167e899b0e87ce56487b96fbf0c74f0ff5e64d1acafe3311771bc784cd9f2fbeed8c258f0754e8de7e1cdf7395643fb6297fae52df566229c79b2e7c40c2d259e60352e5c7866794e994430f503bad7a5addc4e191655855c99f064540a3b745ac9a803115bbb47cc75f0c2b5aa0eee15b67baa8f418e749e7a836a5a2469235018955ec49c0644cf300d2ae642cedcf105d30a9fa80b2dabc3ee1994af2e3ad52dce689ece22eb4ca71e9b711fe687737ab52e1f321af8c68c9230f85e677440702121a588f504bbd4756a656a977f121b0a4b3ccbff06f58754363378e7f235802bae97010375085c6b53126ab2e718914a838c9abf54988cc4aef806d190b0111879903c53dd67768f7b854bf9c3ee1b10cdba10058
+#TRUST-RSA-SHA256 1dd26ca3c4e9205d648e1121a8ab3f6b60da586f96715a4e10a77e0f3290c2d1f6f03a86e3f3a1e3565a766febd2cfff921bcc8c1a6226e0cc590eaa11cb4840b0ff45a6a31220a333f6dff1f21e60b0e31ea25e0ad02363f8765fdf0199640a303118938b6d6a1bf4369459852215d573bb71eb4a0a3d1475b7a2275d6f1ff814f5ebfcb64ba70953428490fd60d4d5d234deb5dbf9ba63f3b449358b61abe14384a039ee148b2456c76fdee5fa47442dfe9aec6041819ebcd1d6470a8605b3bf51201d7c79aab39587a595844c81def00c51858c3c731a4560a8c252fd7573396eced8e4cafc1d5e3b4636682a138d8b88aeaa90659ff64e42e196e784dbc60786093cbebccf255f3e0d7cf80badc6f0e1873904bef48b370ac2fabdd93c484ff2332b82fd74040d9a7c89ed69c0afa64e262f2d7c69b07603097abbdf5d564f6251b0c8f7c85c3a300391961ddc0df09b5412129201286a29b2ca69e587d612edd1c31434521a9aa220765427b3f603738852b095bc59de77c316f94b55b48c5bbaed0682ee7088b6a49f33211be4d1b31984af3b961628a8a24a328c42781b10cc218085f265975823f948679ea05bb446a37740c8fe7f5804f11b7c096bfb9eef9cb379986d0e601fc2740a84a6c5047e7d19ee7f4f7f2a424ab37a0d11697b7c07d346e7fc0baddf8f156c37e53bbdc4dda106dbd943b4e099068f1524
+
+# (C) Tenable Network Security, Inc.
+
+# Revision: 1.16
+
+
+##
+# check if this is MobileIron based on information collected
+#
+# @return Returns TRUE if we know this is not MobileIron, FALSE otherwise.
+##
+function mobileiron_pre_check_fail()
+{
+  # have we already checked that the host is not MobileIron?
+  if(host_info_key_val['host_not_mobileiron'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ "CORE|EPMM " &&
+     host_info_key_val['showversion_unrecognized'] !~ "Welcome " &&
+     host_info_key_val['showversion_unrecognized'] !~ " it is ")
+  {
+    return TRUE;
+  }
+
+  # Not mobileiron if one of the following devices
+  if (is_panos() ||
+      is_huawei() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "CORE" in show version (or 1 of 2 possible errors)
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns TRUE if this is MobileIron, NULL otherwise
+##
+function handle_mobileiron(session, use_shell_handler, &channel, cmd_res)
+{
+  var product, release, build, branch;
+  var mobileiron_version_pattern, mobileiron_version_regex;
+
+  #Local checks just means we can run commands on the target host.
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  ##
+  #  MobileIron includes command validation
+  #   Dev testing showed that it is usually best
+  #   to just reissue commands fresh for this target
+  ##
+  session.clear_cmd_error();
+  cmd_res = run_command(cmd:'show version',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+  ##
+  # Parse out the product, version, build, and branch information in primary check
+  # CORE 10.4.0.3 Build 7 (Branch seattle-10.4.0.3)
+  # EPMM 11.10.0.2 Build 6 (Branch core-11.10.0.2)
+  ##
+  mobileiron_version_regex = "(CORE|EPMM) ([\d\.]+) Build ([\d]+) \(Branch ([\w\-\d\.]+)";
+  mobileiron_version_pattern = pregmatch(pattern:mobileiron_version_regex, string:cmd_res, icase:TRUE);
+
+  if (!mobileiron_version_pattern)
+  {
+    # Backup check
+    # CORE(10.4.0.3-7)@mobileiron
+    mobileiron_version_regex = "Core\(([0-9.]+)-([0-9]+)\)";
+    mobileiron_version_pattern = pregmatch(pattern:mobileiron_version_regex, string:cmd_res, icase:TRUE);
+  }
+
+  if (!empty_or_null(mobileiron_version_pattern) &&
+      !empty_or_null(mobileiron_version_pattern[1]) &&
+      !empty_or_null(mobileiron_version_pattern[2]) &&
+      !empty_or_null(mobileiron_version_pattern[3]) &&
+      !empty_or_null(mobileiron_version_pattern[4]))
+  {
+    product = mobileiron_version_pattern[1];
+    release = mobileiron_version_pattern[2];
+    build = mobileiron_version_pattern[3];
+    branch = mobileiron_version_pattern[4];
+
+    report += '\nThe remote MobileIron system is :\n' + release + '\n\n';
+
+    replace_kb_item(name:"Host/MobileIron/Core", value: TRUE);
+    replace_kb_item(name:"Host/MobileIron/Core/version", value: release);
+    replace_kb_item(name:"Host/MobileIron/Core/build", value: build);
+    replace_kb_item(name:"Host/MobileIron/Core/product", value: product);
+    replace_kb_item(name:"Host/MobileIron/Core/branch", value: branch);
+    replace_kb_item(name:"Host/MobileIron/show_ver", value: cmd_res);
+
+    # Used by os_fingerprint.nasl for Host Identification
+    replace_kb_item(name:"Host/OS/showver", value: "MobileIron " + release);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value: 100);
+    replace_kb_item(name:"Host/OS/showver/Type", value: "embedded");
+
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+    report += '\n' + 'OS Security Patch Assessment is not supported for MobileIron.\n';
+
+    return TRUE;
+  }
+  else
+    return NULL;
+}
+
+##
+# callback for systems without "CORE" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_mobileiron(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_mobileiron'] = TRUE;
+  }
+}

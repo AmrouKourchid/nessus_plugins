@@ -1,0 +1,3665 @@
+#TRUSTED 383fe19025327499a8e4903562c4ecd865b467ed483e0b4db406bdb0075e21693460f7f8205626ac9efede6d4d30ee602089bebfde50f735ca98091f2a1506633022356e551d4ef201b851f15586f08ce17f225c60bac49ca5e92ba86668b4f1daf75794ad83eae78b342aa57d540ce3b40b68cc7fe1c00a051162ae8275f78697c2c4815f9e7e95ed5e650d10ff5903fda9bc7b73d012304b14923292d997a5e53726edaef4c6a08f7ff44153939b42415dd761d37912d8e307071b88a69b2908edc1c93e08bc8d84175c42189fcce758e51fa0950ddd779c35c05d2d983a96786ed32f54c19b4e036535e62de5c0397eee92857c81cef1b9d729d1884140e60691d7ade37761b81eecf5be85a846db3a5138f538ae88fbd25a378e111886b024f1e4cf5b9f2a9959950265bb4ed795c964b3f02951c392a1f5fcb3a6e11cb666468fdb48eebf8ccb798e07e619a21d3d0e48734f2d7186ebef58c1cfdb60e7c65d69a9a8088c4686cebad176df3960fddec154d30673908207f26a1e771cedceab962cc206abca4590e906e8da9992a27060970a4a22144775474f48ce81de9654d850a7386a59869146f7f9e1b367157c4c0a28fb5133a88af7beb787412837b395e1622f7508c225ce21e2ccc94dde8cdca156ba7778310e3e4e88ee948bce3142fa1a4c6b8e6cf1d5f76fc7054dc0f1a3ce80a3cfa59c6b4edef89e1201
+#TRUST-RSA-SHA256 9fde85b9af6691788e5cd3f7d9c5b9270e40064480930c0c7dcf4be6a3b88a1256d8addd584a6a416f2dc1bf2b60fd2cd6af55bc70cac5dad6f3112de3f32604f334e80196a9d08c0752fa7d4fc6db71a7cfcf8da5164e7ce7b9dc733a822bb5a513e9e6db9bdf6f533fab9d405df27e7fe2c2d44fb4301e33842554f8851c128db49f02df398f7ef5e7b04fbd2e67c6ba8e5ed7ab41867b31d90b3a566f9227a7a3e74467d79df4c7aa925c3f34b398cfc4b48d60f2db24002b13546900b33bd3b70fdf790668e97b3f0297920afa087783c42b2bf0b62c2ff1e786a88ad3edc2c73802432fb4210955c3758d8dd0d887745820b80d651853c2ec74980b8ed3457b5b32360d0ad3d11f8bf1f640d0d2b7bb6718ba6d00de19df6f3ec2a00e65d7599ab874711e557dba6e41a7f94605356a0f39fb0fd69eacdb024c41feb736ce86ace37c2d046f796d06e53e9e84668fa958c8f3180af29fbf47d539b18255313f291de1275796764a34333acf5c8cd5de4d68d7a1742088f5eda3bdd8866a5ed4262c00f79186d010438a725ad3aaefa15873c27d4fe4b834e8727b5acebe537b1eada78392715d3b210dfdb30ee3387452198af1693fac53f900acbd38f36d12667fe9c338d876a0c144f6db608fb0aea701464c587d6d74ef54fc4960b5fe50112b5e9e89b2fbc1548fdb3f05c6abd84a400e7f07bb736724c537fcad93
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# asset_attribute_operating_system.static
+#
+# Revision: 1.14
+#
+# @library asset_attribute_normalization_library.inc
+#
+###
+
+##
+# Functions for the 'operating_system' asset attribute.
+##
+namespace asset_attribute_operating_system
+{
+  var normalizer;
+
+  ##
+  # Normalize OS
+  #
+  # @param [input_value:str] value for the 'operating_system' attribute
+  # @param [platform:str]    host platform to normalize (e.g. WINDOWS)
+  #
+  # @remark only Windows is supported at this time
+  #
+  # @return the normalized OS or the original value if there is a failure
+  ##
+  function normalize(input_value, platform)
+  {
+    # Arguments checks
+    var required_args = { 'input_value' : input_value, 'platform' : platform };
+    for (var required_arg in required_args)
+    {
+      if (empty_or_null(required_args[required_arg]))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Missing required argument "', required_arg, '"'));
+        return input_value;
+      }
+    }
+
+    # Normalize OS
+    normalizer = NULL;
+    var lc_os;
+
+    if (platform == 'WINDOWS')
+    {
+      normalizer = new asset_attribute_operating_system::windows(input_value);
+    }
+    else if (platform == 'DARWIN')
+    {
+      normalizer = new asset_attribute_operating_system::macos(input_value);
+    }
+    else if (platform == 'LINUX')
+    {
+      lc_os = tolower(input_value);
+
+      # Red Hat - example: Linux Kernel 3.10.0-1160.el7.x86_64 on Red Hat Enterprise Linux Server release 7.9 (Maipo)
+      if ("red hat" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_redhat(input_value);
+
+      # Centos - example:  Linux Kernel 3.10.0-1127.el7.x86_64 on CentOS Linux release 7.8.2003 (Core)      
+      if ("centos" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_centos(input_value);	
+
+      # Ubuntu - example:  Linux Kernel 4.15.0-142-generic on Ubuntu 16.04
+      if ("ubuntu" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_ubuntu(input_value);	
+
+      # Amazon Linux 2 - example:  Linux Kernel 4.14.322-244.536.amzn2.x86_64 on Amazon Linux 2
+      if ("amazon linux" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_amazon_two(input_value);	
+
+      # Fedora - example: Linux Kernel 5.6.6-300.fc32.x86_64 on Fedora release 32 (Thirty Two)
+      if ("fedora" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_fedora(input_value);	
+
+      # Debian - example: Linux Kernel 5.10.0-8-amd64 on Debian 11.0
+      if ("debian" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_debian(input_value);
+
+      # SuSE - example: Linux Kernel 4.12.14-lp150.10-default on openSUSE 15.0
+      # SuSE SLES - example: Linux Kernel 3.0.101-63-default on SuSE11.4
+      if ("opensuse" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_suse(input_value);
+      else if ("suse" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_suse_sles(input_value);
+	
+      # SLES_SAP - example: Linux Kernel 5.3.18-150300.59.98-default on SLES_SAP15.3
+      if ("sles_sap" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_sles_sap(input_value);
+
+      # Oracle Linux - example: Linux Kernel 4.1.12-124.45.6.el7uek.x86_64 on Oracle Linux Server release 7.9
+      if ("oracle linux" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_oracle(input_value);
+
+      # Rocky Linux - example: Linux Kernel 5.14.0-162.6.1.el9_1.x86_64 on Rocky Linux release 9.4 (Blue Onyx)
+      if ("rocky linux" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_rocky(input_value);
+
+      # AlmaLinux - example: Linux Kernel 4.18.0-305.el8.x86_64 on AlmaLinux release 8.4 (Electric Cheetah)
+      if ("almalinux" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_alma(input_value);
+
+      # Gentoo Linux - example: Linux Kernel 4.4.39-gentoo on Gentoo Base System release 2.3
+      if ("gentoo" >< lc_os)
+        normalizer = new asset_attribute_operating_system::linux_gentoo(input_value);
+
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Platform ', platform, ' is not supported.'));
+      return input_value;
+    }
+
+    if (!isnull(normalizer) && normalizer.normalize() && !empty_or_null(normalizer.normalized_value))
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Normalized OS successfully.');
+      return normalizer.normalized_value;
+    }
+
+    # Fallback to using the original value since there was an unexpected issue during the normalization.
+    dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Normalization is not supported for this OS: ' + input_value);
+    return input_value;
+  }
+
+
+  ##
+  # Break down OS into individual identifiers.
+  #
+  # @param [attribute_value:str] value to break down
+  # @param [patterns:array] one pattern per identifier 
+  # @param [pattern_order:list] order of the identifiers to use
+  #
+  # @return array of identifiers (e.g. identifiers['vendor'] = 'Microsoft', identifiers['os'] = 'Windows')
+  ##
+  function deconstruct(attribute_value, patterns, pattern_order)
+  {
+    # Arguments checks
+    var required_args = { 'attribute_value' : attribute_value, 'patterns' : patterns, 'pattern_order' : pattern_order };
+    for (var required_arg in required_args)
+    {
+      if (empty_or_null(required_args[required_arg]))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Missing required argument "', required_arg, '"'));
+        return NULL;
+      }
+    }
+
+    var pattern, identifier, matches, identifiers, idx;
+
+    # Build pattern string
+    pattern = '^';
+
+    foreach identifier (pattern_order)
+      pattern += patterns[identifier];
+
+    pattern += '$';
+
+    matches = pregmatch(pattern:pattern, string:attribute_value, icase:TRUE);
+
+    if (empty_or_null(matches))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Tag did not match the expected pattern.');
+      return NULL;
+    }
+
+    # Create array with each identifier as the key following the specified order (e.g. identifiers['os'] = 'Windows')
+    identifiers = {};
+
+    for (idx in pattern_order)
+    {
+      identifier = pattern_order[idx];
+      identifiers[identifier] = matches[int(idx+1)];
+    }
+
+    return identifiers;
+  }
+
+  ##
+  # Join the array of identifier values to make the normalized string.
+  #
+  # @param [order:list] order of identifiers
+  # @param [identifiers:array] identifiers that make up the value
+  # @param [normalized:array] normalized identifiers
+  #
+  # @return normalized value as a string; NULL if normalization failed
+  ##
+  function reconstruct(order, identifiers, normalized)
+  {
+    # Arguments checks
+    var required_args = { 'order' : order, 'identifiers' : identifiers, 'normalized' : normalized };
+    for (var required_arg in required_args)
+    {
+      if (empty_or_null(required_args[required_arg]))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Missing required argument "', required_arg, '"'));
+        return NULL;
+      }
+    }
+
+    var identifier, normalized_value;
+    var normalized_list = [], failed_list = [];
+
+    for (identifier of order)
+    {
+      if (!empty_or_null(normalized[identifier]))
+        append_element(var:normalized_list, value:normalized[identifier]);
+
+      else if (!empty_or_null(identifiers[identifier]))
+        append_element(var:failed_list, value:identifier);
+    }
+
+    if (!empty_or_null(failed_list))
+    {
+      dbg::detailed_log(
+        lvl:1, src:FUNCTION_NAME, msg:'Failed to normalize these identifiers: ' + join(failed_list, sep:', '));
+      return NULL;
+    }
+
+    normalized_value = join(normalized_list, sep:' ');
+
+    return normalized_value;
+  }
+
+  namespace windows
+  {
+    var standards = {
+
+      patterns : {
+        channel_version : [
+          '^(1507|1511|1607|1703|1709|1803|1809|1903|1909|2004|2009)$',
+          '^2[0-9]H[1-2]$'
+        ]
+      }
+    };
+
+    var mappings = {
+      build_to_channel_version : {
+        # Windows 10 / Server 2016 / Server 2019
+        10240 : '1507',
+        10586 : '1511',
+        14393 : '1607',
+        15063 : '1703',
+        16299 : '1709',
+        17134 : '1803',
+        17763 : '1809',
+        18362 : '1903',
+        18363 : '1909',
+        19041 : '2004',
+        19042 : '20H2',
+        19043 : '21H1',
+        19044 : '21H2',
+        19045 : '22H2',
+
+        # Windows Server 2022
+        20348 : '21H2',
+
+        # Windows 11
+        22000 : '21H2',
+        22621 : '22H2',
+        22631 : '23H2',
+        22635 : '23H2',
+
+        # Windows Server 2025
+        26100 : '24H2'
+      }
+    };
+
+    ##
+    # Validate the channel version (e.g. 21H2, 1909).
+    #
+    # @param  [channel_version:str]  Windows channel version
+    #
+    # @return boolean true if the channel version matched;
+    ##
+    function validate_channel_version(channel_version)
+    {
+      # Arguments checks
+      var required_args = { channel_version : channel_version };
+      for (var required_arg in required_args)
+      {
+        if (empty_or_null(required_args[required_arg]))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('Missing required argument for "', required_arg, '" parameter.'));
+          return NULL;
+        }
+      }
+
+      foreach var channel_version_pattern (standards.patterns.channel_version)
+      {
+        if (preg(string:channel_version, pattern:channel_version_pattern, icase:TRUE))
+          return true;
+      }
+
+      return false;
+    }
+  }
+
+  ##
+  # Windows normalizer
+  ##
+  object windows
+  {
+    var standards = {
+      order : [ 'vendor', 'os', 'version', 'edition', 'update' ],
+
+      patterns : {
+        vendor  : '(Microsoft)? ?',
+        os      : '((?:Windows|Hyper-?V)(?: Storage)?(?: Server)?) ?',
+        version : '([0-9]+(?:\\.[0-9])?(?: R2)?)',
+        edition : ' ?([a-z][\\w -]+?)',
+        update  : '(?: ((?:Build|Service Pack|SP) [0-9]+))?'
+      },
+
+      versions : [
+        '11', '10', '8.1', '8', '7',
+        '2025', '2022', '2019', '2016', '2012 R2', '2012', '2008 R2', '2008', '2003 R2', '2003'
+      ],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'Business',
+        'Education N',
+        'Education',
+        'Enterprise for Virtual Desktops',
+        'Enterprise( 20[0-9]{2})? LTSB',
+        'Enterprise LTSC( 20[0-9]{2})?',
+        'Enterprise N LTSC( 20[0-9]{2})?',
+        'Enterprise multi-session',
+        'Enterprise N',
+        'Enterprise',
+        'Home',
+        'IoT Enterprise LTSC( 20[0-9]{2})?',
+        'IoT Enterprise',
+        'Pro N for Workstations',
+        'Pro for Workstations',
+        'Pro Education',
+        'Pro',
+        'Ultimate',
+
+        'Essentials',
+        'Datacenter Azure Edition',
+        'Datacenter',
+        'Standard'
+      ],
+
+      terms : {
+        service_pack : 'Service Pack',
+        build        : 'Build'
+      }
+    };
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Microsoft Windows 11 Pro)
+    ##
+    function windows()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Windows
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      original_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      # Window Server handling
+      if (original_value =~ 'Windows Server')
+      {
+        # Make 'version' optional to account for Semi-Annual Channel (SAC) versions
+        standards.patterns.version = standards.patterns.version + '?';
+
+        # Remove 'edition' for Windows Server 2003, if it's not available
+        if (original_value =~ 'Windows Server 2003( R2)?$')
+        {
+          standards.patterns.edition = '';
+          standards.order = [ 'vendor', 'os', 'version', 'update' ];
+        }
+      }
+
+      # Hyper-V Server handling
+      else if (original_value =~ 'hyper-?v')
+      {
+        # Make 'version' optional
+        standards.patterns.version = standards.patterns.version + '?';
+
+        # Remove 'edition'
+        standards.patterns.edition = '';
+        standards.order = [ 'vendor', 'os', 'version', 'update' ];
+      }
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value)) return false;
+
+      return true;
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_vendor();
+      normalize_identifier_os();
+      normalize_identifier_version();
+      normalize_identifier_edition();
+      normalize_identifier_update();
+    }
+
+    ##
+    # Normalize 'vendor' identifier.
+    ##
+    protected function normalize_identifier_vendor()
+    {
+      normalized.vendor = 'Microsoft';
+    }
+
+    ##
+    # Normalize 'os' identifier.
+    ##
+    protected function normalize_identifier_os()
+    {
+      normalized.os = capitalize(str:tolower(identifiers.os), regex:'[ -]');
+    }
+
+    ##
+    # Normalize 'version' identifier.
+    ##
+    protected function normalize_identifier_version()
+    {
+      # Hyper-V Server 2019 does not always include 2019, include it here.
+      if (empty_or_null(identifiers.version) && normalized.os == 'Hyper-V Server')
+      {
+        normalized.version = '2019';
+        return normalized.version;
+      }
+
+      # Semi-Annual Channel (SAC) does not have a release (e.g. Windows Server 20H2)
+      if (empty_or_null(identifiers.version) && normalized.os == 'Windows Server')
+      {
+        # Remove 'version' from required order
+        standards.order = [ 'vendor', 'os', 'edition', 'update' ];
+
+        return normalized.version;
+      }
+
+      if (contains_element(var:standards.versions, value:identifiers.version))
+        normalized.version = identifiers.version;
+      else
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Unexpected "version" identifier: ' + identifiers.version);
+    }
+
+    ##
+    # Normalize 'edition' identifier.
+    ##
+    protected function normalize_identifier_edition()
+    {
+      var standard_edition, replace_str, matches;
+
+      # Hyper-V Server does not have editions
+      if (empty_or_null(identifiers.edition))
+          return NULL;
+
+      foreach standard_edition (standards.editions)
+      {
+        if (identifiers.edition =~ '^' + standard_edition)
+        {
+          # Handle LTS editions
+          if ('LTSB' >< identifiers.edition || 'LTSC' >< identifiers.edition)
+          {
+            replace_str = '';
+            matches = pregmatch(string:identifiers.edition, pattern:standard_edition, icase:TRUE);
+            if (matches[1])
+              replace_str = matches[1];
+
+            standard_edition = ereg_replace(string:standard_edition, pattern:'\\(.*?\\)\\?', replace:replace_str);
+          }
+
+          normalized.edition = standard_edition;
+          break;
+        }
+      }
+    }
+
+    ##
+    # Normalize 'update' identifier.
+    ##
+    protected function normalize_identifier_update()
+    {
+      if (empty_or_null(identifiers.update))
+        return NULL;
+
+      identifiers.update = str_replace(string:identifiers.update, find:'SP', replace:standards.terms.service_pack);
+
+      normalized.update = capitalize(str:tolower(identifiers.update), boundary:' ');
+    }
+
+    ##
+    # Post processing of normalized identifiers.
+    #
+    # @remark Not currrently used to lessen impact but leaving in for future consideration.
+    ##
+    protected function normalize_indentifier_post_processing()
+    {
+      # Microsoft decided to not update "Windows 10" in most places on Windows hosts but
+      # advises to look at build >= 22000 to discern between Windows 10 and 11.
+      if (normalized.version == '10' && 'Build' >< normalized.update)
+      {
+        var matches = pregmatch(string:normalized.update, pattern:'Build (2[0-9]{4})', icase:true);
+        if (!empty_or_null(matches) && int(matches[1]) >= 22000)
+          normalized.version = '11';
+      }
+    }
+  }
+
+  ##
+  # Linux normalizer - CentOS
+  ##
+  object linux_centos
+  {
+    var standards = {
+
+      # Linux Kernel 3.10.0-1160.21.1.el7.centos.plus.x86_64 on CentOS Linux release 7.9.2009
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release_string',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # CentOS Linux 7.9.2009
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'The CentOS Project' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([\\d\\D\\.x_-]+)',
+        on_string : '( on )',
+        distro : '(\\D+)',
+        release_string : '( release )',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '3', '4', '5', '6', '7', '8', '9'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'Core',
+        'Final'
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_centos()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+      
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'CentOS Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - Ubuntu
+  ##
+  object linux_ubuntu
+  {
+    var standards = {
+
+      # Linux Kernel 4.4 on Ubuntu 16.04 (xenial)
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # Ubuntu Linux 16.04
+      norm_order : [
+	'distro',
+	'os_type',
+	'release'
+	],
+
+      vendor : [ 'Canonical' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([a-z\\d\\D\\._\\-]+)',
+        on_string : '( on )',
+        distro : '(\\D+) ',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '14', '16', '18', '20', '22', '24'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'xenial'
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_ubuntu()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Ubuntu';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+
+
+  ##
+  # Linux normalizer - Amazon Linux 2
+  ##
+  object linux_amazon_two
+  {
+    var standards = {
+
+      # Linux Kernel 4.14.322-244.536.amzn2.x86_64 on Amazon Linux 2
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # Amazon Linux 2
+      norm_order : [
+	'distro',
+	'os_type',
+	'release'
+	],
+
+      vendor : [ 'Amazon' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([a-z\\d\\D\\._\\-]+)',
+        on_string : '( on )',
+        distro : '(\\D+) ',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '2'
+	],
+
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_amazon_two()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Amazon';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - Fedora
+  ##
+  object linux_fedora
+  {
+    var standards = {
+
+      # Linux Kernel 6.2.9-300.fc38.x86_64 on Fedora release 38 (Thirty Eight)
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # Fedora Linux 38
+      norm_order : [
+	'distro',
+	'os_type',
+	'release'
+	],
+
+      vendor : [ 'Fedora Project' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([a-z\\d\\D\\._\\-]+)',
+        on_string : '( on )',
+        distro : '(\\D+) ',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '7', '8', '9',
+        '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
+        '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
+        '30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
+        '40'
+      ],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'Thirty Eight'
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_fedora()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Fedora';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+  
+  ##
+  # Linux normalizer - Suse
+  ##
+  object linux_suse
+  {
+    var standards = {
+
+      # Linux Kernel 4.12.14-lp150.10-default on openSUSE 15.0
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # OpenSUSE Linux 15.0
+      norm_order : [
+	'distro',
+	'os_type',
+	'release'
+	],
+
+      vendor : [ 'openSUSE Project' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      # Linux Kernel 4.12.14-lp150.10-default on openSUSE 15.0
+      # Linux Kernel 3.0.101-63-default on SuSE11.4
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([a-z\\d\\D\\._\\-]+)',
+        on_string : '( on )',
+        distro : '(\\D+) ',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '15'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'NA'
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_suse()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'OpenSUSE';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  #  MacOS normalizer
+  ##
+  object macos
+  {
+    var standards = {
+
+      # Mac OS X 12.0.1
+      # (for more examples, see unit tests)
+      order : [
+        'macosx_string',
+	'release'
+	],
+
+      # ...becomes
+      # Mac OS X 12.0.1
+      norm_order : [
+	'macosx_string',
+	'release'
+	],
+
+      vendor : [ 'Apple' ], 
+
+      # breakdown: '^Mac(?:\s)OS(?:\s)X\s([0-9.]+)$'
+      patterns : {
+        #macosx_string : 'Mac(?:\\s)OS(?:\\s)X ',
+        macosx_string : '(Mac OS X) ',
+	release : '([\\d\\.]+)'
+	},
+
+      versions : [
+        '10', '11', '12'
+	],
+
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function macos()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_macosx_string();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_macosx_string()
+    {
+      normalized.macosx_string = 'Mac OS X';
+
+      # Version 10.12 Sierra is when naming changed from 'Mac OS X' to just 'macOS'
+      var mac_comp = ver_compare(ver:'10.12', fix:identifiers.release, strict:FALSE);
+      if (mac_comp < 1)
+      {
+        normalized.macosx_string = 'macOS';
+      }
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+  }
+
+  ##
+  # Linux normalizer - SLES for SAP
+  ##
+  object linux_sles_sap
+  {
+    var standards = {
+
+      # Linux Kernel 5.3.18-150300.59.98-default on SLES_SAP15.3
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release'
+	],
+
+      # ...becomes
+      # SLES for SAP Linux 15.0
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'SLES for SAP' ], 
+
+      # breakdown:'(Linux Kernel )([\d\D]+)( on )(SLES_SAP)([\d\.]+)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel )',
+        linux_kernel : '([\\d\\D]+)',
+        on_string : '( on )',
+	distro : '(SLES_SAP)',
+        release : '([\\d\\.]+)'
+        },
+
+      versions : [
+        '11', '12', '15'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_sles_sap()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'SLES for SAP';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - Suse (SLES)
+  #  differs from both vanilla SuSE and SLES_for_SAP above
+  ##
+  object linux_suse_sles
+  {
+    var standards = {
+
+      # Linux Kernel 3.0.101-63-default on SuSE11.4
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release',
+	'dot',
+	'sp'
+	],
+
+      # ...becomes
+      # SLES 11-SP4
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'SUSE Linux Enteprise Server' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      # Linux Kernel 4.12.14-lp150.10-default on openSUSE 15.0
+      # Linux Kernel 3.0.101-63-default on SuSE11.4
+      patterns : {
+        linux_kernel_string : '(Linux Kernel)',
+        linux_kernel : '([a-z\\d\\D\\._\\-]+)',
+        on_string : '( on )',
+        distro : '(\\D+)',
+        release : '([\\d]+)',
+        dot : '([\\.])',
+        sp : '([\\d]+)'
+        },
+
+      versions : [
+        '9', '10', '11', '12', '13', '14', '15' 
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'NA'
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_suse_sles()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct())
+      {
+	return false;
+      }
+
+      normalize_identifiers();
+      if (!reconstruct())
+      {
+	return false;
+      }
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (!empty_or_null(clean_value))
+      {
+        if (len(clean_value) != len(original_value))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+          original_value = clean_value;
+        }
+      }
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_dot();
+      normalize_identifier_sp();
+      normalize_identifier_sp_string();
+      normalize_identifier_codename();
+      normalize_identifier_release();    # should run last in list
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'SLES';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+
+      if (identifiers.sp != "0")
+      {
+        normalized.release = strcat(normalized.release, normalized.sp_string, normalized.sp); 
+      }
+    }
+
+    ##
+    # Normalize 'dot' identifier.
+    ##
+    protected function normalize_identifier_dot()
+    {
+      normalized.dot = identifiers.dot;
+    }
+
+    ##
+    # Normalize 'sp' (Service Pack) identifier.
+    ##
+    protected function normalize_identifier_sp()
+    {
+      normalized.sp = identifiers.sp;
+    }
+
+    ##
+    # Normalize 'sp_string' identifier.
+    ##
+    protected function normalize_identifier_sp_string()
+    {
+      normalized.sp_string = '-SP';
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+
+  ##
+  # Linux normalizer - Oracle Linux
+  ##
+  object linux_oracle
+  {
+    var standards = {
+
+      # Linux Kernel 4.1.12-124.45.6.el7uek.x86_64 on Oracle Linux Server release 7.9
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release_string',
+	'release'
+	],
+
+      # ...becomes
+      # Oracle Linux 7.9
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'Oracle' ], 
+
+      # breakdown:'(Linux Kernel )([\d\D]+)( on )(Oracle Linux Server)( release )([\d\.]+)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel )',
+        linux_kernel : '([\\d\\D\\.\\-\\_]+)',
+        on_string : '( on )',
+	distro : '(Oracle Linux Server)',
+	release_string: '( release )',
+        release : '([\\d\\.]+)'
+        },
+
+      versions : [
+        '4', '5', '6', '7', '8', '9'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_oracle()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Oracle Linux';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - Rocky Linux
+  ##
+  object linux_rocky
+  {
+    var standards = {
+
+      # Linux Linux Kernel 5.14.0-162.6.1.el9_1.x86_64 on Rocky Linux release 9.4 (Blue Onyx)
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release_string',
+	'release',
+	'code_name'
+	],
+
+      # ...becomes
+      # Rocky Linux 9.4
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'Rocky' ], 
+
+      # breakdown:'(Linux Kernel )([\d\D\.\-\_]+)( on )(Rocky Linux)( release )([\d\.]+)( [\S]+ )'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel )',
+        linux_kernel : '([\\d\\D\\.\\-\\_]+)',
+        on_string : '( on )',
+	distro : '(Rocky Linux)',
+	release_string: '( release )',
+        release : '([\\d\\.]+)',
+	code_name : ' (\\([^\\)]+\\))'
+        },
+
+      versions : [
+        '8', '9' 
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_rocky()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      #display("MSMITH identifiers: ", obj_rep(identifiers), "\n");
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Rocky Linux';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - AlmaLinux
+  ##
+  object linux_alma
+  {
+    var standards = {
+
+      # Linux Kernel 4.18.0-305.el8.x86_64 on AlmaLinux release 8.4 (Electric Cheetah)
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release_string',
+	'release',
+	'code_name'
+	],
+
+      # ...becomes
+      # AlmaLinux 8.4
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'Alma Linux' ], 
+
+      # breakdown:'(Linux Kernel )([\d\D\.\-\_]+)( on )(AlmaLinux)( release )([\d\.]+)( [\S]+ )'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel )',
+        linux_kernel : '([\\d\\D\\.\\-\\_]+)',
+        on_string : '( on )',
+	distro : '(AlmaLinux)',
+	release_string: '( release )',
+        release : '([\\d\\.]+)',
+	code_name : ' (\\([^\\)]+\\))'
+        },
+
+      versions : [
+        '8', '9'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_alma()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      #display("MSMITH identifiers: ", obj_rep(identifiers), "\n");
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'AlmaLinux';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - Gentoo Linux
+  ##
+  object linux_gentoo
+  {
+    var standards = {
+
+      # Linux Kernel 4.4.39-gentoo on Gentoo Base System release 2.3
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release_string',
+	'release'
+	],
+
+      # ...becomes
+      # Gentoo Linux 2.3
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'Gentoo Linux' ], 
+
+      # breakdown:'(Linux Kernel )([\d\D\.\-\_]+)( on )(Gentoo Base System)( release )([\d\.]+)( [\S]+ )'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel )',
+        linux_kernel : '([\\d\\D\\.\\-]+)',
+        on_string : '( on )',
+	distro : '(Gentoo Base System)',
+	release_string: '( release )',
+        release : '([\\d\\.]+)'
+        },
+
+      versions : [
+        '8', '9'  # MSMITH TODO
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_gentoo()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      #display("MSMITH identifiers: ", obj_rep(identifiers), "\n");
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Gentoo Linux';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  ##
+  # Linux normalizer - Debian
+  ##
+  object linux_debian
+  {
+    var standards = {
+
+      # Linux Kernel 5.10.0-8-amd64 on Debian 11.0
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # Debian Linux 11.0
+      norm_order : [
+	'distro',
+	'os_type',
+	'release'
+	],
+
+      vendor : [ 'The Debian Project' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([a-z\\d\\D\\._\\-]+)',
+        on_string : '( on )',
+        distro : '(\\D+) ',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '6', '7', '8', '9', '10', '11', '12'
+	],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value (e.g. Linux Kernel 3.10.0-1160.76.1.el7.x86_64 on CentOS Linux release 7.9.2009 (Core))
+    ##
+    function linux_debian()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_os_type();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = 'Debian';
+    }
+
+    ##
+    # Normalize 'Linux' identifier.
+    ##
+    protected function normalize_identifier_os_type()
+    {
+      normalized.os_type = 'Linux';
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+
+  ##
+  # Linux normalizer - Red Hat
+  ##
+  object linux_redhat
+  {
+    var standards = {
+
+      # Linux Kernel 2.6.32-754.47.1.el6.x86_64 on Red Hat Enterprise Linux Server release 6.10 (Santiago)
+      # (for more examples, see unit tests)
+      order : [
+        'linux_kernel_string',
+	'linux_kernel',
+	'on_string',
+	'distro',
+	'release_string',
+	'release',
+	'codename'
+	],
+
+      # ...becomes
+      # Red Hat Enterprise Linux Server 6.10
+      norm_order : [
+	'distro',
+	'release'
+	],
+
+      vendor : [ 'The Red Hat Project' ], 
+
+      # breakdown:'(Linux Kernel) ([\\d\\D.x_-]+)( on )(\\D+ Linux)( release )([\\d.]+) \\((\\D+)\\)'
+      patterns : {
+        linux_kernel_string : '(Linux Kernel) ',
+        linux_kernel : '([\\d\\D\\.x_-]+)',
+        on_string : '( on )',
+        distro : '(\\D+)',
+        release_string : '( release )',
+        release : '([\\d\\.]+)',
+        codename : '\\s?\\(?\\D*\\)?'
+        },
+
+      versions : [
+        '3', '4', '5', '6', '7', '8', '9'
+	],
+
+      # Use more specific editions before general editions due to matching below.
+      editions : [
+        'Final'
+      ],
+
+    };      # end of standards data object
+
+    var identifiers = {};
+    var normalized = {};
+
+    var original_value;
+    var normalized_value;
+
+    ##
+    # Constructor
+    #
+    # @anonparam [str] original value
+    ##
+    function linux_redhat()
+    {
+      original_value = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Normalize attribute for Linux
+    #
+    # @return true if attribute was successfully normalized; false otherwise
+    ##
+    public function normalize()
+    {
+      prepare();
+      if (!deconstruct()) return false;
+
+      normalize_identifiers();
+      if (!reconstruct()) return false;
+
+      return true;
+    }
+
+    ##
+    # Prepare data including handling special cases that deviate from the normal process.
+    ##
+    protected function prepare()
+    {
+      # Remove extraneous whitespace
+      var clean_value = ereg_replace(string:trim(original_value), pattern:'  +', replace:' ');
+
+      if (len(clean_value) != len(original_value))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:strcat('OS identifier whitespace change\noriginal: ', original_value, 'trimmed: ', clean_value));
+        original_value = clean_value;
+      }
+
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::deconstruct()
+    ##
+    protected function deconstruct()
+    {
+      identifiers = asset_attribute_operating_system::deconstruct(
+        attribute_value     : original_value,
+        patterns      : standards.patterns,
+        pattern_order : standards.order
+      );
+
+      if (empty_or_null(identifiers)) return false;
+
+      dbg::detailed_log(
+        lvl:4, src:FUNCTION_NAME, msg:'Identifiers: ' + obj_rep(identifiers));
+
+
+      return true;
+    }
+
+    ##
+    # Wrapper for asset_attribute_operating_system::reconstruct()
+    ##
+    protected function reconstruct()
+    {
+      normalized_value = asset_attribute_operating_system::reconstruct(
+        order       : standards.norm_order,
+        identifiers : identifiers,
+        normalized  : normalized
+      );
+
+      if (empty_or_null(normalized_value))
+      {
+        return false;
+      }
+      else
+      {
+        dbg::detailed_log(lvl:4, src:FUNCTION_NAME, msg:'Normalization successful.');
+        return true;
+      }
+    }
+
+    ##
+    # Normalize the individual identifiers
+    ##
+    protected function normalize_identifiers()
+    {
+      normalize_identifier_linux_kernel_string();
+      normalize_identifier_linux_kernel();
+      normalize_identifier_on_string();
+      normalize_identifier_distro();
+      normalize_identifier_release_string();
+      normalize_identifier_release();
+      normalize_identifier_codename();
+    }
+
+    ##
+    # Normalize 'linux_kernel_string' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel_string()
+    {
+      normalized.linux_kernel_string = 'Linux Kernel';
+    }
+
+    ##
+    # Normalize 'linux_kernel' identifier.
+    ##
+    protected function normalize_identifier_linux_kernel()
+    {
+      #normalized.linux_kernel = capitalize(str:tolower(identifiers.linux_kernel), regex:'[ -]');
+      
+      # cast string as lowercase
+      normalized.linux_kernel = tolower(identifiers.linux_kernel);
+    }
+
+    ##
+    # Normalize 'on_string' identifier.
+    ##
+    protected function normalize_identifier_on_string()
+    {
+      # cast string as lowercase
+      normalized.on_string = 'on';
+    }
+
+    ##
+    # Normalize 'distro' identifier.
+    ##
+    protected function normalize_identifier_distro()
+    {
+      normalized.distro = identifiers.distro;
+    }
+
+    ##
+    # Normalize 'release_string' identifier.
+    ##
+    protected function normalize_identifier_release_string()
+    {
+      normalized.release_string = 'release';
+    }
+
+    ##
+    # Normalize 'release' identifier.
+    ##
+    protected function normalize_identifier_release()
+    {
+      normalized.release = identifiers.release;
+    }
+
+    ##
+    # Normalize 'codename' identifier.
+    ##
+    protected function normalize_identifier_codename()
+    {
+      normalized.codename = identifiers.codename;
+    }
+  }
+
+  # end of objects
+}
+

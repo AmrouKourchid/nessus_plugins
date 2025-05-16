@@ -1,0 +1,95 @@
+#TRUSTED 22ebfdc3b3864f33e47238122cc9915ebfc0b5e8018d9dd7563445d9aa7287ad48cfe6906c7899ab38d924db4099c4f773c31ef3db05faa5e701b6ffd4aa6f3ad647ade454147350c893a36963019f9e6b1b93604994cf27f0bf4fb106839aa62c7c1433b5b057a52ec3da17d71043073d1a89b6b71e4bdeb44e4029a23f6ef05e7e5ad1b455b27e26024717356dd6c133193e4ffb55d5f899dde7e5eb07bf496c370036400a8d63e3ba6a9bb4290764577d2a3e6804067584d2fa0ebeee61316e71303aa0038cfd19fd26425af7c89d6007bacc7ccbbea6e3bc368f5c6444f5f1beba15f2a94cbd0ad1517fd82607a68cdff727b30df7467ef157e27ed32c07f71c5d099b4e843a4e9febc0ec6ddb4ab8a6bb9321936925ad3c0a595e5d5811631483fb1cbdb12bd7dba44a40f7a59d4e7ce7684c4fba10ece7c6234d2cddfa676a44573c308fb0b87497882007e6361388e1529989484b29269cd7cfe88e27431230758606c5398de91f5a76a74f3901957b2264f9f890833d0850485781c0e2b41de3a28b91cc46e17c60c2faa869f76ecee4732d8501cd2e99082cc229857d62db7f32c6051ee9ab48a381b3f97c16c36da459054609e1c8ae6c16bc83e6bb5d9f92e781deb75a9d1123d297757fec666476d2299152bab9ec2ea8a07a82f0ea747799decd0e61677b9e7d72a44d2bf844e8f1768e4793b0680dae3590d6
+#TRUST-RSA-SHA256 8c5c1b319c1f7a6e2f728ce46aa6ba9f4bcd2f1f4bf259a09fc1ad673bcbcde94df183250a8a3c8b446fb5fbcf64f329e9009451401493a957ab04e0022697c38f6b86d2b100464ffe44f67ac8e503f2e54e12717c34b289e32d4d59ea7af13701afb18cf483b188e267867dad43d7358fa5b357fe7f2c78c8280e8a7ed068364f5f727e7185f045c344341a2f7cd1be050e7e4f3b1947e1d65a955b40f6a9b9b3422e7df61a9489f6f4d0b68737c671bc592f63f60f45bac7775e8cf9e71ce21084c8f91874c491015cce36bb402bf10ee7d57090d5cf861bee9bf1d590d9bcaec5af8bc3d0da2717182b532df6a3c39fcb3920b43c81b2ad63c7d99ae1fa32b7ec42bc1884411117d1201b9053a9789d91017d111c04cd3fb466e2a5aa0cac8ab623c2edbbad3d2bab48a04c5795cde80acc5e91e1745ea054e8569706c1a9fb3732e5350ef79ea11ed2a89a5bb3a2a9abf7b51634e1021a37dd0072f402e5139cd906af17a565ca0e43c7ddbd5e7e377f8f84c1baaa7f35a526e28007b2f4776b1109acb3fc79d66ac3b4c73032fd4c08e351c481f13180513a1b435a9a68ddb3117c777891425951927d47958c55b1bf9e3f55941b89c90be67539410d4713a858a34e1e244363010da5e17ae1ac55a11cd79a262ee18917c5b47f45625a09467bfa1f75f115fa7024d4c62b17abc2c4e2ab6d69652560cfce1f33ce0d2e
+# (C) Tenable Network Security, Inc.
+
+# Revision: 1.3
+
+##
+# callback for systems with "^Arista Networks EOS\s*(\d+\.[^\s]+)[\s]*$" in /etc/Eos-release
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "cat /etc/Eos-release"
+#
+# @return @Returns TRUE if this is Arista EOS, FALSE otherwise
+##
+function handle_arista_eos(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var arista_eos_version_pattern, arista_eos_version_regex, model, startup_regex, prefdl_regex, startup_config, prefdl, model_match;
+
+  replace_kb_item(name:'Host/showversion', value:cmd_res);
+  arista_eos_version_regex = "^Arista Networks EOS\s*(\d+\.[^\s]+)[\s]*$";
+
+  arista_eos_version_pattern = pregmatch(pattern:arista_eos_version_regex, string:cmd_res, icase:TRUE);
+
+  if(!arista_eos_version_pattern)
+  {
+    report += '\nThe output of "cat /etc/Eos-release" is :\n' + cmd_res + '\n\n';
+
+    failure_kb_msg =
+      'The device appears to be Arista EOS, however it was not possible\n' +
+      'to determine the installed version. Local checks have not been enabled.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return FALSE;
+  }
+
+  release = arista_eos_version_pattern[1];
+  report += '\nThe remote Arista EOS system is :\nVersion ' + release + '\n\n';
+  replace_kb_item(name:'Host/Arista-EOS', value: TRUE);
+  replace_kb_item(name:'Host/Arista-EOS/Version', value: release);
+  replace_kb_item(name:'Host/Arista-EOS/show_ver', value: cmd_res);
+
+  replace_kb_item(name:'Host/OS/showver', value: 'Arista EOS ' + release);
+  replace_kb_item(name:'Host/OS/showver/Confidence', value: 100);
+  replace_kb_item(name:'Host/OS/showver/Type', value: 'embedded');
+
+  replace_kb_item(name:'Host/OS', value: 'Arista EOS ' + release);
+
+  model = get_kb_item('Host/Arista-EOS/model');
+  if (isnull(model))
+  {
+    # Try to get the model from the startup-config
+    startup_config = run_command(cmd:'cat /mnt/flash/startup-config',
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+    if (startup_config)
+    {
+      startup_regex = "!\s+device:\s+\S+\s+\(([^,]*),";
+      model_match = pregmatch(pattern:startup_regex, string:startup_config, icase:TRUE);
+      if (!empty_or_null(model_match) && !empty_or_null(model_match[1]))
+      {
+        model = model_match[1];
+        set_kb_item(name:'Host/Arista-EOS/model', value: model);
+      }
+    }
+
+    # If there's no startup config model, try to get model from /etc/prefdl
+    if (empty_or_null(model))
+    {
+      prefdl = run_command(cmd:'cat /etc/prefdl',
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+      prefdl_regex = "Sku:\s+(\S+)";
+      model_match = pregmatch(pattern:prefdl_regex, string:prefdl, icase:TRUE);
+      if (!empty_or_null(model_match) && !empty_or_null(model_match[1]))
+      {
+        model = model_match[1];
+        set_kb_item(name:'Host/Arista-EOS/model', value: model);
+      }
+    }
+  }
+  if (!empty_or_null(model))
+    report += '\nThe remote Arista EOS model is :\nModel ' + model + '\n\n';
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_arista_eos.static', value: 90);
+  report += '\nOS Security Patch Assessment is available for Arista EOS.\n';
+  return TRUE;
+}
+

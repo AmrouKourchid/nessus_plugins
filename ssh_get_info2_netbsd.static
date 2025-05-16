@@ -1,0 +1,75 @@
+#TRUSTED 4c4adf8553a3721b2257e4f164f292e12ba4ed2fcac57137e32f65326f9f811e971d16cb4009042e1415ddc6e89ec7c12a439072cd05004457cc9ed71fd3749012ebd23af5ebb90edf1f009bbf5b980a7b524d47c1a47e46b29db610cda6caeba711ba75f43adb4febf94c3f58ad02a66d99f8b1e2c30fe5729cb7bc413511763b6cb3880daf23533413c5927764713fadacc660af64c09a91700e033d57928191c2f529d43eb0828da7169d94e60003e2911cfa7a762d1e4d47fdd5440e7a70acd0064b1f3fee67fa941223315757133a3803c48954d0ef08f371d5b0be1a33916aa03039bffe9340a0e33e0186c8b6244760b1db81394368befd30b807e247e27f8c238aabdb1fbe31bbbda1a022757d6794039b5bbe2e3a8ea5c3a0d721598eba7be4b60a1c7ba9fa689591e6e3989deafb7c212e8f7a6a60937efe09bc28e04055c79c7a60622ca2cca2cb9d67080c05d909dffa181dc8152cca96f0955ddb49497f73235b65748e663c3bdb6be6314f725b338e066aab97a131cf1846b0008e73f3fe37b47f6da5ac55587277b7432e1447b000c500ad5afcf1cf2c57b05d6836c26fb7fb7cbc1ed58cca35ce25a52c2d58f82c28391965cc839bbb13278f71e8ed1281508ce7cb32962eceb83edb994ab0739ca666ffc24a3cd0cea2c88eed31ef052b738f4be24c642f8f775f812ff1118d98eb53a1a98b7dde5f10b9
+#TRUST-RSA-SHA256 41e19a2a6094e12f7a7f780d07d806e6d04dee40824ab7849ac5c54cace2b9a55a7be0d135cb6c9ed98171f94e480c1c3c2d47c570ba3a05cdfb127d600a7ea0ca219f80a38cac2c0f4201b120fad158ea0929b557149851beaf7bef8838c6bcdf11b4b60b45a2023db8195cc015573ab2745f5129d91346dc8d9e2ca8b5f60250acad0db728b01538268340464fa6253fce1a4bffd6fff9ac4410eb2cc465367aa9c93746f738c7e4ede76673b0c700b273d72a3fa9c54fc45a1f5c3ed62c59aa996ed7a2695c5701d61d6d07bd66eee33554f88554ccbb318a69202c13090e1d2bc59e8f0a6a0cc23ab627db7560d6701cf0a35093ab84f5aeebbdb37e82fa4989a2e6ec05bb7b5f80822471c73f13b4ebe64cbfedff3889daf84a0fb0dd0cdcb4579b3567af290330dfb5e12a6565291c8a86978ced4d62e82a6d3184f8c83571b5a0c0ed64018306ffcecae74250143a95238251c955eb6c5f46d12ec935f84cfcb3f44d1d33b6b4762e6aa375f8155843ad8700a0bfb9544fec002fc0a7c3375117cb52e112eafa41a9515500c0ab1c568de56fcc3daf471e42d266245f394c4791b762d764b9ae9376ab08809939438a8f7e6e7c6751dae93d119106ac556228f6d2942b4bf0069b297b9074d0bbfa9619fdd5376d03592cdcfda4e812b63fd55d96cc168772ca0d772eb38fd67ef190a84256a5ed576daf46faf04e70
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+
+function netbsd_pre_check_fail()
+{
+  # we've already checked that the host is not NetBSD previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_netbsd'])
+    return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not NetBSD if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:netbsd_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+# callback for systems with "NetBSD" in uname
+function handle_netbsd(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var release;
+
+  if (empty_or_null(host_info_key_val['uname-a_reported'])) {
+    report += '\nThe output of "uname -a" is :\n' + cmd_res;
+    host_info_key_val['uname-a_reported'] = TRUE;
+  }
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  failure_kb_msg = "OS Security Patch Assessment is not supported for NetBSD.";
+  failure_kb_type = lcx::ISSUES_INFO;
+
+  release = ereg_replace(pattern:".*NetBSD[ ]+.*[ ]+([0-9]+[0-9.]+)[ ]+.*", replace:"\1", string:cmd_res);
+  release = "NetBSD-" + release;
+  set_kb_item(name:"Host/NetBSD/release", value:release);
+
+  report +=
+    '\nNote, though, that Nessus does not have local OS security' +
+    '\npatch assessment checks for NetBSD security fixes.' +
+    '\n';
+
+  return NULL;
+}
+
+function handle_not_netbsd(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  host_info_key_val['host_not_netbsd'] = TRUE;
+}

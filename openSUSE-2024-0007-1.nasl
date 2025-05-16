@@ -1,0 +1,156 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The package checks in this plugin were extracted from
+# openSUSE Security Update openSUSE-SU-2024:0007-1. The text itself
+# is copyright (C) SUSE.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(187650);
+  script_version("1.2");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2024/07/19");
+
+  script_cve_id(
+    "CVE-2022-3559",
+    "CVE-2023-42114",
+    "CVE-2023-42115",
+    "CVE-2023-42116",
+    "CVE-2023-42117",
+    "CVE-2023-42119",
+    "CVE-2023-51766"
+  );
+  script_xref(name:"IAVA", value:"2022-A-0338-S");
+  script_xref(name:"IAVA", value:"2023-A-0521-S");
+  script_xref(name:"IAVA", value:"2024-A-0002-S");
+
+  script_name(english:"openSUSE 15 Security Update : exim (openSUSE-SU-2024:0007-1)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote openSUSE host is missing one or more security updates.");
+  script_set_attribute(attribute:"description", value:
+"The remote openSUSE 15 host has packages installed that are affected by multiple vulnerabilities as referenced in the
+openSUSE-SU-2024:0007-1 advisory.
+
+  - A vulnerability was found in Exim and classified as problematic. This issue affects some unknown
+    processing of the component Regex Handler. The manipulation leads to use after free. The name of the patch
+    is 4e9ed49f8f12eb331b29bd5b6dc3693c520fddc2. It is recommended to apply a patch to fix this issue. The
+    identifier VDB-211073 was assigned to this vulnerability. (CVE-2022-3559)
+
+  - NTLM Challenge Out-Of-Bounds Read Information Disclosure Vulnerability [epel-all] (CVE-2023-42114)
+
+  - AUTH Out-Of-Bounds Write Remote Code Execution Vulnerability [epel-all] (CVE-2023-42115)
+
+  - Exim SMTP Challenge Stack-based Buffer Overflow Remote Code Execution Vulnerability (CVE-2023-42116,
+    CVE-2023-42117)
+
+  - dnsdb Out-Of-Bounds Read Information Disclosure Vulnerability [epel-all] (CVE-2023-42119)
+
+  - Exim before 4.97.1 allows SMTP smuggling in certain PIPELINING/CHUNKING configurations. Remote attackers
+    can use a published exploitation technique to inject e-mail messages with a spoofed MAIL FROM address,
+    allowing bypass of an SPF protection mechanism. This occurs because Exim supports <LF>.<CR><LF> but some
+    other popular e-mail servers do not. (CVE-2023-51766)
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.suse.com/1218387");
+  # https://lists.opensuse.org/archives/list/security-announce@lists.opensuse.org/thread/HHLYW3QLWRHGQXVXSQUL2DBTCFFCJGNB/
+  script_set_attribute(attribute:"see_also", value:"http://www.nessus.org/u?52413d4f");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2022-3559");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-42114");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-42115");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-42116");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-42117");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-42119");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-51766");
+  script_set_attribute(attribute:"solution", value:
+"Update the affected exim, eximon and / or eximstats-html packages.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:N/I:P/A:N");
+  script_set_cvss_temporal_vector("CVSS2#E:POC/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:P/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2023-51766");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2022/08/25");
+  script_set_attribute(attribute:"patch_publication_date", value:"2024/01/03");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2024/01/05");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:opensuse:exim");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:opensuse:eximon");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:opensuse:eximstats-html");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:novell:opensuse:15.5");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"SuSE Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2024 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/cpu", "Host/SuSE/release", "Host/SuSE/rpm-list");
+
+  exit(0);
+}
+
+
+include('rpm.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+var os_release = get_kb_item('Host/SuSE/release');
+if (isnull(os_release) || os_release =~ "^(SLED|SLES)") audit(AUDIT_OS_NOT, 'openSUSE');
+var _os_ver = pregmatch(pattern: "^SUSE([\d.]+)", string:os_release);
+if (isnull(_os_ver)) audit(AUDIT_UNKNOWN_APP_VER, 'openSUSE');
+_os_ver = _os_ver[1];
+if (os_release !~ "^(SUSE15\.5)$") audit(AUDIT_OS_RELEASE_NOT, 'openSUSE', '15.5', os_release);
+if (!get_kb_item("Host/SuSE/rpm-list")) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 's390' >!< cpu && 'aarch64' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'openSUSE ' + _os_ver, cpu);
+
+var pkgs = [
+    {'reference':'exim-4.97.1-bp155.5.9.1', 'release':'SUSE15.5', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'eximon-4.97.1-bp155.5.9.1', 'release':'SUSE15.5', 'rpm_spec_vers_cmp':TRUE},
+    {'reference':'eximstats-html-4.97.1-bp155.5.9.1', 'release':'SUSE15.5', 'rpm_spec_vers_cmp':TRUE}
+];
+
+var flag = 0;
+foreach package_array ( pkgs ) {
+  var reference = NULL;
+  var _release = NULL;
+  var _cpu = NULL;
+  var rpm_spec_vers_cmp = NULL;
+  if (!empty_or_null(package_array['reference'])) reference = package_array['reference'];
+  if (!empty_or_null(package_array['release'])) _release = package_array['release'];
+  if (!empty_or_null(package_array['cpu'])) cpu = package_array['cpu'];
+  if (!empty_or_null(package_array['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = package_array['rpm_spec_vers_cmp'];
+  if (reference && _release) {
+    if (rpm_check(release:_release, cpu:_cpu, reference:reference, rpm_spec_vers_cmp:rpm_spec_vers_cmp)) flag++;
+  }
+}
+
+if (flag)
+{
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_WARNING,
+      extra      : rpm_report_get()
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'exim / eximon / eximstats-html');
+}

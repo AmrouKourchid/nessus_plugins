@@ -1,0 +1,22 @@
+#TRUSTED 963c16b024ee7a7d0f42ec010cf6ef711a82a0a2d4895714b16eb41e3a0fc55fcee119e2ac4c2468a318c25d6cb25e683ea12e530dd8c750b6bac5365c0c6ab36912f1b39d612a0f04a8404e4e47254d9a1c58f02bfeca64ef651e0173e6576af8f0a4196d825b0562e65cacfe3ebb6e0317e90bc3dd61d32f07939744085402d2281b22755e1a54671b6992d1b9b61c7c63104ffa1f96ed076f57633e61f4d723774175b4fba40e62160fba379ebc8bcdf572c1d91828be62a5c7988ee4789774e10c373111cc5f99e9739fae4b93e9864248403c017bfebcfb1bd4c3f86be9ab023fd6673c09c3698181c175f06f54734fa506e312f3c411f4a27ce05f87cda6efa321f8c07f5dff7478324ce08d265d3c26b8cb1f9c42a5d8de3ca65d1fc33def6178d49f9a19b498c1e716a4f9fc2ae764130283a4ab8db4e5a4a20cbd01a594ac5ee5ae3f0def46e2f188d15194133e7f8f998e057c3919d5de099e413ce48343eb23709948a4c61cb1a93a90deed1b397f1a0ed3710002bc159e555fde437b3bcef01a7983043acda76dc10e0805ecaa295ceea92a9219713a7fef6c9293371d003d14c9937fdd2a297813980416433a86660e2b1402ddef7d470e5da0fecdf3b8101d8ceb4d68c8d121412d355df5f698f43083fe61d9aec16ed4e87de255a49d295117c1b4df02ca124cdb7b3e875edaa12616b8659e27beb6b11f2a
+# -*- Fundamental -*-
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# ubuntu.inc
+#
+# Revision: 1.29
+#
+
+include("debian_package.inc");
+
+# 20220301: This include file has been merged with debian_package.inc. The differences between the two were not
+# significant enough to merit their continued existence as individual include files. Henceforward both shall be one.
+# All Ubuntu and Debian functions will go in debian_package.inc.
+global_var ubuntu_library_deprecated = 1;

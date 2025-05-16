@@ -1,0 +1,248 @@
+#TRUSTED 1b1138af17fea54f0f2a77ff46093acd807365dfaee9d0d9bbddc7a6b8ba7ac0d0acb1c05c5f6c3dd45451d834e1f3be1509e7b82e8614ca77590c95df439e8770f4e3a3c36fedb5c4f3b88468c41b7ec9573f8ee4fb03f18a0a34914729d410b89e49dbd619d4717b47b41bce430e973c8aca30d98fa98786ea70b822d6d7b91e6d7c93e404d25b214b2f08586a2842e505c12fc83daa71cbc58d8576b84b73502daf18e99b2a75e8f2ecc04b489d419e8a1b7815dd4e37a8215c9214dc4ca7ceaac6ca331cb42a3191d2b535da776f07560f096c96aa0a08d2c5a7311bd371b753dcba8355d8c54a435cbc93d816b7f061d4d700778103dd1ebd1e95f9f4865d3141d0230fec9af5d10bf41128f1274b3a67e3a822ad5935c3dd1c4899a0a36f6ef11b7f4541f26d6c76646dada1be4a0b7ac214f9a9e6eb9cec2b2287a8c91bb6fa65e701595a5655849f3c062f7cda69837b5b2b413ea5d64c796776d6d498aa7227b9ad358bfbdd677af3f70acbeea66d913910ab0b7453faf4bd76276ffe79c4c8c6ff32498e8a161313faa06d39402b015d21f93c5922cee19d42b6f39954e733772ca471de7ab5cb828a6d5a28fa4e9ac6fef7c20740a0de427080573f04003f2053a5d12bc772a17081f5900a96a11edc3b3c573db1d3bfbaf95344a0d657362c559edfe378a5422b65f23bdacbb7bb98b0ab742fdb8a10f80684a3
+#TRUST-RSA-SHA256 92fd5353674c6761810b271ca93450ee062e473406bcdd2ca1c7d9ff86a8080893f9f308fe50dea53109571e61e073350f574cda788324b6023f531f36a3557ffd318328213e7a96a6060e5fa8aaeac807d2dcb6a2615271cedef6b096b24a7ea49134d2cf4f9c790b3b7f9aa343dec1af1842d1685933fcb6768e8d1c7808a7ad142791dba127413a78aeb7ac92aa31168bdae3eeb2f14ba8cb9681a48202710eb50ee8c9a8bd63812e185e3c49de0c3d1f804441ab6c75b847de8bc91fe92215933f447d61709434582951142c9b04bbcb043aa97c7b9c0edb761fe8799d45f47cae328038b4fd8dad18449fe7f438cd5302b102c26d1114a826555ded97149e68c2f5e90d5c26f77cb7b8b6b86d0afcd01a1c061cb300966f5667f9a1f52c418a9316807c737e1adb4a6e6705d163b62d83b7277b742022ba1386b6db3caed7b33658f1aabf9998d6d34e9bea2aeb5a8f19d82d17c3fcc65f548660fe98b2352dcf65f039ec1261203490c5e342e6ad78d5d47486b9de64e7e36b61f54231748af7bb4ed1b9fe9257dd411b59396f6d26b591d086f1b0ee8ffad6798f3a13bc74866df6de602df73b8a9863d843cdea5ad9457c53d18f52c6670931bec0f2c3677f1ab5176e89548e79d6b66b4df38ae30e4bcb6df00927c005a74d509791ff890ae2f27a0de12c80b4587e7357250824486588c853b7d1c507ce52a40014
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.12
+
+#
+# vmware_esxi_pre_check_fail
+# check if this is a VMWare ESXi hypervisor based on information collected
+#
+function vmware_esxi_pre_check_fail()
+{
+  # have we already checked that the host is not VMware ESXi?
+  if(host_info_key_val['host_not_vmware_esxi'])
+  {
+    # already checked that host is not ESXi, no need to check again
+    return TRUE;
+  }
+
+  if(uname_error_or_mismatch(regex:vmware_esxi_check['test_cmd_regex']))
+    return TRUE;
+
+  # Not VMware ESXi if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "VMkernel" in uname -a
+#
+function handle_vmware_esxi(session, use_shell_handler, &channel, cmd_res)
+{
+  var cmd_output, version, build, match, uname_pattern, release;
+
+  var esxi_kb = "Host/VMware/";
+  replace_kb_item(name:esxi_kb + "found", value:TRUE);
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+
+  uname_pattern = "^VMkernel .*(\d+\.\d+)\.\d+.*build-(\d+)";
+  match = pregmatch(string:cmd_res, pattern:uname_pattern);
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this VMware ESXi host.';
+
+  if(!empty_or_null(match) && !empty_or_null(match[1]) && !empty_or_null(match[2]))
+  {
+    version = match[1];
+    replace_kb_item(name:esxi_kb + 'version', value:"ESXi " + version);
+    build = match[2];
+    replace_kb_item(name:esxi_kb + 'build', value:build);
+  }
+  else
+  {
+    failure_kb_msg = 'could not detect the version from the output of "uname -a".';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n\nHowever, we ' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  # Don't bother running the command if we've collected this via SOAP
+  release = get_kb_item(esxi_kb + 'release');
+  if(empty_or_null(release))
+  {
+    cmd_output = run_command(cmd:"/usr/bin/vmware -v",
+                             session:session,
+                             use_shell_handler:FALSE,
+                             channel:channel,
+                             force_priv_escl:FALSE);
+
+    if (isnull(cmd_output))
+    {
+      replace_kb_item(name:esxi_kb + "vmware-v/errmsg", value:"The command failed to produce any output.");
+    }
+    else
+    {
+      if(preg(pattern:"^VMware ESXi \d+\.\d+\.\d+ build-\d+$", string:cmd_output, multiline:TRUE))
+      {
+        release = cmd_output;
+        replace_kb_item(name:esxi_kb + "release", value:release);
+      }
+      else
+      {
+        replace_kb_item(name:esxi_kb + "vmware-v/errmsg", value:"The command produced invalid output: " + cmd_output);
+      }
+    }
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Not running 'vmware -v': Output is already available via SOAP");
+  }
+
+  register_vmware_esxi_os(release:release, version:version);
+
+  # Don't bother running the command if we've collected this via SOAP
+  if(empty_or_null(get_kb_item(esxi_kb + "esxcli_software_vibs")))
+  {
+    cmd_output = run_command(cmd:"esxcli software vib list",
+                             session:session,
+                             use_shell_handler:FALSE,
+                             channel:channel,
+                             force_priv_escl:FALSE);
+
+    if (isnull(cmd_output))
+    {
+      replace_kb_item(name:esxi_kb + "esxcli-software-vib-list/errmsg", value:"The command failed to produce any output.");
+    }
+    else
+    {
+       var viblist = NULL;
+       var vibs = split(cmd_output);
+       foreach var vib(vibs)
+       {
+         if("Vendor" >< vib && "Install Date" >< vib)
+         {
+           match = ereg_replace(string:vib,
+                                pattern:"^\s*([^\s]+\s+)([^\s]+\s+).*(Install Date)\s*$",
+                                replace:"\1\2\3");
+           viblist += match + '\n';
+           continue;
+         }
+
+         match = pregmatch(pattern:"^\s*([^\s]+\s+)([^\s]+\s+)[^\s]+\s+[^\s]+\s+([^\s]+)\s*$", string:vib);
+         if(!empty_or_null(match) && len(match) == 4)
+           viblist += match[1] + match[2] + match[3] + '\n';
+       }
+
+       if(!empty_or_null(viblist))
+       {
+         viblist = 'ESXi Version : ' + get_kb_item(esxi_kb + "release") + '\n\n' + viblist;
+         replace_kb_item(name:esxi_kb + "esxcli_software_vibs", value:viblist);
+       }
+       else
+       {
+         replace_kb_item(name:esxi_kb + "esxcli-software-vib-list/errmsg", value:"The command produced invalid output: " + cmd_output);
+       }
+    }
+  }
+  else
+  {
+    dbg::detailed_log(lvl:1,
+                      src:FUNCTION_NAME,
+                      msg:"Not running 'esxcli software vib list': Output is already available via SOAP");
+  }
+
+  # If cmd_output doesn't exist here, the errmsg KB is already written.
+
+  var err_kbs = get_kb_list('*' + esxi_kb + '*' + '/errmsg');
+  if (!empty_or_null(err_kbs))
+  {
+    failure_kb_msg =
+      'The remote operating system appears to be VMware ESXi, ' +
+      'version ' + version + '.\n' +
+      '\nHowever, at least one command has run into unexpected errors and local checks' +
+      '\nwill not be enabled at this time.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+  }
+  else
+  {
+    report += '\nOS Security Patch Assessment is available for VMware ESXi, version ' + version + '.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_vmware_esxi.static', value: 190);
+  }
+
+  return NULL;
+}
+
+#
+# callback for systems without "VMkernel" in uname -a
+#
+function handle_not_vmware_esxi(session, use_shell_handler, &channel, cmd_res)
+{
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+
+  if(use_shell_handler)
+    store_shell_info();
+
+  host_info_key_val['host_not_vmware_esxi'] = TRUE;
+}
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release:str] OS release
+# @param [version:str] OS version
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_vmware_esxi_os(release, version)
+{
+  var vendor = 'VMware', product = 'ESXi', os_name;
+
+  if (empty_or_null(release) && empty_or_null(version))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'release and version info are missing.');
+    return NULL;
+  }
+
+
+  # OS Name
+  if (version)
+    os_name = strcat(vendor, ' ', product, ' ', version);
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : vendor,
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_name     : os_name,
+    cpe         : 'cpe:/o:vmware:esxi'
+  );
+}

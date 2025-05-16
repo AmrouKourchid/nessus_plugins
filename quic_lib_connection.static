@@ -1,0 +1,1066 @@
+#TRUSTED 491e1396cd3b3c983cb75b350eb8fcd2f04625c36b2025913a4e571bd799826c9eb94055fc27c444256b71fdbd60772d24451b05e4870d8c9987093fc1b2ee89e4cea8c3c4b2d7f54d8fb6f1a8a34d53b5f047476496766753b54a327d098272fe6b817ef4e47cc1c56826572c0334f17680e786be326d64e62d6408183aef1be5bdb384a92a9ab3ba42b8aae292b3ada7f40cd86534fda01b618311d4f62a56d6cb9c7ac135071daafc8c561a29770b5823b0971b1cd7a1fc38fb12ed41b136f9aa4fe8251591479423fb6653dfcfbb99bbf9d9d63bccb9371450a3e1989290e45db5e7cd70ff49d5d4c97489d2e60864d19edc828f538a5823618c22bcddab59ffb44222c0444066e5857674371723f9322836c0429c638d7b0cd16f2e8161bda4e0cc629014b1cf69558b690bbfe48f6e5e7270711638f8701f3b90b7a016efa819a998832d16ab49512ea4217aa8bd20333356c6a69dd4f82c3626ae7618112ca92d42019f8575ded565c4e4c04c3786fdad7cb99bbd6fcac51926ee36728fb109d5994896f8bb8702ea6bcf02e40c088e6c0701b1b996da042a46d8436e9c84fe7584af9a8f0df751d05cc814c2fd6e635f69c6b5a2d7b771d627f1f44a1ce7c427803330f71915e66e19a5024e1d927a923b8ed0034f4c269ff9f1a1ee3b558d1941b06b557830d4b82b5d2eb6a97abde2f005974e70ac01e133420700
+#TRUST-RSA-SHA256 0faee3aeca2787cb065107afa260013d126b256570f895a47bc2da5b2cbd0b8127699fabaf5e9119fb0113eae43518ce8e0e9f403408883cb1bf5b46e13bea41e2b4a8b26e4b182825282b26a59de4f62e39828610bd553eb45530dffafe0c516fa8e1eed31f0f671008f82a7063f9f94e29450925273184740377debb2ce03701f4fb938822bc57a1ed06d306f7b8e20e1e8b7d868622bb2415e11a868829f293c1ec128b581b1f192a4fb3b7733f68630b9bf490612129d878b76677e15feec6713f7af92d015b6961536ea1abbbe181342a817144add2fcfa8914209cabdd0ad1382f12881771173707584300a6761d82c3f37849d755b8c149fed53b94a2b1d5d86983bbc829b688f69d80dc71bfd7a754e4efe81c3ec622031457418391dd1ece91594d9aa33c09fd923ef271f8b6480f4c6ef9af30f7876e49b2ceaa855b251925637eb9cbc74848ad0dbd98f0b339b1209ffe36738d12035bc8424ad0913cf1449fc9b88bec1854963fe72e44b129f3d14e0188ef7c66891ba8099b1f2ebc1d70e54e3b9e7f7693f9d501670b364900560df831691e40a5626365ed42b47c0c8308eda1d9b3f67fe96e72d0af5c501d64180545d744180afdfb0a32ed5cab032900130b0eb92010976b32b7dd64187b697c57dc21f85a73eb488156242d3c6463ff160b85be55dc85e601573ad459a931004981a8e488492405c2ffe2
+
+###
+#
+# A connection object for NASL's QUIC implementation.
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+###
+
+namespace quic
+{
+  object connection
+  {
+    # states
+    var UNINITIALIZED = 0;
+    var CONNECTED = 1;
+    var DISCONNECTED = 2;
+
+    var port;
+    var source_id;
+    var destination_id;
+    var packet_space = [];
+    var streams = [];
+    var server_origin_streams = [];
+
+    var crypto_streams = [];
+    var crypto_residue = [];
+
+    var handshake_pub_key;
+    var handshake_priv_key;
+
+    var soc;
+    var state = UNINITIALIZED;
+    var stateless_reset_token;
+
+    var handshake_bytes;
+    var client_random;
+
+    var bi_client_stream_id = 0;
+    var uni_client_stream_id = 2;
+
+    var app_protos = ["h3"];
+
+    ##
+    # Constructs a QUIC connection object.
+    #
+    # @anonparam [first:list] A list of strings describing supported application protocols. (optional)
+    #
+    # @remark
+    # This library always supports the "h3" application protocol.
+    ##
+    function connection()
+    {
+      var new_protos = _FCT_ANON_ARGS[0];
+      if(!isnull(new_protos) && typeof_ex(new_protos) == "list")
+      {
+        var ap_set = new collib::set(this.app_protos);
+        ap_set.insert(new_protos);
+        this.app_protos = ap_set.to_list();
+      }
+    }
+
+    ##
+    # Adds a message to our TLS 1.3 transcript.  A hash of this transcript
+    # is used to generate encryption/decryption keys to secure handshake
+    # communications.
+    #
+    # @param [msg:bytes] A TLS 1.3 handshake message
+    ##
+    public function append_transcript(msg)
+    {
+      this.handshake_bytes += msg;
+    }
+
+    ##
+    # Sets the destination ID (id of the server) for this connection
+    #
+    # @param [dcid:bytes] The new destination ID
+    ##
+    public function set_destination_id(dcid)
+    {
+      this.destination_id = dcid;
+    }
+
+    ##
+    # Retrieves the application protocols supported by this connection.
+    #
+    # @return Returns a list of strings describing application protocols.  (i.e. ["h3"])
+    ##
+    public function get_app_protos()
+    {
+      return this.app_protos;
+    }
+
+    ##
+    # Gets the crypto stream associated with an encryption space.  If one doesn't exist
+    # yet, this function will create it.
+    # 
+    # @param [level:int] The target encryption level.
+    # @return [object|NULL] Returns the space object associated with the requested encryption level.
+    #                       Returns NULL if an invalid encryption level is specified.
+    ##
+    public function get_crypto_stream(level)
+    {
+      if(isnull(level) || (level > CRYPTO_LEVEL_APPLICATION && level < CRYPTO_LEVEL_INITIAL))
+        return NULL;
+
+      if(isnull(this.crypto_streams[level]))
+      {
+        var synth_id = -(level + 1) | 0x03;
+        this.crypto_streams[level] = new quic::stream(synth_id, this);
+      }
+
+      return this.crypto_streams[level];
+    }
+
+    ##
+    # Sets the already decrypted residue for a crypto frame at a particular packet space
+    #
+    # @param [level:int] The target encryption level.
+    # @param [residue:bytes] The residual bytes.  Could be NULL to clear the residue.
+    ##
+    public function set_crypto_residue(level, residue)
+    {
+      if(!isnull(level) && level <= CRYPTO_LEVEL_APPLICATION && level >= CRYPTO_LEVEL_INITIAL)
+      {
+        this.crypto_residue[level] = residue;
+      }
+    }
+
+    ##
+    # Sets the stateless reset token for this connection
+    #
+    # @param [token:bytes] A token signifying that the server has reset the connection.
+    ##
+    public function set_stateless_reset_token(token)
+    {
+      this.stateless_reset_token = token;
+    }
+
+    ##
+    # Get a stream by its id.
+    #
+    # @param [id:int] The id of the stream to retrieve.
+    #
+    # @return [object|NULL] If the stream exists, it is returned, otherwise NULL.
+    ##
+    public function get_stream(id)
+    {
+      if(id >= max_index(this.streams))
+        return NULL;
+
+      return this.streams[id];
+    }
+
+    ##
+    # Establishes a QUIC connection to a server at the target host, over the
+    # specified UDP port.
+    #
+    # @param [port:int] UDP port on the target that is hosting a QUIC server
+    # @return [list|object] Returns a list of server response streams on success or an error object.
+    # @remark
+    #   QUIC error codes: https://www.rfc-editor.org/rfc/rfc9000.html#name-error-codes
+    #   this library refers to NO_ERROR as SUCCESS.
+    ##
+    public function open_connection(port)
+    {
+      if(isnull(port))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'No port argument supplied.');
+      }
+
+      if(this.state != UNINITIALIZED)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Open connection cannot be used to reopen a connection.');
+      }
+
+      if(isnull(get_kb_item("QUIC_TESTING")))
+        this.soc = open_sock_udp(port);
+      else
+        this.soc = get_kb_item("QUIC_TESTING_soc");
+
+      if(!this.soc)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Failed to open a socket on port ' + string(port) + '.');
+      }
+
+      this.port = port;
+      this.state = CONNECTED;
+
+      if(isnull(get_kb_item("QUIC_TESTING")))
+      {
+        this.destination_id = random_bytes(length:20);
+        this.source_id = random_bytes(length:20);
+      }
+      else
+      {
+        this.destination_id = get_kb_item("QUIC_TESTING_dcid");
+        this.source_id = get_kb_item("QUIC_TESTING_scid");
+      }
+
+      var ps = initialize_packet_space(secret:this.destination_id,
+                                       salt:INITIAL_SALT,
+                                       crypto_level:CRYPTO_LEVEL_INITIAL);
+      if(dbg::is_error(ps))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Failed to create initial packet space.');
+      }
+
+      var initial_pkt = new quic::packet();
+      if(dbg::is_error(initial_pkt.init(space:ps, type:INITIAL_PACKET)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Failed to create an initial packet.');
+      }
+
+      var nid = curve_nid.tls[0x17];
+      this.handshake_priv_key = ecc_generate_secret_key(curve_nid: nid);
+
+      this.handshake_pub_key = ecc_scalar_multiply(scalar:this.handshake_priv_key, curve_nid:nid);
+      this.handshake_pub_key.x = ecc_fe2osp(curve_nid: nid, element: this.handshake_pub_key.x);
+      this.handshake_pub_key.y = ecc_fe2osp(curve_nid: nid, element: this.handshake_pub_key.y);
+      if(isnull(this.handshake_pub_key))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Failed to generate a public key for the handshake.');
+      }
+
+      var ch_public_key = '\x04' + this.handshake_pub_key.x + this.handshake_pub_key.y;
+
+      this.client_random = dec2hex(num:unixtime()) + rand_str(length:28);
+      var client_hello = make_tls13_client_hello(public_key:ch_public_key,
+                                                 scid:this.source_id,
+                                                 challenge:this.client_random,
+                                                 app_protos:this.app_protos);
+      this.append_transcript(msg:client_hello);
+
+      var frame_len = initial_pkt.add_crypto_frame(payload:client_hello, stream_offset:0);
+      if(dbg::is_error(frame_len))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:frame_len.get_last_code(),
+          name:get_error_desc(error:frame_len.get_last_code()),
+          msg:'Error adding crypto frame.');
+      }
+
+      var payload = initial_pkt.get_encrypted_bytes(connection:this, pad:TRUE);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Sending initial packet to server :',
+        msg_details:{
+           "Data":{"lvl":3, "value":payload }
+        });
+
+      if(!isnull(get_kb_item("QUIC_TESTING")))
+        return [];
+
+      send(socket:soc, data:payload);
+      ps.store_unacked_pkt(packet:initial_pkt);
+
+      var res = handle_server_reply(desc:"initial packet");
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:res.get_last_code(),
+          name:get_error_desc(error:res.get_last_code()),
+          msg:'Error handling server reply to initial packet.');
+      }
+
+      var server_streams = this.server_origin_streams;
+      this.server_origin_streams = [];
+      return server_streams;
+    }
+
+    ##
+    # Creates and initializes a packet space object.
+    #
+    # @param [secret:bytes]     A secret for generating cryptographic keys.
+    # @param [salt:bytes]       A salt for generating cryptographic keys.
+    # @param [crypto_level:int] Cryptographic level or stage of QUIC for this space.
+    #
+    # @return [object] On success returns the new packet space object. Returns an Error object otherwise.
+    ##
+    public function initialize_packet_space(secret, salt, crypto_level)
+    {
+      if(empty_or_null(secret) || isnull(crypto_level))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Required arguments missing.');
+      }
+
+      if(!isnull(this.packet_space[crypto_level]))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Attempted to initialize an existing packet space.');
+      }
+
+      var ps = new quic::packet_space();
+      ps.init(secret:secret, salt:salt, crypto_level:crypto_level, transcript:this.handshake_bytes);
+
+      this.packet_space[crypto_level] = ps;
+
+      #Only dump secrets in nasl CLI mode to a clean file in the current directory
+      var secdumpfile = get_kb_item("secret/dumptlssecrets");
+      if(!isnull(secdumpfile) &&
+         isnull(get_preference("plugins_folder")) &&
+         secdumpfile =~ "^[a-zA-Z][a-zA-Z0-9_\-.]*$" &&
+         ps.crypto_level != CRYPTO_LEVEL_INITIAL)
+      {
+        var fd;
+
+        if(ps.crypto_level == CRYPTO_LEVEL_HANDSHAKE)
+        {
+          fd = file_open(name:secdumpfile, mode:"w+");
+        }
+        else
+          fd = file_open(name:secdumpfile, mode:"a");
+
+        if(fd)
+        {
+          var label;
+          if(ps.crypto_level == CRYPTO_LEVEL_HANDSHAKE)
+            label = "HANDSHAKE_TRAFFIC_SECRET";
+          else
+            label = "TRAFFIC_SECRET_0";
+
+          file_write(fp:fd, data:"CLIENT_" + label + " " +
+                                 toupper(hexstr(this.client_random)) + ' ' +
+                                 toupper(hexstr(ps.client_secret)) + '\n');
+
+          file_write(fp:fd, data:"SERVER_" + label + " " +
+                                 toupper(hexstr(this.client_random)) + ' ' +
+                                 toupper(hexstr(ps.server_secret)) + '\n');
+
+          file_close(fd);
+        }
+      }
+
+      return ps;
+    }
+
+
+    ##
+    # Retrieves an initialized packet space appropriate to the supplied
+    # packet type from the current connection.
+    #
+    # @param [packet_type:int] A QUIC packet type
+    # @return [object] Returns a packet space object appropriate for the supplied packet type,
+    #                  which can be NULL.  On failure returns an Error object.
+    ##
+    public function get_packet_space(packet_type)
+    {
+      var space;
+      var crypto_level = -1;
+
+      if(isnull(packet_type) || typeof(packet_type) != "int")
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Bad packet type argument.');
+      }
+      else if(packet_type == VERSION_NEGO_PACKET || packet_type == RETRY_PACKET)
+      {
+        return NULL;
+      }
+      else if(packet_type == INITIAL_PACKET)
+      {
+        crypto_level = CRYPTO_LEVEL_INITIAL;
+      }
+      else if(packet_type == HANDSHAKE_PACKET)
+      {
+        crypto_level = CRYPTO_LEVEL_HANDSHAKE;
+      }
+      else if(packet_type == ZERO_RTT_PACKET || packet_type == ONE_RTT_PACKET)
+      {
+        crypto_level = CRYPTO_LEVEL_APPLICATION;
+      }
+
+      if(crypto_level < 0)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Unknown packet type.');
+      }
+
+      space = this.packet_space[crypto_level];
+      if(isnull(space))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Attempt to retrieve an uninitialized ' +
+              get_packet_space_desc(space_type:crypto_level) +
+              ' space.');
+      }
+
+      return space;
+    }
+
+
+    ##
+    # Continuously reads packet from this connection's UDP port,
+    # processing received packets until no more are available.
+    #
+    # @param [desc:string] A description of the type of response being handled.
+    # @param [expect_reply:boolean] TRUE if we expect the server to send packets.  (optional defaults to TRUE)
+    # @return [int|object] Returns SUCCESS if all packets are handled without error.  Returns
+    #               an Error object otherwise.
+    ##
+    public function handle_server_reply(desc, expect_reply)
+    {
+      var server_reply, result, reply_pkt;
+      var pkts_received = 0;
+      var offset, last_offset, datalen;
+
+      if(isnull(expect_reply))
+        expect_reply = TRUE;
+
+      do {
+        offset = 0;
+        if(this.state != CONNECTED)
+        {
+          dbg::detailed_log( lvl:1, src:FUNCTION_NAME, msg:'Tried to receive data on a closed connection.');
+          return SUCCESS;
+        }
+
+        if(isnull(get_kb_item("QUIC_TESTING")))
+          server_reply = recvfrom(socket:this.soc, port:this.port, timeout:get_timeout());
+        else
+          server_reply = [get_kb_item("QUIC_TESTING_recv")];
+
+        if(isnull(server_reply) || empty_or_null(server_reply[0]))
+          break;
+
+        pkts_received++;
+
+        dbg::detailed_log(
+          lvl:3,
+          src:FUNCTION_NAME,
+          msg:'Server reply to our ' + desc + ':',
+          msg_details:{
+             "Data":{"lvl":3, "value":server_reply[0]}
+          });
+
+        datalen = strlen(server_reply[0]);
+
+        last_offset = offset;
+        do
+        {
+          reply_pkt = new quic::packet();
+          result = reply_pkt.parse_packet_data(bytes:server_reply[0], connection:this, offset:offset);
+          if(dbg::is_error(result))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:dbg::Error.get_last_code(),
+              name:get_error_desc(error:INTERNAL_ERROR),
+              msg:'Packet parsing error.');
+          }
+
+          offset = result;
+          if(last_offset == offset)
+            break;
+
+          last_offset = offset;
+          if(reply_pkt.must_ack)
+          {
+            if(dbg::is_error(this.ack_packet(pkt:reply_pkt)))
+            {
+              return dbg::raise_error(
+                src:FUNCTION_NAME,
+                code:dbg::Error.get_last_code(),
+                name:get_error_desc(error:dbg::Error.get_last_code()),
+                msg:'Failed to ack a packet.');
+            }
+          }
+
+        } while(offset < datalen);
+
+      } while(!empty_or_null(server_reply) && datalen > 0 && this.state == CONNECTED);
+
+      if(pkts_received == 0 && expect_reply)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:CONNECTION_REFUSED,
+          name:get_error_desc(error:CONNECTION_REFUSED),
+          msg:'The server did not respond to our ' + desc + '.');
+      }
+
+      result = resend_unacked_data();
+      return result;
+    }
+
+    ##
+    # Sends an ACK frame to acknowledge the receipt of a packet from
+    # the server.
+    #
+    # @param [pkt:object] The packet to be acknowledged.
+    # @return [NULL|object] Returns nothing to callers unless there is an error.  On failure returns
+    #                       an Error object.
+    ##
+    protected function ack_packet(pkt)
+    {
+      if(pkt.type == VERSION_NEGO_PACKET || pkt.type == RETRY_PACKET)
+        return NULL;
+
+      var ack_pkt = new quic::packet();
+
+      if(dbg::is_error(ack_pkt.init(space:pkt.space, type:pkt.type)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:dbg::Error.get_last_code(),
+          name:get_error_desc(error:dbg::Error.get_last_code()),
+          msg:'Failed to initialize a packet.');
+      }
+
+      var ack_buffer = mkbyte(ACK_FRAME);
+      var packet_number = parse_variable_length_int(blob:pkt.number, offset:0);
+      packet_number = packet_number[0];
+
+      #largest acknowledged
+      ack_buffer += pkt.number;
+      #delay
+      ack_buffer += mkbyte(0);
+      #range count
+      ack_buffer += mkbyte(0);
+      #first range
+      ack_buffer += mkbyte(0);
+
+      if(dbg::is_error(ack_pkt.add_frame(frame:ack_buffer)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:dbg::Error.get_last_code(),
+          name:get_error_desc(error:dbg::Error.get_last_code()),
+          msg:'Failed to add frame to a packet.');
+      }
+
+      var payload = ack_pkt.get_encrypted_bytes(connection:this);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Sending ACK for packet number :' + serialize(packet_number),
+        msg_details:{
+           "Data":{"lvl":3, "value":payload }
+        });
+
+      if(this.state != CONNECTED)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Tried to send data on a closed connection.');
+      }
+
+      send(socket:this.soc, data:payload);
+    }
+
+    ##
+    # Queries all packet spaces for packets that have not been acknowledged within
+    # the resend threshold and resends all ack-eliciting frames from those packets.
+    #
+    # @return [NULL|object] Either returns NULL or in the event of failure returns an Error.
+    # @remark
+    #   Resends "lost" packets as described in https://www.rfc-editor.org/rfc/rfc9002.html#name-loss-detection
+    #   However, Nessus plugins have no way to asynchronously service communications from a QUIC target.
+    #   Packets are read from the connection on demand by NASL plugin logic.  Therefore RTT based
+    #   thresholds don't make any sense.  Here we use a simple multiple of the network read timeout.
+    ##
+    protected function resend_unacked_data()
+    {
+      var ps, pkt, frame, idx, time, payload, packet;
+      var threshold = get_read_timeout() * 3;
+      var now = unixtime();
+
+      foreach ps(this.packet_space)
+      {
+        for(idx in ps.unacked_packets)
+        {
+          pkt = ps.unacked_packets[idx][0];
+          time = ps.unacked_packets[idx][1];
+
+          if(now - time > threshold)
+          {
+            packet = new quic::packet();
+
+            if(dbg::is_error(packet.init(space:pkt.space, type:pkt.type)))
+            {
+              return dbg::raise_error(
+                src:FUNCTION_NAME,
+                code:INTERNAL_ERROR,
+                name:get_error_desc(error:INTERNAL_ERROR),
+                msg:'Failed to initialize packet for resending.');
+            }
+
+            foreach frame(pkt.frames)
+            {
+              if(dbg::is_error(packet.add_frame(frame:frame)))
+              {
+                return dbg::raise_error(
+                  src:FUNCTION_NAME,
+                  code:dbg::Error.get_last_code(),
+                  name:get_error_desc(error:dbg::Error.get_last_code()),
+                  msg:'Failed to add frame to a packet.');
+              }
+            }
+
+            if(dbg::is_error(packet.space.store_unacked_pkt(packet:packet)))
+            {
+              return dbg::raise_error(
+                src:FUNCTION_NAME,
+                code:dbg::Error.get_last_code(),
+                name:get_error_desc(error:dbg::Error.get_last_code()),
+                msg:'Failed to store unacked packet.');
+            }
+
+            payload = packet.get_encrypted_bytes(connection:this);
+
+            dbg::detailed_log(
+              lvl:3,
+              src:FUNCTION_NAME,
+              msg:'Resending lost packet data.',
+              msg_details:{
+                 "Data":{"lvl":3, "value":payload }
+              });
+
+            if(this.state != CONNECTED)
+            {
+              return dbg::raise_error(
+                src:FUNCTION_NAME,
+                code:INTERNAL_ERROR,
+                name:get_error_desc(error:INTERNAL_ERROR),
+                msg:'Tried to resend data on a closed connection.');
+            }
+
+            send(socket:this.soc, data:payload);
+
+            #Record that we ack the packet so we don't resend it again.
+            packet.space.packet_acked(number:pkt.number);
+          }
+        }
+      }
+    }
+
+
+    ##
+    # Stores data from a received STREAM frame in an appropriate
+    # stream object managed by this connection.  Creates a new stream
+    # if necessary.
+    #
+    # @param [data:bytes]      The stream frame data.
+    # @param [stream_id:bytes] The stream ID as a QUIC variable length integer.
+    # @param [offset:int]      Offset into the stream where this frame belongs.
+    # @param [fin:boolean]     TRUE if this is the last frame in the stream, FALSE otherwise.
+    #
+    # @return [int|object] SUCCESS or an Error object.
+    ##
+    public function handle_stream_frame(data, stream_id, offset, fin)
+    {
+      var res;
+      if(isnull(this.streams[stream_id]))
+      {
+        this.streams[stream_id] = new quic::stream(stream_id, this);
+        append_element(var:this.server_origin_streams, value:this.streams[stream_id]);
+      }
+
+      res = this.streams[stream_id].add_recv_data(data:data, offset:offset, fin:fin);
+
+      return res;
+    }
+
+
+    ##
+    # Sends a client finished handshake message to the server.
+    #
+    # @return [int|object] Returns SUCCESS or an Error object.
+    ##
+    public function send_client_finished()
+    {
+      var space = this.packet_space[CRYPTO_LEVEL_HANDSHAKE];
+      if(isnull(space))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:KEY_UPDATE_ERROR,
+          name:get_error_desc(error:KEY_UPDATE_ERROR),
+          msg:'No cryptographic space available for handshake messages.');
+      }
+
+      var verify_data = space.compute_verify_data(transcript:this.handshake_bytes);
+
+      var fin_pkt = new quic::packet();
+
+      if(dbg::is_error(fin_pkt.init(space:space, type:HANDSHAKE_PACKET)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Failed to initialize handshake packet.');
+      }
+
+      var finished = mkbyte(SSL3_HANDSHAKE_TYPE_FINISHED);
+      finished += mkbyte(0);
+      finished += mkword(strlen(verify_data));
+      finished += verify_data;
+
+      fin_pkt.add_crypto_frame(payload:finished, stream_offset:0);
+
+      space.store_unacked_pkt(packet:fin_pkt);
+
+      var payload = fin_pkt.get_encrypted_bytes(connection:this);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Sending TLS Client Finished',
+        msg_details:{
+           "Data":{"lvl":3, "value":payload }
+        });
+
+      if(this.state != CONNECTED)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Tried to send data on a closed connection.');
+      }
+
+      send(socket:this.soc, data:payload);
+
+      return SUCCESS;
+    }
+
+
+    ##
+    # Sends a PATH_RESPONSE frame in a padded packet in response to a PATH_CHALLENGE.
+    #
+    # @param [entropy:bytes] The entropy sequence sent by the server.
+    # @param [pkt:object]    The packet with a PATH_CHALLENGE frame that we are responding to.
+    #
+    # @return [int|object] Returns SUCCESS or an Error object.
+    ##
+    public function send_path_response(entropy, pkt)
+    {
+      if(isnull(pkt) || strlen(entropy) != 64)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Bad arguments.');
+      }
+
+      var pr_pkt = new quic::packet();
+      if(dbg::is_error(pr_pkt.init(space:pkt.space, type:pkt.type)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:dbg::Error.get_last_code(),
+          name:get_error_desc(error:dbg::Error.get_last_code()),
+          msg:'Failed to initialize a path response packet.');
+      }
+
+      var pr_buffer = mkbyte(PATH_RESPONSE_FRAME);
+      pr_buffer += entropy;
+
+      if(dbg::is_error(pr_pkt.add_frame(frame:pr_buffer)))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:dbg::Error.get_last_code(),
+          name:get_error_desc(error:dbg::Error.get_last_code()),
+          msg:'Failed to add frame to a path response packet.');
+      }
+
+      var payload = pr_pkt.get_encrypted_bytes(connection:this, pad:TRUE);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Sending path challenge response.',
+        msg_details:{
+           "Data":{"lvl":3, "value":payload }
+        });
+
+      if(this.state != CONNECTED)
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Tried to send data on a closed connection.');
+      }
+
+      send(socket:this.soc, data:payload);
+      return SUCCESS;
+    }
+
+
+    ##
+    # Collect outstanding send data from all client-send streams.  Packetize the data in stream frames
+    # and send it to the server.  Process all server responses.
+    #
+    # @return [list|object] Returns a list of server stream objects received after sending the data packet.
+    #                       On failure returns an Error object.
+    ##
+    public function send_stream_data()
+    {
+      var offset, data_pkt, data, residual, payload;
+      var stream;
+      var expect_reply= FALSE;
+
+      var res = this.get_packet_space(packet_type:ONE_RTT_PACKET);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Error retrieving space.');
+      }
+
+      var ps = res;
+
+      foreach stream(this.streams)
+      {
+        # Move on past server initiated unidirectional
+        if(stream.id & 2 && stream.id & 1)
+          continue;
+
+        # Move past uninitialized or closed streams
+        if(isnull(stream) || isnull(stream.send_state) ||
+           stream.send_state == STREAM_CLOSED || stream.send_state == STREAM_SIZE_KNOWN)
+          continue;
+
+        # Move past streams with no send data
+        if(stream.send_end_from < stream.send_start_from)
+          continue;
+
+        residual = stream.get_send_data();
+        if(isnull(residual))
+        {
+          return dbg::raise_error(
+            src:FUNCTION_NAME,
+            code:INTERNAL_ERROR,
+            name:get_error_desc(error:INTERNAL_ERROR),
+            msg:'Error retrieving send data.');
+        }
+
+        do
+        {
+          if(isnull(data_pkt))
+          {
+            data_pkt = new quic::packet();
+
+            if(dbg::is_error(data_pkt.init(space:ps, type:ONE_RTT_PACKET)))
+            {
+              return dbg::raise_error(
+                src:FUNCTION_NAME,
+                code:INTERNAL_ERROR,
+                name:get_error_desc(error:INTERNAL_ERROR),
+                msg:'Error initializing data packet.');
+            }
+
+            offset = 0;
+          }
+
+          if(offset + strlen(residual) > 1200)
+          {
+            if(offset == 0)
+            {
+              data = substr(residual, 0, 65506);
+              residual = substr(residual, 1200);
+            }
+          }
+          else
+          {
+            data = residual;
+            residual = NULL;
+          }
+
+          if(dbg::is_error(data_pkt.add_stream_frame(data:data, id:stream.id, offset:offset, fin:stream.fin)))
+          {
+            return dbg::raise_error(
+              src:FUNCTION_NAME,
+              code:dbg::Error.get_last_code(),
+              name:get_error_desc(error:dbg::Error.get_last_code()),
+              msg:'Failed to add a stream frame.');
+          }
+
+          offset += strlen(data);
+
+          # Pack stream frames together until we get to our MTU
+          if(offset > 1200)
+          {
+            payload = data_pkt.get_encrypted_bytes(connection:this);
+
+            dbg::detailed_log(
+              lvl:3,
+              src:FUNCTION_NAME,
+              msg:'Sending stream packet to server :',
+              msg_details:{
+                "Data":{"lvl":3, "value":payload }
+            });
+
+            send(socket:soc, data:payload);
+            ps.store_unacked_pkt(packet:data_pkt);
+            data_pkt = NULL;
+            expect_reply = TRUE;
+          }
+        } while(!isnull(residual));
+
+        if(!isnull(data_pkt) && !empty_or_null(data))
+        {
+          payload = data_pkt.get_encrypted_bytes(connection:this);
+
+          dbg::detailed_log(
+            lvl:3,
+            src:FUNCTION_NAME,
+            msg:'Sending stream packet to server :',
+            msg_details:{
+              "Data":{"lvl":3, "value":payload }
+          });
+
+          send(socket:soc, data:payload);
+          ps.store_unacked_pkt(packet:data_pkt);
+          data_pkt = NULL;
+          expect_reply = TRUE;
+        }
+      }
+
+      res = handle_server_reply(desc:"frame data", expect_reply:expect_reply);
+      if(dbg::is_error(res))
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:res.get_last_code(),
+          name:get_error_desc(error:res.get_last_code()),
+          msg:"Failed to handle the server's reply.");
+      }
+
+      var server_streams = this.server_origin_streams;
+      this.server_origin_streams = [];
+      return server_streams;
+    }
+
+    ##
+    # Close streams and clean up packet spaces so we don't leak memory.
+    ##
+    public function cleanup()
+    {
+      var ps, stream;
+      foreach stream(this.streams)
+      {
+        if(!isnull(stream))
+          stream.close();
+      }
+
+      foreach stream(this.crypto_streams)
+      {
+        if(!isnull(stream))
+          stream.close();
+      }
+
+      foreach ps(this.packet_space)
+        ps.cleanup();
+
+    }
+
+
+    ##
+    # Close this connection and clean up.
+    ##
+    public function disconnect()
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Connection terminating.');
+
+      if(this.state == CONNECTED)
+        close(soc);
+
+      this.state = DISCONNECTED;
+      cleanup();
+    }
+
+    ##
+    # Creates a stream that client may use to send data to a QUIC server.
+    #
+    # @param [bidirectional:bool] TRUE if the stream is bidirectional; FALSE otherwise.
+    # @return Returns the new stream.
+    ##
+    public function create_client_stream(bidirectional)
+    {
+      var id, new_stream;
+
+      if(bidirectional)
+      {
+        id = this.bi_client_stream_id;
+        this.bi_client_stream_id += 4;
+      }
+      else
+      {
+        id = this.uni_client_stream_id;
+        this.uni_client_stream_id += 4;
+      }
+
+      new_stream = new quic::stream(id, this);
+
+      this.streams[id] = new_stream;
+      return new_stream;
+    }
+  }
+}
+

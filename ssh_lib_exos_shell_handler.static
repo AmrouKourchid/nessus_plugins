@@ -1,0 +1,275 @@
+#TRUSTED 092f5675fb1edf01e272b84c1c9d51864010645af71f31cacf52c3d37610c99a21c71274785a19f841771e69f2971e9d7c23ed16c1da2ae1865d2e370a9e51b6af587704c00b4a46c24d42fac0906726eee6a92f6339501b526bfc7b5a2474f5d905d5b9819dd90454dc8058b56c1ae5c6e68964db68728a1970c4c538dbc84252c8753ebc3227a5a8f74fe5d09ac520c6c2b53fa96c01ccfb16b5ac35f8fb3e7fa8bc2742cae2022c44521d5309ff8bb9a7e2065e3489f61f4eca5879c890b7a44630d1249ba786dad4a09cf72dcd96690065726984c7b7f880775d4c40cc30cfabcdfc67606a01d935599dbde036c6738699443327c22f6edde179b4715a4030f382213b7e44019de5ba9354ae2af28a0028b2268649327e8dd6e1f0074cf9e008ea835a58fd0fb80e2b0143abc894f8a8c232f92fbbc3b837e7f7a4509190625a8ef8752d899fa9359cd27b3b4ddbaac8325af9cfa6f37db9cc982428fd054d937db253c22cb36586e47b7fad339cecde66487e8635eb77d76f79189118b02d886eb3f98feb3abcd2fb0d00193593160b5f9fa77836d109fb8af2cb0e1268ad83185984fbac008880f8e1d713e05f5caa4ead70599ad0e948604e56388a4bf95c4fbdf229dcaf504f692f726c71f7ecf2e4a55c12889faf8c39c124c716cd8503f33abd42973e2ffdc9aab51a37e2caca862e302c6c9cb8cd62836d01cb23
+#TRUST-RSA-SHA256 38652b4f378bc4fbc01d31acd88ddad03bdc36f52a5253d10aab7b023f8aad561dccefd99aa9173e0c2ad8a4a149c3fac9b8bcbe506058dfd7e6b87fa5fe3aa86dda103a89375bb383e425c90eebc5532843d2e3d9904a886c520b3db1da5c2e45e89959432a74a5dcdff2e2aa4405fd7918b71d807c5a7bc3b9d9078f22e8858043aef432f3ecc2766f1c11e6a17cb520da501c54077a8541610551bb57354b09e854d7ceb9328ddfc7a6fe014d6c761f75506d33a13b78409af38290661ae6a80bee24bdd4619918a75d8e32512d91626cd0af1fb7ffff064390b9a7ba2a913d03f360bd4881a35889458018be45134c39b248a4b19e263756062a89324b384f55d23c841d3d22493fb8a5c7785db78df152d4cbf1898ef8163d8d24f54b30de76d78e9e2256ed2ba94c3ad55abd0280ea24a5578c103000e39c9b0f487fbd460a621134ebd01166c5748fd93a5cd7b87ea4b4e02c27a5d04edfcea7b3e0724089adf5fd138df2c69fa103f0ec43469f7d0dbedbce3eeb8ae5d2dea50463a5eb2bfca2c7c7f50692f5aadc7b906273ffee3afd3368bc02879658bc176f6e44d06f75accfda5a4a46df2dca3f6f139dd354340750681966af7b1ad555e2452fb1d2883e8af525801f7d8410281c85632e09cd4c85760a708374001803dcb6a0bf19876c08765f33fd55bfe4ca89393a1cf5a516e5781c5a322b6fd83474b4e9
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.02
+
+namespace sshlib
+{
+
+  # all timeouts are controlled by a timer with 1s resolution
+  # for that reason keep the shell timeout sufficiently beyond
+  # the timer resolution (10s = 10x resolution)
+  global_var _EXOS_DEFAULT_CMD_TIMEOUT = 10;
+  global_var _EXOS_DEFAULT_INACTIVITY_TIMEOUT = 10;
+
+  # a space is included in shell prompt
+  global_var _EXOS_DEFAULT_PROMPT = "> ";
+
+  # cmd_states
+  # _EXOS_CMD_STATE_SEND_REQ: ready to send a command to device
+  # _EXOS_CMD_STATE_RECV_RSP: ready to recv a response from device
+
+  global_var _EXOS_CMD_STATE_SEND_REQ = 0;
+  global_var _EXOS_CMD_STATE_RECV_RSP = 1;
+
+  # a space is included in shell prompt
+  global_var _EXOS_DEFAULT_ENABLE_PROMPT = "Password: ";
+
+  function exos_shell_handler_incoming_data_cb( session, channel )
+  {
+    var fn = 'exos_shell_handler_incoming_data_cb';
+    # does a channel exist?
+    if ( isnull(channel) )
+    {
+      # no channel so there is no data buffer to check
+      return FALSE;
+    }
+    # does channel have a valid data buffer?
+    if ( isnull(channel.data_buf) )
+    {
+      # no data buffer to check
+      return FALSE;
+    }
+    if ( isnull(channel.shell_handler ) )
+    {
+      # no shell handler on channel, oops cant proceed
+      return FALSE;
+    }
+    var sh = channel.shell_handler;
+    var cmd_state = sh.cmd_state;
+    var cmd_last = sh.cmd_last;
+    var buf_length = strlen( channel.data_buf );
+    # Decision is based on command state
+
+    if ( cmd_state == _EXOS_CMD_STATE_SEND_REQ )
+    {
+      # Sent command to device, waiting echo back of last command
+      if ( buf_length >= strlen(cmd_last) )
+      {
+        var last = substr( channel.data_buf, buf_length - strlen(cmd_last) );
+        if ( last == cmd_last )
+        {
+          sh.set_cmd_state( new_cmd_state:_EXOS_CMD_STATE_RECV_RSP );
+          dbg::detailed_log(lvl:3, src:fn, msg:"cmd_state: " + sh.cmd_state);
+          channel.clear_data_buf();
+          channel.window_send_data(data:'\n');
+        }
+      }
+    }
+    else
+    {
+      var cmd_prompt = sh.cmd_prompt;
+      var cmd_prompt_length = strlen(cmd_prompt);
+      # does buffer have enough characters to include prompt?
+      if ( buf_length > cmd_prompt_length )
+      {
+        # buffer has enough characters, perform prompt test
+        var maybe_prompt = substr( channel.data_buf, buf_length - cmd_prompt_length );
+        # buffer include prompt?
+        if ( maybe_prompt == cmd_prompt )
+        {
+          # last characters in buffer match prompt, found prompt
+          dbg::detailed_log(lvl:2, src:fn, msg:"found prompt");
+          return TRUE;
+        }
+      }
+
+      var cmd_enable_prompt = sh.cmd_enable_prompt;
+      var cmd_enable_prompt_length = strlen(cmd_enable_prompt);
+      # does buffer have enough characters to include prompt?
+      if ( buf_length > cmd_enable_prompt_length )
+      {
+        # buffer has enough characters, perform prompt test
+        var maybe_password_prompt = substr( channel.data_buf, buf_length - cmd_enable_prompt_length );
+        # buffer include password prompt?
+        if ( maybe_password_prompt == cmd_enable_prompt )
+        {
+          # last characters in buffer match prompt, found password prompt
+          dbg::detailed_log(lvl:2, src:fn, msg:"found password prompt");
+          channel.clear_data_buf();
+          channel.window_send_data(data:sh.cmd_enable_password + '\n' );
+          return FALSE;
+        }
+      }
+    }
+    return sh.check_inactivity_timeout(channel:channel);
+  }
+  ### END RECV_UNTIL CALLBACKS ###
+
+  # exos shell handler
+  object exos_shell_handler
+  {
+    var settings;
+    var cmd_state;
+    var cmd_last;
+    var cmd_prompt;
+    var cmd_timeout;
+    var inactivity_timeout;
+    var cmd_enable_password;
+    var cmd_enable_prompt;
+    var last_md5;
+    var last_buffer_update_ts;
+
+    function exos_shell_handler()
+    {
+      this.init();
+    }
+
+    public function init(settings)
+    {
+      this.cmd_last = "";
+      this.cmd_prompt = _EXOS_DEFAULT_PROMPT;
+      this.cmd_timeout = _EXOS_DEFAULT_CMD_TIMEOUT;
+      this.inactivity_timeout = _EXOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_enable_prompt = _EXOS_DEFAULT_ENABLE_PROMPT;
+      this.cmd_state = _EXOS_CMD_STATE_SEND_REQ;
+
+      if (!isnull(settings))
+      {
+        this.settings = settings;
+        if ( !isnull(this.settings['cmd_prompt']) ) this.cmd_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_timeout']) ) this.cmd_timeout = this.settings['cmd_timeout'];
+        if ( !isnull(this.settings['cmd_enable_prompt']) ) this.cmd_enable_prompt = this.settings['cmd_enable_prompt'];
+        if ( !isnull(this.settings['cmd_enable_password']) ) this.cmd_enable_password = this.settings['cmd_enable_password'];
+      }
+    }
+
+    # Called on all shell handlers in ssh_lib.inc so we have to define it here
+    public function set_priv_escalation(type, extra)
+    {
+      return FALSE;
+    }
+
+    # Called on all shell handlers in ssh_lib.inc so we have to define it here
+    public function unset_priv_escalation()
+    {
+      return FALSE;
+    }
+
+
+    # should we send / recv data to device without setting up a channel?
+    public function is_nosetup()
+    {
+      return FALSE;
+    }
+
+    public function send_pty_req()
+    {
+      return TRUE;
+    }
+
+    ##
+    # do we want to handle the "shell" channel request?
+    #
+    # @category SSH
+    ##
+    public function get_shell_channel_request_cb()
+    {
+      return NULL;
+    }
+
+    public function check_inactivity_timeout(channel)
+    {
+      var fn = 'exos_shell_handler.check_inactivity_timeout';
+      if ( channel && channel.data_buf && strlen(channel.data_buf) > 0 )
+      {
+        var new_md5 = MD5( channel.data_buf );
+        if ( this.last_md5 != new_md5 )
+        {
+          dbg::detailed_log(lvl:2, src:fn,
+            msg:'exos_shell_handler [channel ' + channel.local_channel + ']: Channel data buffer updated, resetting shell inactivity timer.\n');
+          this.last_md5 = new_md5;
+          this.last_buffer_update_ts = unixtime();
+          return FALSE;
+        }
+      }
+      if ((unixtime() - this.last_buffer_update_ts) >= this.inactivity_timeout)
+      {
+        dbg::detailed_log(lvl:1, src:fn,
+          msg:'exos_shell_handler [channel ' + channel.local_channel + ']: reached timeout limit [' + this.inactivity_timeout + 's].\n');
+        return TRUE;
+      }
+      return FALSE;
+    }
+
+    public function on_channel_buffer_inactivity(channel)
+    {
+      var fn = 'exos_shell_handler.on_channel_buffer_inactivity';
+      dbg::detailed_log(lvl:3, src:fn, msg:'exos_shell_handler [channel ' + channel.local_channel + ']: buffer inactivity');
+      return check_inactivity_timeout(channel:channel);
+    }
+
+    public function set_cmd_state(new_cmd_state)
+    {
+      this.cmd_state = new_cmd_state;
+    }
+
+    public function run_command(channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = 'exos_shell_handler.run_command';
+      var obj_ch_id = 'exos_shell_handler [channel '+channel.local_channel+']: ';
+
+      if ( isnull(channel) )
+      {
+        return NULL;
+      }
+      if ( isnull(command) )
+      {
+        return NULL;
+      }
+      this.cmd_last = command;
+
+      # Reset default timeouts
+      this.inactivity_timeout = _EXOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_timeout = _EXOS_DEFAULT_CMD_TIMEOUT;
+
+      # If custom inactivity_timeout and cmd_timeout values are passed,
+      # ensure the values in use meet or exceed passed values
+      if (inactivity_timeout_min &&
+          this.inactivity_timeout < inactivity_timeout_min)
+        this.inactivity_timeout = inactivity_timeout_min;
+
+      if (cmd_timeout_min &&
+          this.cmd_timeout < cmd_timeout_min)
+        this.cmd_timeout = cmd_timeout_min;
+
+      channel.session.reset_cmd_interrupted();
+
+      dbg::detailed_log(lvl:1, src:fn, msg:"sending command: " + cmd_last);
+      channel.clear_data_buf();
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _EXOS_CMD_STATE_SEND_REQ;
+      channel.window_send_data(data:cmd_last);
+      channel.session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @exos_shell_handler_incoming_data_cb,
+        channel        : channel,
+        cmd_timeout    : cmd_timeout
+      );
+      if(channel && channel.data_buf && this.cmd_state != _EXOS_CMD_STATE_SEND_REQ)
+      {
+        return chomp(string_reverse(chomp(string_reverse(channel.data_buf))));
+      }
+      return NULL;
+    }
+  }
+}
+
+

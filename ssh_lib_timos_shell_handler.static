@@ -1,0 +1,647 @@
+#TRUSTED 11a46647126e9eb36bf30f17bfd588909dea6c09a1d108f81c739e7c06f677923818856716d620824968912beb83625ad8f787e497bc2e9afaec41e3cf1c090eeb228b2b7d7d09e58ff2b316979d981f65ab1f77d4051f0df8e1a4c0acac1d0bd76a67a214b25e53159192076086fdebcf633ca55dd3cd62c4f9c6b13b2a032c691394fb7ff71eaffcc3261f0ff155f39ba4016ab5c2238e70614c0d1f9135834159ecc6f311f10e0036778643f22676cbd869f0be3e35658ba9df6f9ead4ac5feafbc43aea758dcad8a79938ea13713cdf2e27cdd05ae1cb109437edbc27dd55f7123d66d48fc37d911ebb9ff1f06d6bb974eabcc75537a7afad0bf21b723f44bd67a94dee3acf71aadd66a03da48162600c8915abf9d5514dd766b6be6cbee3354748c77dee13971ba03070e587511a821ac8f954d95303361b50ac6b8e64b756df21a70f972a7ed05c8f4e1f6b1b0659a9a21f8f44290445966cf526ec7fa2b31635800d518e0c4cab8d843093c40bae46841361959ce1ca592e0252d2061aa061a678cc12ed556daa18bdeeae40eb22a1c3a1df131f30af7598ed9ef029cd531800520b54cd48a60a8b18eaaebf869abd387ef22570f3db3e8f5b30683149c9f3f4d9bd15c4a8656f106a63fc42efe01f104f3137029520a4ca075bb18a041a8f1c37dc5cec0a4071f732f473f1e8c37875c5e51679b7daa1ea4e8e52d27
+#TRUST-RSA-SHA256 19e8905e31c1d546d908580e15492b12bed52867b8e0ac299ef602bb29d6b88a8cfd9bc9a1a4462456a6b600d73085cbc6fe6a122a11eccbc8e3103448c8db87bf8b250bff50173d67a90e22fd23c9eb9db33a7924aa39aa10024275e811f035a05d03093836fc023d2d326dd1cbc20cc644230b8755a326cf24da8b1caef84dadefea436025f09bc4657d1002edbdf83f92875f8d370da29759d40abfed5559c691c62a96bc3d14676594d2ede0d90fb9451a53cd75ef18289790449e228adcbf303c2a7c9fb5e72cfb9dbf57284247fb4fe5bfcc685c41d073d55668d32df3356e509edfc9f39bf3a36738c5cc264fefac52075ab78651fa48a8a715212b503477fba1a324744bdf41f4ec79aa2b76b49c62429ca9ca7155ac6ca43c613995a1396b5db5f325f585e4bd78d485998c3370feb29d01c6e63aea95c738f3ab2062b644b3ebb27704c24c14eb6b2cbfbdbd94de7f9c7c4e45f413105c82f4080ddefa4105932544d76babcf03012faeb96c6b98745530b2ede91fb6bdcce0f37ac7acbba7e5a799ce321d3fdac7c193b3159b9a9fccd9499a39767c727389db8f7911d4e1afbeed573a4a7cb0d7a0ec012fe4925d85d5a36780804ad7186e00f327a0591dd7006447bba1fcddc61d537fafbd0a2b93bd3cd47a27bb4cb45503123f759675c151aecde1b9de716aabbabdb6a9e2bf963d1acecb3f4b7d9af3e6e9
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.04
+
+namespace sshlib
+{
+
+  # all timeouts are controlled by a timer with 1s resolution
+  # for that reason keep the shell timeout sufficiently beyond
+  # the timer resolution (10s = 10x resolution)
+  global_var _TIMOS_DEFAULT_CMD_TIMEOUT = 10;
+  global_var _TIMOS_DEFAULT_INACTIVITY_TIMEOUT = 10;
+  global_var _TIMOS_INITIAL_INACTIVITY_TIMEOUT = 10;
+
+  global_var _TIMOS_DEFAULT_PROMPT = "#";
+
+  # cmd_states
+  # _TIMOS_CMD_STATE_SEND_REQ: ready to send a command to device
+  # _TIMOS_CMD_STATE_RECV_RSP: ready to recv a response from device
+  # _TIMOS_CMD_STATE_AT_PROMPT: found command prompt in response
+  global_var _TIMOS_CMD_STATE_SEND_REQ = 0;
+  global_var _TIMOS_CMD_STATE_RECV_RSP = 1;
+  global_var _TIMOS_CMD_STATE_AT_PROMPT = 2;
+  global_var _TIMOS_CMD_STATE_SEND_ESCL_REQ = 3;
+  global_var _TIMOS_CMD_STATE_RECV_ESCL_RSP = 4;
+  global_var _TIMOS_CMD_STATE_GET_PROMPT = 5;
+
+  global_var _TIMOS_DEFAULT_ENABLE_PROMPT = "Password:";
+
+  ### RECV_UNTIL CALLBACKS ###
+
+  # By default, the CLI command prompt indicates the device being
+  # accessed and the current CLI context. For example, the prompt:
+  # A:ALA-1>config>router>if#
+  # indicates the active context, the user is on the device with
+  # hostname ALA-1 in the configure>router>interface context. In the
+  # prompt, the separator used between contexts is the “>” symbol.
+  #
+  # At the end of the prompt, there is either a pound sign (“#”) or a
+  # dollar sign (“$”). A “#” at the end of the prompt indicates the
+  # context is an existing context. A “$” at the end of the prompt
+  # indicates the context has been newly created. New contexts are
+  # newly created for logical entities when the user first navigates
+  # into the context.
+  #
+  # Since there can be a large number of sublevels in the CLI, the
+  # environment command reduced- prompt no of nodes in prompt allows
+  # the user to control the number of levels displayed in the prompt.
+  #
+  # All special characters (#, $, etc.) must be enclosed within double
+  # quotes, otherwise it is seen as a comment character and all
+  # characters on the command line following the # are ignored. For
+  # example:
+  #          *A:ALA-1>config>router# interface "primary#1"
+  #
+  # When changes are made to the configuration file a “*” appears in
+  # the prompt string (*A:ALA-1) indicating that the changes have not
+  # been saved. When an admin save command is executed the “*”
+  # disappears. This behavior is controlled in the saved-ind-prompt
+  # command in the environment context.
+  #
+  function timos_shell_handler_incoming_data_cb(session, channel)
+  {
+    var fn = 'timos_shell_handler_incoming_data_cb';
+    # does a channel exist?
+    if(isnull(channel))
+    {
+      # no channel so there is no data buffer to check
+      return FALSE;
+    }
+    # does channel have a valid data buffer?
+    if(isnull(channel.data_buf))
+    {
+      # no data buffer to check
+      return FALSE;
+    }
+    if(isnull(channel.shell_handler))
+    {
+      # no shell handler on channel, oops can't proceed
+      return FALSE;
+    }
+    var sh = channel.shell_handler;
+    var cmd_state = sh.cmd_state;
+    var cmd_last = sh.cmd_last;
+    var sh_data_buf = chomp(channel.data_buf);
+    var buf_length = strlen(sh_data_buf);
+
+    # Decision is based on command state
+    if(cmd_state == _TIMOS_CMD_STATE_SEND_REQ ||
+       cmd_state == _TIMOS_CMD_STATE_SEND_ESCL_REQ)
+    {
+      # Sent command to device, waiting echo back of last command
+      if(buf_length >= strlen(cmd_last))
+      {
+        var last = substr(sh_data_buf, buf_length - strlen(cmd_last));
+        if(last == cmd_last)
+        {
+          if(cmd_state == _TIMOS_CMD_STATE_SEND_ESCL_REQ)
+            sh.set_cmd_state(new_cmd_state:_TIMOS_CMD_STATE_RECV_ESCL_RSP);
+          else
+            sh.set_cmd_state(new_cmd_state:_TIMOS_CMD_STATE_RECV_RSP);
+          dbg::detailed_log(lvl:3, src:fn, msg:
+            "cmd_state:_TIMOS_CMD_STATE_RECV_RSP(" + sh.cmd_state + ")");
+          channel.clear_data_buf();
+          channel.window_send_data(data:'\n');
+        }
+      }
+    }
+    else if(cmd_state == _TIMOS_CMD_STATE_RECV_ESCL_RSP)
+    {
+      var cmd_enable_prompt = sh.cmd_enable_prompt;
+      var cmd_enable_prompt_length = strlen(cmd_enable_prompt);
+      # does buffer have enough characters to include prompt?
+      if(buf_length > cmd_enable_prompt_length)
+      {
+        # buffer has enough characters, perform prompt test
+        var maybe_password_prompt = substr(sh_data_buf, buf_length - cmd_enable_prompt_length);
+        # buffer include password prompt?
+        if(maybe_password_prompt == cmd_enable_prompt)
+        {
+          # last characters in buffer match prompt, found password prompt
+          dbg::detailed_log(lvl:2, src:fn, msg:"found password prompt");
+          channel.clear_data_buf();
+          var cmd_enable_password = sh.priv_escalation_extra['enable_pass'];
+          channel.session.set_redact(TRUE);
+          channel.window_send_data(data:cmd_enable_password + '\n' );
+          channel.session.set_redact(FALSE);
+          sh.set_cmd_state(new_cmd_state: _TIMOS_CMD_STATE_GET_PROMPT);
+
+          return FALSE;
+        }
+      }
+    }
+    else
+    {
+      var cmd_prompt = sh.cmd_prompt;
+      var cmd_prompt_length = strlen(cmd_prompt);
+      # does buffer have enough characters to include prompt?
+      if(buf_length > cmd_prompt_length)
+      {
+        # buffer has enough characters, perform prompt test
+        var maybe_prompt = substr(sh_data_buf, buf_length - cmd_prompt_length);
+        # buffer include prompt?
+        if(maybe_prompt == cmd_prompt)
+        {
+          # last characters in buffer match prompt, found prompt
+          sh.set_cmd_state( new_cmd_state:_TIMOS_CMD_STATE_AT_PROMPT );
+          dbg::detailed_log(lvl:3, src:fn, msg:
+            "cmd_state:_TIMOS_CMD_STATE_AT_PROMPT(" + sh.cmd_state + ")" );
+          return TRUE;
+        }
+      }
+    }
+
+    return sh.check_inactivity_timeout(channel:channel);
+  }
+  ### END RECV_UNTIL CALLBACKS ###
+
+  # timos shell handler
+  object timos_shell_handler
+  {
+    var settings;
+    var cmd_state;
+    var cmd_last;
+    var cmd_prompt;
+    var cmd_timeout;
+    var initial_inactivity_timeout;
+    var inactivity_timeout;
+    var cmd_enable_password;
+    var cmd_enable_prompt;
+    var last_md5;
+    var last_buffer_update_ts;
+    # did we run into a problem running last command? if so set this
+    var last_cmd_error = FALSE;
+    var priv_escalation_type;
+    var priv_escalation_extra;
+    var fresh_shell = TRUE;
+    var escalated_shell = FALSE;
+
+    function timos_shell_handler()
+    {
+      this.init();
+    }
+
+    public function init(settings)
+    {
+      this.cmd_last = "";
+      this.cmd_prompt = _TIMOS_DEFAULT_PROMPT;
+      this.cmd_timeout = _TIMOS_DEFAULT_CMD_TIMEOUT;
+      this.initial_inactivity_timeout = _TIMOS_INITIAL_INACTIVITY_TIMEOUT;
+      this.inactivity_timeout = _TIMOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_enable_prompt = _TIMOS_DEFAULT_ENABLE_PROMPT;
+      this.cmd_state = _TIMOS_CMD_STATE_SEND_REQ;
+      this.last_cmd_error = FALSE;
+      if(!isnull(settings))
+      {
+        this.settings = settings;
+        if(!isnull(this.settings['cmd_prompt'])) this.cmd_prompt = this.settings['cmd_prompt'];
+        if(!isnull(this.settings['cmd_timeout'])) this.cmd_timeout = this.settings['cmd_timeout'];
+        if(!isnull(this.settings['cmd_enable_prompt'])) this.cmd_enable_prompt = this.settings['cmd_enable_prompt'];
+        if(!isnull(this.settings['priv_escalation_type'])) this.priv_escalation_type = this.settings['priv_escalation_type'];
+        if(!isnull(this.settings['priv_escalation_extra'])) this.priv_escalation_extra = this.settings['priv_escalation_extra'];
+      }
+    }
+
+    # should we send / recv data to device without setting up a channel?
+    public function is_nosetup()
+    {
+      return FALSE;
+    }
+
+    # do we want to request a PTY on this device?
+    public function send_pty_req()
+    {
+      return FALSE;
+    }
+
+    ##
+    # do we want to handle the "shell" channel request?
+    #
+    # @category SSH
+    ##
+    public function get_shell_channel_request_cb()
+    {
+      return NULL;
+    }
+
+    ##
+    # Returns carriage return tty opcode turned off
+    # @no53   If true don't populate flag 53 with any value - flag 53 (PTY_OPT_ECHO)
+    #         reputedly breaks Palo Alto's SSH implementation. (optional)
+    # @return list of required pty opcodes
+    # @category SSH
+    ##
+    public function get_pty_opts(no53)
+    {
+      if(isnull(no53))
+        no53 = FALSE;
+
+      return make_array(PTY_OPT_OCRNL, 0);
+    }
+
+    public function check_inactivity_timeout(channel)
+    {
+      var fn = 'timos_shell_handler.check_inactivity_timeout';
+      if(channel && channel.data_buf && strlen(channel.data_buf) > 0)
+      {
+        var new_md5 = MD5( channel.data_buf );
+        if(this.last_md5 != new_md5)
+        {
+          dbg::detailed_log(lvl:3, src:fn, msg:
+          'timos_shell_handler [channel ' + channel.local_channel + ']: Channel ' +
+          'data buffer updated, resetting shell inactivity timer.');
+          this.last_md5 = new_md5;
+          this.last_buffer_update_ts = unixtime();
+          if("Press any key to continue" >< channel.data_buf)
+          {
+            var data = str_replace(find:'\x00', replace:'', string:channel.data_buf);
+            var lines = split(data);
+            if(lines && lines[len(lines) - 1] == "Press any key to continue (Q to quit)")
+            {
+              dbg::detailed_log(lvl:3, src:fn, msg:'Detected paging, sending space character');
+              channel.window_send_data(data:' ');
+            }
+          }
+
+          return FALSE;
+        }
+      }
+      if((unixtime() - this.last_buffer_update_ts) >= this.inactivity_timeout)
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:
+        'timos_shell_handler [channel ' + channel.local_channel + ']: reached ' +
+        'timeout limit [' + this.inactivity_timeout + 's].');
+        return TRUE;
+      }
+      return FALSE;
+    }
+
+    public function set_cmd_state(new_cmd_state)
+    {
+      this.cmd_state = new_cmd_state;
+    }
+
+    public function run_command(channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = 'timos_shell_handler.run_command';
+      var obj_ch_id = 'timos_shell_handler [channel '+channel.local_channel+']: ';
+
+      #Channel objects clean up and delete their sessions.
+      #Keep a local reference so that we can log errors, etc.
+      var sess = channel.session;
+
+      if(isnull(channel))
+      {
+        return NULL;
+      }
+      if(isnull(command))
+      {
+        return NULL;
+      }
+
+      if( this.last_cmd_error )
+      {
+        sess.set_error(obj_ch_id +
+          'ERROR - shell is in unknown state from last interaction, ' +
+          'no additional commands via this shell will be executed.');
+        return NULL;
+      }
+
+      # are there multiple input commands to process?
+      if(typeof(command) == "array")
+      {
+        # there are multiple input commands to process
+        # collect the concatenated results into variable total_res
+        var total_res = NULL;
+        # process each command provided
+        var i = 0;
+        for(i = 0 ; i < max_index(command) ; i++)
+        {
+          # concatenate the results of each command together
+          total_res += run_command(
+            channel                : channel,
+            command                : command[i],
+            force_priv_escl        : force_priv_escl,
+            cmd_timeout_min        : cmd_timeout_min,
+            inactivity_timeout_min : inactivity_timeout_min);
+          # did an error occur?
+          if(sess.error)
+          {
+            # an error occured, stop processing and return result
+            break;
+          }
+        }
+        return total_res;
+      }
+
+      # Reset default timeouts
+      this.inactivity_timeout = _TIMOS_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_timeout = _TIMOS_DEFAULT_CMD_TIMEOUT;
+
+      # If custom inactivity_timeout and cmd_timeout values are passed,
+      # ensure the values in use meet or exceed passed values
+      if(inactivity_timeout_min &&
+          this.inactivity_timeout < inactivity_timeout_min)
+        this.inactivity_timeout = inactivity_timeout_min;
+
+      if(cmd_timeout_min &&
+          this.cmd_timeout < cmd_timeout_min)
+        this.cmd_timeout = cmd_timeout_min;
+
+      # Find command prompt if fresh shell
+      var kb_id = sess.get_kb_connection_id();
+      if(fresh_shell)
+      {
+        var post_login_buffer = get_kb_blob(kb_id + "/post_login_buffer");
+        var tmp_prompt = get_kb_blob(kb_id + "/cmd_prompt");
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+          "Getting prompt on fresh shell.");
+
+        var check_prompt = FALSE;
+        # see if we can look for prompt from previous login rather
+        # than waiting for timeout
+        if(strlen(tmp_prompt) >= 3)
+        {
+          # remove first found instance of prompt from previous post
+          # login buffer
+          var sub_prompt = substr(tmp_prompt, strlen(tmp_prompt) - 3, strlen(tmp_prompt) - 1);
+          post_login_buffer -= sub_prompt;
+
+          # if we don't find it again (e.g. in MOTD), it's probably ok
+          # to look for last characters of prompt to recognize prompt
+          if(sub_prompt >!< post_login_buffer)
+          {
+            this.cmd_prompt = tmp_prompt;
+            this.settings['cmd_prompt'] = this.cmd_prompt;
+            check_prompt = TRUE;
+          }
+        }
+
+        if(check_prompt)
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+            "Using command prompt from previous login to find cmd prompt.");
+        }
+        else
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+            "Using default prompt to find command prompt.");
+        }
+
+        this.cmd_state = _TIMOS_CMD_STATE_GET_PROMPT;
+        this.last_buffer_update_ts = unixtime();
+        sess.sshrecv_until(
+          end_states     : make_list("SOC_CLOSED"),
+          check_callback : @timos_shell_handler_incoming_data_cb,
+          channel        : channel,
+          cmd_timeout    : this.initial_inactivity_timeout
+        );
+
+        if(empty_or_null(channel.data_buf))
+        {
+          last_cmd_error = TRUE;
+          sess.set_cmd_error(obj_ch_id +
+            "No data received from server after opening shell.");
+          return NULL;
+        }
+
+        post_login_buffer = channel.data_buf;
+        if(isnull(get_kb_item(kb_id + "/post_login_buffer")))
+          set_kb_blob(name:kb_id + "/post_login_buffer", value:post_login_buffer);
+        channel.clear_data_buf();
+        fresh_shell = FALSE;
+
+        var lines = split(post_login_buffer, sep:'\n', keep:FALSE);
+        this.cmd_prompt = chomp(lines[max_index(lines)-1]);
+
+        if(isnull(get_kb_item(kb_id + "/cmd_prompt")))
+          set_kb_blob(name:kb_id + "/cmd_prompt", value:cmd_prompt);
+
+        dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id +
+          'Detected command prompt  "' + this.cmd_prompt + '".');
+
+        if(strlen(this.cmd_prompt) == 0)
+        {
+          sess.set_cmd_error(obj_ch_id +
+            "Unable to detect command prompt on shell.");
+          last_cmd_error = TRUE;
+          return NULL;
+        }
+
+        this.settings['cmd_prompt'] = this.cmd_prompt;
+      }
+
+      # Determine if privilege escalation should be used
+      var use_priv_escl = FALSE;
+      var priv_escl_failed = FALSE;
+      var tmp_bad_escl_kb =
+        "tmp/" + kb_id + "/ssh_bad_priv_escl/" + this.priv_escalation_type;
+      var escl_hexstr = hexstr(MD5(serialize(this.priv_escalation_extra)));
+
+      if(this.priv_escalation_type == "cisco_enable")
+      {
+        if(get_kb_item(tmp_bad_escl_kb) == escl_hexstr)
+        {
+          sess.set_error(obj_ch_id + "Not using privilege " +
+            "escalation due to failure in a previous session.");
+        }
+        else
+        {
+          use_priv_escl = TRUE;
+        }
+      }
+
+      # Escalate shell using 'enable-admin' if necessary
+      if(use_priv_escl && !this.escalated_shell)
+      {
+        this.cmd_last = 'enable-admin';
+        dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+          "Sending command 'enable-admin' to escalate shell.");
+        channel.clear_data_buf();
+        this.last_buffer_update_ts = unixtime();
+        this.cmd_state = _TIMOS_CMD_STATE_SEND_ESCL_REQ;
+        dbg::detailed_log(lvl:3, src:fn, msg:
+          "cmd_state:_TIMOS_CMD_STATE_SEND_ESCL_REQ(" + this.cmd_state + ")" );
+        channel.window_send_data(data:cmd_last);
+        sess.sshrecv_until(
+          end_states     : make_list("SOC_CLOSED"),
+          check_callback : @timos_shell_handler_incoming_data_cb,
+          channel        : channel,
+          cmd_timeout    : this.cmd_timeout
+        );
+
+        # Check response for failure or success
+        if(channel.data_buf)
+        {
+          if("Invalid password" >< channel.data_buf)
+          {
+            sess.set_cmd_error(
+              remove_cmd_prompt(cmd_res:channel.data_buf));
+            sess.set_cmd_error(obj_ch_id +
+              "Privilege escalation appears to have failed. Removing " +
+              "privilege escalation from credential set.");
+            replace_kb_item(name:tmp_bad_escl_kb, value:escl_hexstr);
+            priv_escl_failed = TRUE;
+          }
+          else if("Already in admin mode" >< channel.data_buf)
+          {
+            dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+              "Shell is already in admin mode.");
+            this.escalated_shell = TRUE;
+          }
+        }
+
+        if(this.cmd_state != _TIMOS_CMD_STATE_AT_PROMPT)
+        {
+          sess.set_cmd_error(obj_ch_id +
+            "Unable to return to command prompt after attempting to " +
+            "escalate privileges.");
+          this.last_cmd_error = TRUE;
+          return NULL;
+        }
+
+        # TiMOS returns to the command prompt without confirmation if
+        # enable-admin is successful, so send it again to confirm
+        if(!this.escalated_shell && !priv_escl_failed)
+        {
+          dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id +
+            "Sending command 'enable-admin' again to confirm escalation " +
+            "was successful.");
+          channel.clear_data_buf();
+          this.last_buffer_update_ts = unixtime();
+          this.cmd_state = _TIMOS_CMD_STATE_SEND_REQ;
+          channel.window_send_data(data:cmd_last);
+          sess.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @timos_shell_handler_incoming_data_cb,
+            channel        : channel,
+            cmd_timeout    : this.cmd_timeout
+          );
+
+          if(channel.data_buf &&
+             "Already in admin mode" >< channel.data_buf)
+          {
+            dbg::detailed_log(lvl:2, src:fn, msg:obj_ch_id +
+              "Successfully enabled admin mode.");
+            this.escalated_shell = TRUE;
+          }
+          else
+          {
+            sess.set_cmd_error(obj_ch_id +
+              "Unable to confirm if admin mode was successfully enabled.");
+          }
+
+          if(this.cmd_state != _TIMOS_CMD_STATE_AT_PROMPT)
+          {
+            sess.set_cmd_error(obj_ch_id +
+              "Unable to return to command prompt after attempting to " +
+              "escalate privileges.");
+            this.last_cmd_error = TRUE;
+            return NULL;
+          }
+        }
+      }
+
+      this.cmd_last = command;
+      sess.reset_cmd_interrupted();
+
+      dbg::detailed_log(lvl:2, src:fn, msg:"sending command: " + cmd_last);
+      channel.clear_data_buf();
+      this.last_buffer_update_ts = unixtime();
+      this.cmd_state = _TIMOS_CMD_STATE_SEND_REQ;
+      dbg::detailed_log(lvl:3, src:fn, msg:"cmd_state:_TIMOS_CMD_STATE_SEND_REQ(" + this.cmd_state + ")" );
+      channel.window_send_data(data:cmd_last);
+      sess.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : @timos_shell_handler_incoming_data_cb,
+        channel        : channel,
+        cmd_timeout    : this.cmd_timeout
+      );
+      var msg = "Timed out waiting for data from server after opening shell.";
+      if((unixtime() - this.last_buffer_update_ts) >= this.cmd_timeout)
+      {
+        if( this.cmd_state == _TIMOS_CMD_STATE_SEND_REQ)
+        {
+          msg = "Unable to verify command on shell.";
+        }
+        else if(this.cmd_state == _TIMOS_CMD_STATE_RECV_RSP)
+        {
+          msg = "Timed out waiting for command result.";
+        }
+        this.last_cmd_error = TRUE;
+        dbg::detailed_log(lvl:1, src:fn, msg:msg );
+        return sess.set_cmd_error( msg );
+      }
+      if(channel && channel.data_buf)
+      {
+        var ret = channel.data_buf;
+        # MINOR: CLI Invalid password..
+        if("MINOR: CLI Command not allowed for this user" >< ret)
+        {
+          # Command sent indicated enable-admin needs to run first
+          # let caller know this error occured
+          msg = "Error: CLI Command not allowed for this user.";
+          this.last_cmd_error = TRUE;
+          dbg::detailed_log(lvl:1, src:fn, msg:msg );
+          return sess.set_cmd_error( msg );
+        }
+        else if("Error: Bad command." >< ret)
+        {
+          msg = "Error: Bad command.";
+          this.last_cmd_error = TRUE;
+          dbg::detailed_log(lvl:1, src:fn, msg:msg);
+          return sess.set_cmd_error( msg );
+        }
+        # IGNORE "MINOR: CLI Already in admin mode." (not an error)
+        # already in admin mode response comes after enable-admin is
+        # sent twice, this device supports both success and failure
+        # indications of privilege modes that way
+
+        if(this.cmd_state != _TIMOS_CMD_STATE_AT_PROMPT)
+        {
+          sess.set_cmd_error(obj_ch_id +
+            "Unable to return to command prompt after attempting to " +
+            "escalate privileges.");
+          this.last_cmd_error = TRUE;
+        }
+
+        return chomp(string_reverse(chomp(string_reverse(remove_cmd_prompt(cmd_res:ret)))));
+      }
+      return NULL;
+    }
+
+    public function set_priv_escalation(type, extra)
+    {
+      this.priv_escalation_type = type;
+      this.priv_escalation_extra = extra;
+      this.settings['priv_escalation_type'] = type;
+      this.settings['priv_escalation_extra'] = extra;
+    }
+
+    public function unset_priv_escalation()
+    {
+      this.priv_escalation_type = NULL;
+      this.priv_escalation_extra = NULL;
+      this.settings['priv_escalation_type'] = NULL;
+      this.settings['priv_escalation_extra'] = NULL;
+    }
+
+    public function remove_cmd_prompt(cmd_res)
+    {
+      var idx = stridx(cmd_res, this.cmd_prompt);
+      if(idx < 1)
+        return cmd_res;
+
+      return substr(cmd_res, 0, idx-1);
+    }
+  }
+}

@@ -1,0 +1,125 @@
+#TRUSTED 4d5e70c4bd10cb1bc7f9dc7929720825bbaf64c2498be115658615d514b49006d9effe808e8328f7817ce0dbbe6413d47437661fca6b7c912f0e3c8363206a642230fb45a20fcd2d7d9c8822db2654d25ec62cf890a3959d229afd83f39516d06d8473c907223ab5defdf218db4828bbe68bae6026523c8518edda66a4dfee34e9f62147fba3ab745730d168ce83b69f2046af79b378377beb1768fa84c25fe094345717cf73e8041f543f47932762cc4b03484adbc5ff8a9bfa714874f0668cd4df621d18aec5ddbf43a1aaeed68f07c8d65981762bd5ecf60975adaf203e997746bd1ad06fd7a0893e45138d020caea71e6efcb64ab6257caada03c696a8ebef9cff690848ab89b0230c615389ab17365fff09982888ecc27b3824e6d52ce22582c0e885107b3d7f19912e12e9e56d68b69eacfe0d406348a8b91d096208b7af5af3b591884413e26283fcf067ff5828c86a8378a035537d267a9a03cda0434b53c8f06ce03b0d51e70c1c079cedd63ff4aec57f75547fd4167e5d144103acfb3ba9be3c55a92990503381336daf35b47896750824b51bc7a9610e9368c2cfff9581409884fc3e8814f798e7db9d8bef9ad721f422b688805da1f72f83f749a25ea2f1f3b50d9bb78e414a07e674cef72f55df10c6c8cf6ca89cc214f2307dc67ba250b57895168fb3e94b5b36dcb66311b3944b426a666dbe479e7f49a39b
+#TRUST-RSA-SHA256 6b5df31f038bef780eee0ae95113a3b486adfdbf534e615bd8d5e475dad1b3e448676a1970649b83a7ac1ec3cdaf4c95d14a738126c3cc48b83dc9d4a1167dcbf164235dd63a638ba037a837abb745d7c7c4f7d9f1ec3b3eb5bed607f2381ea133a05c2d60e5b3675395852bceb49402de2fa9ef04f7f396997285ff4f4c8a27ec0a31aa7e5705a9903c608e31eac1fdd9966fbb04fd8d65a923e0225a86cef658651da736cfd4d07161377c46e1319aba781a89f9e864a0e4c5c13b476d5afe7939d508c5bbc53a18259eb95e4da1da82485a88af2b778d96e2d6e4a65a7442f9a371b535373503d0076524cf58b13a1441ffd46aa67540046a66cddb2bcf5f38e6c0be5918fee919783c0b360f871e6a5d646e87aa4056ddde7b7d3544f72d9c1fdf17a65a485fa64ee6582359d8b07d9b9c2a63ab390f8ae10b603f48320957472f6a9669bbe99c888f46b0e28ae4bd6e6df62577effbf1208a903482605bdf1811e594b2416b516fe6df60d78e456a742bfc32b86d9779ccc9bf840fe42719c0276d1316fa196c1bf4af5362db5aff944cdd7e3de6f195a86fe6999e018622e635cd168e7e23b066f21a80fffce5825da72d73efdb326ed710791781194b0916d9b0ab0bbf924ecf9f00fc7d3ae48bb3ebc7008164f4f5c37af6176c55a289f135d06b6c9399bd611724f3635519f6c4ae776ba7d02ac71c2b7b625b7923
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.14
+#
+# Notes from ssh_get_info.nasl
+# - Cisco Unified IP Phone running CNU-OS
+# - The IP phone implements a second-stage authentication conducted over a SSH channel.
+#   Commands cannot be run until this authentication succeeds.
+# - Note that the sshd on the device return a version string "SSH-2.0-1.00" that
+#   doesn't contains text 'Cisco', thus the CISCO variable is not set.
+# - The command 'cmd /C ver' last sent was interpreted by the phone as the login name, so it
+#   responds with a password prompt.
+
+# sample output:
+#
+# 0x00:  64 65 62 75 67 0A 0D 70 61 73 73 77 6F 72 64 3A    debug..password:
+# 0x10:  20 0A 0D 0A 0D 0A 0D 46 30 32 39 32 39 35 38 30     ......F02929580
+# 0x20:  33 31 44 3E 20 73 68 6F 77 20 76 65 72 73 69 6F    31D> show versio
+# 0x30:  6E 0A 0D 43 4E 55 36 2D 4F 53 20 20 39 2E 30 28    n..CNU6-OS  9.0(
+# 0x40:  32 45 53 33 2E 29 20 34 2E 31 28 30 2E 31 29 20    2ES3.) 4.1(0.1)
+# 0x50:  43 50 2D 37 39 34 32 47 20 50 53 59 4C 20 30 30    CP-7942G PSYL 00
+# 0x60:  32 30 2D 31 32 28 4D 49 50 53 33 32 29 0A 0D 0A    20-12(MIPS32)...
+# 0x70:  0D 46 30 32 39 32 39 35 38 30 33 31 44 3E          .F0292958031D>
+#
+# 1) user name and the command are echoed back
+# 2) '\n\r' (as opposed to '\r\n') are used to separate lines
+# 3) command prompt consists of device's MAC address followed by a '>'
+
+# the 'show version' command is only available when logged in as debug
+
+#
+# cisco_ip_phone_pre_check_fail
+# check if this is a cisco_ip_phone device based on information collected
+#
+function cisco_ip_phone_pre_check_fail()
+{
+  # have we already checked that the host is not a Cisco IP Phone?
+  if(host_info_key_val['host_not_cisco_ip_phone'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['debug-debug-showversion_unrecognized']) &&
+     host_info_key_val['debug-debug-showversion_unrecognized'] !~ cisco_ip_phone_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Cisco IP Phone if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "Cisco IP Phone (CNU-OS) Software," in "debug\ndebug\nshow version"
+#
+function handle_cisco_ip_phone(session, use_shell_handler, &channel, cmd_res)
+{
+  #Local checks just means we can run commands on the target host.
+  report += '\nLocal checks have been enabled for this host.';
+
+  var cnu_os = pgrep(pattern:"CNU[^ ]+OS.+", string:cmd_res);
+
+  if(empty_or_null(cnu_os))
+  {
+    var failure_kb_msg = 'The remote host appears to be running Cisco IP Phone (CNU-OS).\n' +
+                         'However, something went wrong when we tried to capture the output of\n' +
+                         'the "show version" command.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return TRUE;
+  }
+
+  report += '\nOS Security Patch Assessment is available for Cisco IP Phone (CNU-OS).\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_ip_phone.static', value: 101);
+
+  replace_kb_item(name:"Host/Cisco/CNU-OS", value:cnu_os);
+  replace_kb_item(name:"Host/OS/showver", value:cnu_os);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"phone");
+}
+
+#
+# callback for systems that where 'debug\ndebug\nshow version' does not match CNU-OS regex
+#
+function handle_not_cisco_ip_phone(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+    # store more details for other handlers to use
+    host_info_key_val['host_not_cisco_ip_phone'] = TRUE;
+    host_info_key_val['debug-debug-showversion_unrecognized'] = cmd_res;
+  }
+}

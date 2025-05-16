@@ -1,0 +1,45 @@
+#TRUSTED 698acfcc0815addb22f08e87b0dbae7de2d624d6552761ce736a26187ce1e5978709a9dadc4e2e5a80cfd44c1f0ff1ee8a998a04d0dad70cca3530d9d37a7d82b669c1f3e08e64284bc0ed7f2011c7b185b3286b90f85e92fd202db4d224712cd1dc4be2533011cb9327d1309ca862a2f9e537f873f517af735af2febc41e710264f6bf05171db5ab7989a4529bf35bf2035c6ae30d2c514f7a062bc1ad284cef6d9a82b0a24a95704d900f10cf8e0fe3cde13a8b3e1b92cf7cb79baf2065f1069569b68fce288b4e7cac4f8b65121521c1e632dd4465815776e987dcb7d4473d9a9979c3c4056b5587594dc368c545551fd3c094f4a0ab7571836d8b0e975aa50b251ae198ebc31d38312fc9bb7bd1fb0b68ff5d510145ce058302ed50fd2773df067e47be7f6adc23dac167367a7aee9136de5b6f0d66d9805fbf8a4072cced3d12b7403d2b221f3b9c349bee130d478584c8b8a2279d57ecc86f8f1c7447d2e5319dbbd5e091108163fb0f88122662ef92f0c5464c49fddc0626d2dfc47d761651cf10c4342fd8ac61a18358381a1efa3a31966cd9d824e362594f9a1b431049f5f75166fbfde27e4db3f2880da28544805d8106d62487a1984a94f08a08a75fe0a0d87bdc3b976a11af8e5cb06e46be3f2858889fc9e17325c795e5d3eb3f40373981ab70c497d698f1f2d57f0d7e3d9e5c563a094c0fda4adf55d60f794
+#TRUST-RSA-SHA256 1d08d9caa96f5feb768c790fe8d225a0283407b97db07cc71162f05bb315054afd14933615bf8c0c40cbe4030bbec866643d3141abf23fcc5761aa2e85b1fa7ab54febae47a0c4934e8dc969bf096fabf35ca783e22c5cf5dc2b893d355ef2dca6b6573cba83d012383a7699eb88997d085f6c6f1b1fb6e55c9266ba141b040fa6a47b285eabe98f0e2469fbc24baa69c42a6601818b2a4cda9fb7438fbd0f107c204bde1c5f503e942c92d6b51e4908dd5ff8996ef944e7a46fc571f503497a7667f4c0b1c18faecd48d1465c3ecec4d250fe664a476f34f1b7e58f83e3f364037e9e804f687f9b64de5ce5b9b5658b2097521dadf7767408fb3c703f325d5b01982076e37ccf82c6605f7d9bcceed7b228042ded5d9f7521cb751d1bac9d3b0fa0e170dc78fc57fba02c358b43b913b09c3c0cc57a2060544fda84e9ac4a540ea5e0e26ba89368703d4cb48cfa04fac5438d5f9ea2363601dc35b7834d55db321489241f397798ec8837be343cd4c92c9110b2e2ea138a33df3a081285ec874344516594f4814d652b6c645fcf932abdca737e8f48146ab6e04ef78a2107009b0afe56da71f46fb397ae37ebf34372d72bd7ddc13df9fcef8cc0882c3524aa638ff954a96acf6737f1a897bc72e44dab01a733fecf96fc772aa9202284b40a1d77f994eb29e8f1a68cbb480f82c7a988fe925f68fd1b20b6f4cea36b959b4f
+
+##
+# (C) Tenable Network Security, Inc.
+##
+
+##
+# Run commands to gather information on target TelePresence VCS system
+##
+function handle_cisco_telepresence_vcs(session, use_shell_handler, &channel, cmd_res)
+{
+
+
+  var res = run_command(cmd:"cat /tandberg/upgrade/software_version",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  if (res =~ "^X[0-9.]+$")
+  {
+    report += '\nThe remote is a Cisco TelePresence Video Communication Server ' + (res - "X");
+    replace_kb_item(name:"Host/Cisco/TelePresence_VCS/Local/Version", value:chomp(res));
+
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_telepresence_vcs.static', value: 26);
+    report += '\nOS Security Patch Assessment is available for Cisco TelePresence VCS';
+
+    replace_kb_item(name:'Host/OS/cat_etc_config_system', value: "Cisco TelePresence VCS " + (res - "X"));
+    replace_kb_item(name:'Host/OS/cat_etc_config_system/Confidence', value: 100);
+    replace_kb_item(name:'Host/OS/cat_etc_config_system/Type', value: 'video-conferencing');
+  }
+  else
+  {
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    var failure_kb_msg = '\nThe remote host appears to be running Cisco TelePresence VCS.\n' +
+                         'However, we were unable to parse the OS version from the output\n' +
+                         'of running "cat /tandberg/upgrade/software_version".';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+  }
+
+  return TRUE;
+}

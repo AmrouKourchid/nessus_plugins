@@ -1,0 +1,130 @@
+#TRUSTED 8902f642a349e7d1c50803fe5be06430a311e1f3cb67adef147c0fd5098e4cfe65e406669bc24f155309fb86dbef8b06d07e4fd7964beb23edb57942869c3e737cd1d547f9afa72c85dfae8d276cc4715aa82c6e99447ba35540fcff4a7fab8d84b102b3237b0eda77bf14afc362379947d91be19b8c38c69016fd46dc8df8e26c3c19d24aa430cc99e8edcc36854b032d18c4ee4f610166939048e478bdcf5a3c062760bb943a1ced927595d1b3bbb4c868e4d2369e9fd101ab3ee7220c5ef3b6425b84115b3cd931bd1acdb1bf9e1dd1404292b2abe9f76661fb487b7eef3890b970203004a4ef6692eff3efd9d079518d122e93bbc41691f93649244e1b2781380fd242475765d51a948373bd30b9fdb6322e29da54db6962cc1601a8ce7a406b205ad9a1acfeb67fba2ec5211f906123d5d97ee7b744a6d90676af200495de18c944ff26a63a8f0401f6d453c57d51ea0d56a437d8f72ff0d531dd757f202e2d1a9c54e283e08534cb84c730886a17b2c30a9533c14d4a1a5bda7488c388a7cf75bcaccbcd3240dd7e516415ca60e5dca072532c3c9f7b29084049f6efab3181181c1ef4ebbdde0b81b10b397ac0b1c6a4ed8e9f4e1d819bcf355fbbea6a069993198d52e19251970c05f3c502120aa06e48af16930017f3eef9d732a3b33236c74513d0c1da0351c6f291bd591d2ca4c105c8879308d55f49ae0ca8de73
+#TRUST-RSA-SHA256 ad5783652413964481bd5b54ac23db2f7e5f8a6f783e499f4baf1c7c77a97911fc97384a588143d16b6593f2b33cafe00a4a5a4c9f252f3dcafe46cba210266dc82db999780bb095443b84454775c830caab61f751d97bb97d08fa5630aa6e1d6dfad014ad64b5bab261a2fb0d613c52359391015f4de586c94021d00be4de3f1da486bbaf0a34bdd5199704015c5fa10289f8e3abc47882bbbaceb25249f5776afe51e5d1eee40875024a0270ecbb6361a4c49faae0df53e6d413dc97085d4435cd2300c876202a55fbca6260a36b542223c22bd5b28a5071e770fb0c4dc98b8202d48069e63a94065fb62fac9373b26633021695d7437ff43388d2d37b478617044cb67a1b70d9b04b2a2abe0d5d0ccf6f53c8c4b43d8ab44721f939e2083b58f06e826bd5e47979c6acd8c5c4fa5f1b9c58196f7030fe5543d316816108fa9fc58fb7f5c5824aafd3231a158d7bcfd90cb7058e384c1d2e0403dc3be75e6acdee156c08e29f2e8e9b9d86d20de619691fc74dbb757719c4973628906baa31c3ed6399730fc9aba51702b36823fb633c0942c03846b3572b58c6f155ed4ea1fdf587716d7cc4ad0dd27047e82e2deac4992ed3ce45f5642d2ce57a29f44385533f324a0640627bf08b3810bb49421f8b4b9b9026f8cef6514fc49b48f86ba69ce2c373192153864629f458abde7e44a06d64c0518bb7638c09165962e48668
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+
+# Azure Linux helper functions
+
+function handle_azure_linux(session, use_shell_handler, &channel)
+{
+  var product, version, match;
+  var cmd_res = run_command(cmd:"cat /etc/azurelinux-release",
+                            session:session,
+                            use_shell_handler:use_shell_handler,
+                            channel:channel);
+
+  replace_kb_item(name: "Host/etc/azurelinux-release", value:cmd_res);
+
+  match = pregmatch(pattern:"(?:^|\n)\s*(Azure Linux [0-9.]+)\s*(?:^|\n)", string:cmd_res);
+  if(!isnull(match))
+    product = match[1];
+
+  match = pregmatch(pattern:"(?:^|\n)\s*AZURELINUX_BUILD_NUMBER=([0-9.]+)\s*(?:$|\n)", string:cmd_res);
+  if(!isnull(match))
+    version = match[1];
+
+  if(empty_or_null(product) && !empty_or_null(version))
+    product = "Azure Linux " + version;
+
+  replace_kb_item(name:"Host/AzureLinux/release", value:product);
+
+  if(empty_or_null(version))
+  {
+    failure_kb_msg = "The Azure Linux version could not be determined.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\nThe remote system is Azure Linux, but the remote version could not be determined\n';
+    report += '\nThe output of "cat /etc/azurelinux-release" is :\n' + cmd_res + '\n';
+    report += '\nOS Security Patch Assessment is not available\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  report += '\nThe remote system is :\n' + product + '\n';
+
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                               internal_label:"AzureLinux");
+
+
+  var cpu = host_info_key_val['cpu'];
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_azure_linux.static', value: 60);
+  }
+
+  # Register OS
+  register_azure_linux_os(release_info:version, cpu:cpu);
+
+  return TRUE;
+}
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [cpu:str]         CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_azure_linux_os(release_info, cpu)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Azure Linux release 36 (Thirty Six)
+  #    Azure Linux release 37 (Thirty Seven)
+  #    Azure Linux release 38 (Thirty Eight)
+  #    Azure Linux release 39 (Thirty Nine)
+  #    Azure Linux 16 (Verne)
+  #    Azure Linux 34 (Workstation Edition)
+  #    Azure Linux Linux 38 (Cloud Edition)
+  #    Azure Linux Linux 39 (Workstation Edition)
+  #
+  #  - Match groups:
+  #    1: Release (e.g. 36, 37, 38, 39)
+  #    2: Release String (e.g. 'Thirty Six')
+
+  var product = 'Azure Linux';
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var release = release_info;
+  var version = release_info;
+
+  # OS Name
+  var os_name = strcat(product, ' ', release);
+
+  # Edition passed from rpm list output
+
+  # Base CPE
+  #  - Example:
+  #    cpe:/o:microsoft:azure_linux:3.0.20240824
+  var cpe = 'x-cpe:/o:microsoft:azure_linux';
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'Microsoft Corporation',
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    cpe         : cpe
+  );
+
+  return NULL;
+}

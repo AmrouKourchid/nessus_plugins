@@ -1,0 +1,1202 @@
+##
+#
+#  Namespace compliance_forward_compat
+#    Provides an encapsulated naming scope for functions and objects copied from compliance-checks repo
+#
+##
+
+namespace compliance_forward_compat
+{
+  # From types.static
+  
+  ###
+  # Utility functions for converting between and working with the following types:
+  #
+  # int    - nasl's build-in 32-bit integer value
+  # int64  - from math64.inc, [low, high] where low and high are ints
+  # data   - nasl's build-in data type. Usually found surrounded by single quotes: 'some data'
+  # hex    - a string of the characters 0-9 and a-f which represent a hexadecimal value
+  # binary - a list of 0 and 1 ints representing a binary value
+  #
+  # nasl objects - [], {}, "", '', 1
+  # json objects - {"json":1, "object":2}
+  #
+  ###
+
+  ##
+  # Converts 'data' type to 'int64'
+  #
+  # @anonparam [1st:data] The data to convert
+  #
+  # @return The given data converted to 'int64'
+  ##
+  function int64_from_data()
+  {
+    var str_bits = _FCT_ANON_ARGS[0];
+
+    str_bits = hexstr(str_bits);
+    return int64_from_hex(str_bits);
+  }
+
+
+  ##
+  # Bitwise and of two int64s
+  #
+  # @anonparam [1st:int64] The first int64
+  # @anonparam [2nd:int64] The second int64
+  # @return The int64 resulting from performing ``1st & 2nd``
+  ##
+  function and64()
+  {
+    var a, b, result;
+    a = _FCT_ANON_ARGS[0];
+    b = _FCT_ANON_ARGS[1];
+
+    result = make_int64(
+      low:a[0] & b[0],
+      high:a[1] & b[1]
+    );
+
+    return result;
+  }
+
+  ##
+  # Converts 'int64' type to 'data'
+  #
+  # @anonparam [1st:int64] The int64 to convert
+  #
+  # @return The given int64 converted to 'data'
+  ##
+  function data_from_int64()
+  {
+    var int64 = _FCT_ANON_ARGS[0];
+    return data_from_int_padded(int64[1]) + data_from_int_padded(int64[0]);
+  }
+
+  ##
+  # Converts raw string in little endian ordering to big endian ordering
+  #
+  # @anonparam [1st:data] The little endian raw data to convert
+  #
+  # @return The given raw string converted to big endian ordering
+  ##
+  function big_endian_from_little_endian()
+  {
+    var little_endian_raw = _FCT_ANON_ARGS[0];
+    var little_endian_str = hexstr(little_endian_raw);
+    var big_endian_str = '', iterator;
+    var length = strlen(little_endian_str);
+    for (iterator = length-2; iterator > -1; iterator -= 2)
+    {
+      big_endian_str += substr(little_endian_str, iterator, iterator + 1);
+    }
+    return data_from_hex(big_endian_str);
+  }
+
+  ##
+  # Converts a hex string to a raw string
+  #
+  # @anonparam [1st:string] The hex string to convert
+  #
+  # @return The given hex string converted to a raw string
+  ##
+  function data_from_hex()
+  {
+    var hex_string = _FCT_ANON_ARGS[0];
+    var buffered_hex = '';
+    if (strlen(hex_string) % 2 == 1)
+    {
+      buffered_hex = '0' + hex_string;
+    }
+    else
+    {
+      buffered_hex = hex_string;
+    }
+    return hex2raw(s:buffered_hex);
+  }
+
+
+  ##
+  # Generate a data type from an int, padding the front with 0s.
+  #
+  # @anonparam [1st:int] The int to pad with 0s
+  #
+  # @return The int in a string padded by 0s
+  ##
+  function data_from_int_padded()
+  {
+    return pad_int_data(data_from_int(_FCT_ANON_ARGS[0]));
+  }
+
+
+  ##
+  # Pad data to 4 characters by adding front 0s.
+  #
+  # @anonparam [1st:data] The data to pad with 0s
+  #
+  # @return The 0-padded 4-character string
+  ##
+  function pad_int_data()
+  {
+    var str_bits = _FCT_ANON_ARGS[0];
+    var padding = crap(length:max(4 - strlen(str_bits), 0), data:raw_string(0));
+    return padding + str_bits;
+  }
+
+  ##
+  # Converts a data type to binary
+  #
+  # @anonparam [1st:data] The data to convert
+  #
+  # @return The given data converted to binary
+  ##
+  function binary_from_data()
+  {
+    return binary_from_hex(hex_from_data(_FCT_ANON_ARGS[0]));
+  }
+
+  ##
+  # Converts a int64 type to binary
+  #
+  # @anonparam [1st:int64] The int64 to convert
+  #
+  # @return The given int64 converted to binary
+  ##
+  function binary_from_int64()
+  {
+    return binary_from_hex(hex_from_int64(_FCT_ANON_ARGS[0]));
+  }
+
+  ##
+  # Converts a int64 type to hex
+  #
+  # @anonparam [1st:int64] The int64 to convert
+  #
+  # @return The given int64 converted to hex
+  ##
+  function hex_from_int64()
+  {
+    var num = _FCT_ANON_ARGS[0];
+    return
+      pad_hex(hex_from_int(num[1]), 8) +
+      pad_hex(hex_from_int(num[0]), 8);
+  }
+
+  ##
+  # Converts a int type to hex
+  #
+  # @anonparam [1st:int] The int to convert
+  #
+  # @return The given int converted to hex
+  ##
+  function hex_from_int()
+  {
+    return hex_from_data(data_from_int(_FCT_ANON_ARGS[0]));
+  }
+
+  ##
+  # Converts a int type to data
+  #
+  # @anonparam [1st:int] The int to convert
+  #
+  # @return The given int converted to data
+  ##
+  function data_from_int()
+  {
+    var input = _FCT_ANON_ARGS[0];
+    var result = '';
+    if ((input & 0xff000000) != 0)
+    {
+      result += raw_string(input >> 8*3);
+    }
+    if ((input & 0xffff0000) != 0)
+    {
+      result += raw_string(input%0x1000000 >> 8*2);
+    }
+    if ((input & 0xffffff00) != 0)
+    {
+      result += raw_string(input%0x10000 >> 8*1);
+    }
+    result += raw_string(input%0x100 >> 8*0);
+    return result;
+  }
+
+  ##
+  # Converts data type to a hex string
+  #
+  # @anonparam [1st:data] The int to convert
+  #
+  # @return The given data converted to a hex string
+  ##
+  function hex_from_data()
+  {
+    var data = _FCT_ANON_ARGS[0];
+    return hexstr(data);
+  }
+
+
+  ##
+  # Pad a hexadecimal string to total_digits total length.
+  #
+  # @anonparam [1st:data] The hex string to pad
+  # @anonparam [2nd:int] The total length of the padded string to return
+  #
+  # @return The given data padded by 0s to make a string of total length ``2nd``
+  ##
+  function pad_hex()
+  {
+    var hex_string = _FCT_ANON_ARGS[0];
+    var total_digits = _FCT_ANON_ARGS[1];
+
+    var length = strlen(hex_string);
+    var amount_to_pad = max(total_digits - length, 0);
+    var padding = crap(length:amount_to_pad, data:raw_string('0'));
+    return padding + hex_string;
+  }
+
+  ##
+  # Determine the greater value of the two arguments
+  #
+  # @anonparam [1st:any] The first value to compare
+  # @anonparam [2nd:any] The second value to compare
+  #
+  # @return The greater of the two arguments
+  ##
+  function max()
+  {
+    var a = _FCT_ANON_ARGS[0];
+    var b = _FCT_ANON_ARGS[1];
+
+    if (a >= b) return a;
+    else return b;
+  }
+
+  ##
+  # Converts a hex string to binary
+  #
+  # @anonparam [1st:data] The hex string to convert
+  #
+  # @return The given hex string converted to binary
+  ##
+  function binary_from_hex()
+  {
+    var hex_string = _FCT_ANON_ARGS[0];
+    var char, i, result;
+    result = make_list();
+    for (i = 0; i < strlen(hex_string); i++)
+    {
+      char = hex_string[i];
+      result = make_list(result, binary_from_char(char));
+    }
+    return result;
+  }
+
+  ##
+  # Converts a character to its binary value
+  #
+  # @remark This functions is limited to convert characters used in the definition of
+  #         hexadecimal values, i.e. 0-9 and a-f characters
+  #
+  # @anonparam [1st:string] The character to convert
+  #
+  # @return The binary value of the given character
+  ##
+  function binary_from_char()
+  {
+    var char = tolower(_FCT_ANON_ARGS[0]);
+    if (char == '0') return make_list(0,0,0,0);
+    if (char == '1') return make_list(0,0,0,1);
+    if (char == '2') return make_list(0,0,1,0);
+    if (char == '3') return make_list(0,0,1,1);
+    if (char == '4') return make_list(0,1,0,0);
+    if (char == '5') return make_list(0,1,0,1);
+    if (char == '6') return make_list(0,1,1,0);
+    if (char == '7') return make_list(0,1,1,1);
+    if (char == '8') return make_list(1,0,0,0);
+    if (char == '9') return make_list(1,0,0,1);
+    if (char == 'a') return make_list(1,0,1,0);
+    if (char == 'b') return make_list(1,0,1,1);
+    if (char == 'c') return make_list(1,1,0,0);
+    if (char == 'd') return make_list(1,1,0,1);
+    if (char == 'e') return make_list(1,1,1,0);
+    if (char == 'f') return make_list(1,1,1,1);
+  }
+
+  ##
+  # Converts a int64 to its decimal value
+  #
+  # @anonparam [1st:int64] The int64 to convert
+  #
+  # @return The given int64 converted to its decimal value put in a string
+  ##
+  function decimal_string_from_int64()
+  {
+    var int64 = _FCT_ANON_ARGS[0];
+    var running_total = copy_int64(int64);
+    var i, division_result, quotient, remainder;
+    var decimal_digits = '';
+    for (i=18; i>=0; i--)
+    {
+      division_result = longdiv64(running_total, int64_power_of_ten(i));
+      quotient = division_result['quotient'];
+      remainder = division_result['remainder'];
+      running_total = remainder;
+      decimal_digits += string(int_from_int64(quotient));
+    }
+    return strip_leading_zeroes_from_string(decimal_digits);
+  }
+
+  ##
+  # Gets the int value of a int64
+  #
+  # @anonparam [1st:int64] The int64
+  #
+  # @return The int value of the int64
+  ##
+  function int_from_int64()
+  {
+    return _FCT_ANON_ARGS[0][0];
+  }
+
+
+  ##
+  # Return 10 to the power of the first argument, as an int64.
+  #
+  # @anonparam [1st:int] The number of powers of 10 to compute
+  #
+  # @return The int64 value corrsponding to the ``1st`` powers of 10
+  ##
+  function int64_power_of_ten()
+  {
+    var power = _FCT_ANON_ARGS[0];
+    var ten = int64_from_int(10);
+    if (power == 0) return int64_from_int(1);
+
+    var i;
+    var result = int64_from_int(1);
+    for (i = 0; i < power; i++)
+    {
+      result = mult64(result, ten);
+    }
+    return result;
+  }
+
+  ##
+  # Gets the int64 value of an int
+  #
+  # @anonparam [1st:int] The int to convert to int64
+  #
+  # @return The int64 value corrsponding to ``1st``
+  ##
+  function int64_from_int()
+  {
+    return make_int64(low:_FCT_ANON_ARGS[0], high:0);
+  }
+
+  ##
+  # Copies the given int64
+  #
+  # @anonparam [1st:int64] The int64 to copy
+  #
+  # @return The given int64
+  ##
+  function copy_int64()
+  {
+    var int64 = _FCT_ANON_ARGS[0];
+    return make_list(int64[0], int64[1]);
+  }
+
+  ##
+  # Removes the leading 0s from a string
+  #
+  # @anonparam [1st:string] The string from which to remove the leading 0s
+  #
+  # @return The string without the leading 0s
+  ##
+  function strip_leading_zeroes_from_string()
+  {
+    var result = strip_leading_zeroes_from_string_and_return_quantity(_FCT_ANON_ARGS[0]);
+    return result[0];
+  }
+
+  ##
+  # Removes the leading 0s from a string, counts how many there was
+  #
+  # @anonparam [1st:string] The string from which to remove the leading 0s
+  #
+  # @return A list containing the string without the leading 0s, and the number of 0s the function found
+  ##
+  function strip_leading_zeroes_from_string_and_return_quantity()
+  {
+    var str = _FCT_ANON_ARGS[0];
+    var i;
+    for (i=0; i<strlen(str); i++)
+    {
+      if (str[i] != 0)
+      {
+        return make_list(substr(str, i), i);
+      }
+    }
+    return make_list('0', strlen(str) - 1);
+  }
+
+  ##
+  # Removes the trailing 0s from a binary list
+  #
+  # @anonparam [1st:binary] The binary list from which to remove the trailing 0s
+  #
+  # @return The binary list without the trailing 0s, an empty list if ``1st`` was only made of 0s.
+  ##
+  function strip_trailing_zeroes_from_binary()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var i;
+    for (i=max_index(binary)-1; i>=0; i--)
+    {
+      if (binary[i] != 0)
+      {
+        return sublist(binary, 0, i+1); #FIX
+      }
+    }
+    return make_list();
+  }
+
+  ##
+  # Converts a binary list to its corresponding int64 value
+  #
+  # @anonparam [1st:binary] The binary list to convert
+  #
+  # @return The int64 value corresponding to ``1st``
+  ##
+  function int64_from_binary()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var hex = hex_from_binary(binary);
+    return int64_from_hex(hex);
+  }
+
+  ##
+  # Converts a binary list to its corresponding hex value
+  #
+  # @anonparam [1st:binary] The binary list to convert
+  #
+  # @return The hex string value corresponding to ``1st``
+  ##
+  function hex_from_binary()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+
+    binary = pad_binary_to_multiple_of_4(binary);
+
+    var char, i, result;
+    result = '';
+    for (i=0; i<max_index(binary)-3; i+=4)
+    {
+      char = hex_char_from_binary(sublist(binary, i, i+4)); #FIX
+      result += char;
+    }
+    return result;
+  }
+
+  ##
+  # Converts a binary list to its corresponding hex character
+  #
+  # @anonparam [1st:binary] The binary list to convert
+  #
+  # @return The hex character value corresponding to ``1st``
+  ##
+  function hex_char_from_binary()
+  {
+    var b = _FCT_ANON_ARGS[0];
+    if (b[0]==0 && b[1]==0 && b[2]==0 && b[3]==0) return '0';
+    if (b[0]==0 && b[1]==0 && b[2]==0 && b[3]==1) return '1';
+    if (b[0]==0 && b[1]==0 && b[2]==1 && b[3]==0) return '2';
+    if (b[0]==0 && b[1]==0 && b[2]==1 && b[3]==1) return '3';
+    if (b[0]==0 && b[1]==1 && b[2]==0 && b[3]==0) return '4';
+    if (b[0]==0 && b[1]==1 && b[2]==0 && b[3]==1) return '5';
+    if (b[0]==0 && b[1]==1 && b[2]==1 && b[3]==0) return '6';
+    if (b[0]==0 && b[1]==1 && b[2]==1 && b[3]==1) return '7';
+    if (b[0]==1 && b[1]==0 && b[2]==0 && b[3]==0) return '8';
+    if (b[0]==1 && b[1]==0 && b[2]==0 && b[3]==1) return '9';
+    if (b[0]==1 && b[1]==0 && b[2]==1 && b[3]==0) return 'a';
+    if (b[0]==1 && b[1]==0 && b[2]==1 && b[3]==1) return 'b';
+    if (b[0]==1 && b[1]==1 && b[2]==0 && b[3]==0) return 'c';
+    if (b[0]==1 && b[1]==1 && b[2]==0 && b[3]==1) return 'd';
+    if (b[0]==1 && b[1]==1 && b[2]==1 && b[3]==0) return 'e';
+    if (b[0]==1 && b[1]==1 && b[2]==1 && b[3]==1) return 'f';
+  }
+
+
+  ##
+  # Pad 0s in front of the binary list to get a binary list
+  # with a length divisible by 4
+  #
+  # @anonparam [1st:binary] The binary list to pad with 0s
+  #
+  # @return The 0-padded binary list
+  ##
+  function pad_binary_to_multiple_of_4()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var num_to_pad = (4 - (max_index(binary) % 4)) % 4;
+
+    var padding = list_of_zeroes_of_length(num_to_pad);
+    return make_list(padding, binary);
+  }
+
+  ##
+  # Create a list filled with 0s
+  #
+  # @anonparam [1st:int] The length of the list to create
+  #
+  # @return The list filled with 0s of length ``1st``
+  ##
+  function list_of_zeroes_of_length()
+  {
+    var length = _FCT_ANON_ARGS[0];
+    if (length <= 0)
+    {
+      return make_list();
+    }
+    return fill_list(value:0, length:length);
+  }
+
+  ##
+  # Converts a hex string to its int64 value
+  #
+  # @anonparam [1st:data] The hex string to convert
+  #
+  # @return The int64 value of ``1st``
+  ##
+  function int64_from_hex()
+  {
+    var high, low, high_str, low_str, str_bits;
+    str_bits = _FCT_ANON_ARGS[0];
+
+    if (strlen(str_bits) > 16)
+    {
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "WARNING: int64_from_hex was sent a number more than 64 bits long",
+        msg_details: {
+          "Length": {"lvl": 1, "value": str_bits}});
+    }
+
+    var padding = crap(length:max(16 - strlen(str_bits), 0), data:raw_string('0'));
+    str_bits = padding + str_bits;
+
+    high_str = substr(str_bits, 0, 7);
+    if (isnull(high_str))
+    {
+      high = 0;
+    }
+    else
+    {
+      high = int_from_hex(high_str);
+    }
+    low_str = substr(str_bits, 8, 15);
+    low = int_from_hex(low_str);
+    return make_int64(low:low, high:high);
+  }
+
+
+  ##
+  # Takes in a 32 bit or less hex string and returns an int.
+  # Like hex2raw, but returns an int instead of a 'data' type.
+  #
+  # @anonparam [1st:data] The hex string to convert
+  #
+  # @return The int value of ``1st``
+  ##
+  function int_from_hex()
+  {
+    var i, j, result, length;
+    var hex = _FCT_ANON_ARGS[0];
+
+    hex = chomp(hex);  # remove trailing blanks, CR, LF...
+    length = strlen(hex);
+    if (length % 2) {
+      length --;
+    }
+    hex = tolower(hex);
+    for(i=0; i<length; i+=2)
+    {
+      if(ord(hex[i]) >= ord("0") && ord(hex[i]) <= ord("9"))
+      {
+        j = int(hex[i]);
+      }
+      else
+      {
+        j = int((ord(hex[i]) - ord("a")) + 10);
+      }
+
+      j *= 16;
+
+      if(ord(hex[i+1]) >= ord("0") && ord(hex[i+1]) <= ord("9"))
+      {
+        j += int(hex[i+1]);
+      }
+      else
+      {
+        j += int((ord(hex[i+1]) - ord("a")) + 10);
+      }
+
+      result += j * 16**(length - i - 2);
+    }
+    return result;
+  }
+
+
+  ##
+  # Compares to values of any type
+  #
+  # @remark Can be used to compare anything except pointers/references.
+  #
+  # @anonparam [1st:any] The first argument to compare
+  # @anonparam [2nd:any] The second argument to compare
+  #
+  # @return TRUE if ``1st`` and ``2nd`` are strictly equal, FALSE otherwise
+  ##
+  function compare()
+  {
+    var a = _FCT_ANON_ARGS[0];
+    var b = _FCT_ANON_ARGS[1];
+    var t1 = typeof(a);
+    var t2 = typeof(b);
+
+    if (t1 == 'string')
+    {
+      t1 = 'data';
+    }
+    if (t2 == 'string')
+    {
+      t2 = 'data';
+    }
+
+    if (t1 != t2)
+    {
+      return FALSE;
+    }
+    else if (t1 == 'array')
+    {
+      if (compare_arrays(a, b))
+      {
+        return TRUE;
+      }
+      else
+      {
+        return FALSE;
+      }
+    }
+    else if (a == b)
+    {
+      return TRUE;
+    }
+    else
+    {
+      return FALSE;
+    }
+  }
+
+
+  ##
+  # Compare arrays to see if their contents are the same, recursively.
+  #
+  # @anonparam [1st:array] The first array to compare
+  # @anonparam [2nd:array] The second array to compare
+  #
+  # @return TRUE if ``1st`` and ``2nd`` are strictly equal, FALSE otherwise
+  ##
+  function compare_arrays()
+  {
+    var a = _FCT_ANON_ARGS[0];
+    var b = _FCT_ANON_ARGS[1];
+
+    var ka = sort(keys(a));
+    var kb = sort(keys(b));
+    var length = max_index(ka);
+
+    if (max_index(kb) != length)
+    {
+      return FALSE;
+    }
+
+    var i;
+    for (i = 0; i < length; i ++)
+    {
+      if (ka[i] != kb[i])
+      {
+        return FALSE;
+      }
+
+      if (!compare(a[ka[i]], b[ka[i]]))
+      {
+        return FALSE;
+      }
+    }
+    return TRUE;
+  }
+
+  # From base.static
+
+  ##
+  # Return elements from start (inclusive) to end (non-inclusive) from list
+  #
+  # @anonparam [1st:list] The list from which to gather the sub-list
+  # @anonparam [2nd:int] The start index in ``1st`` at which to get the sub-list
+  # @anonparam [3rd:int] The end index in ``1st`` at which to get the sub-list (optional, defaults to the end of ``1st``)
+  #
+  # @return The gathered sub-list of ``1st``
+  ##
+  function sublist()
+  {
+    var list = _FCT_ANON_ARGS[0];
+    var start = _FCT_ANON_ARGS[1];
+    var end = _FCT_ANON_ARGS[2];
+
+    if (isnull(end) || end > max_index(list))
+    {
+      end = max_index(list);
+    }
+
+    var result = make_list();
+    var i;
+    for (i = start; i < end; i++)
+    {
+      result[max_index(result)] = list[i];
+    }
+
+    return result;
+  }
+  
+  # From floating_point.static
+  
+  ###
+  # Utility functions for parsing 64-bit (double) floating point numbers.
+  #
+  # Note: These tools do not allow for running calculations with floating point numbers,
+  #       they just allow parsing and displaying them.
+  #
+  ###
+
+  ##
+  # Parse a double in little endian, and returns it in a string
+  #
+  # @anonparam [1st:data] The double in little endian to parse
+  #
+  # @return The parsed double in a string
+  ##
+  function parse_floating_point_little_endian()
+  {
+    var floating_point_big_endian = big_endian_from_little_endian(_FCT_ANON_ARGS[0]);
+    return parse_floating_point_big_endian(floating_point_big_endian);
+  }
+
+  ##
+  # Parse a double in big endian, and returns it in a string
+  #
+  # @anonparam [1st:data] The double in big endian to parse
+  #
+  # @return The parsed double in a string
+  ##
+  function parse_floating_point_big_endian()
+  {
+    var floating_point_big_endian = _FCT_ANON_ARGS[0];
+
+    var fraction = raw_floating_point_fraction(floating_point_big_endian);
+    var negative = raw_floating_point_is_negative(floating_point_big_endian);
+    var exponent = raw_floating_point_exponent(floating_point_big_endian);
+
+    var binary_fraction = binary_from_data(fraction);
+
+    var subnormal = FALSE;
+
+    if (exponent == 0)
+    {
+      if (binary_contains_all_zeroes(binary_fraction))
+      {
+        if (negative)
+        {
+          return '-0';
+        }
+        else
+        {
+          return '0';
+        }
+      }
+      else
+      {
+        subnormal = TRUE;
+      }
+    }
+    else if (exponent == 0x7ff)
+    {
+      if (binary_contains_all_zeroes(binary_fraction))
+      {
+        if (negative)
+        {
+          return "-Infinity";
+        }
+        else
+        {
+          return "Infinity";
+        }
+      }
+      else
+      {
+        return "NaN";
+      }
+    }
+
+    var shift = exponent - 1023;
+
+    var left_right = split_binary_fraction(binary_fraction, shift, subnormal:subnormal);
+    var left = decimal_string_from_int64(int64_from_binary(left_right[0]));
+    var right = decimal_data_from_binary_fraction(left_right[1]);
+
+    return format_floating_point_string(negative, left, right);
+  }
+
+  ##
+  # Creates a string representing a float, given its properties
+  #
+  # @anonparam [1st:boolean] Boolean set to TRUE when the float is negative, FALSE otherwise
+  # @anonparam [2nd:string] String representing the integer part of the float
+  # @anonparam [3rd:string] String representing the decimal part of the float
+  #
+  # @return The string representing the float
+  ##
+  function format_floating_point_string()
+  {
+    var negative = _FCT_ANON_ARGS[0];
+    var left = _FCT_ANON_ARGS[1];
+    var right = _FCT_ANON_ARGS[2];
+    var result = "";
+
+    if (negative)
+    {
+      result += '-';
+    }
+
+    if (right == '')
+    {
+      result += left;
+    }
+    else
+    {
+      result += strcat(left, ".", right);
+    }
+    return result;
+  }
+
+
+  ##
+  # Split a binary list into its integer and decimal parts
+  #
+  # @anonparam [1st:binary] The fractional portion of the floating point number in binary.
+  #                                example for 10.1101: 01101
+  # @anonparam [2nd:int] The number of binary pieces we use from the fraction.
+  #                     example: 3
+  # @param [subnormal:boolean] If TRUE, the implicit bit is 0 instead of 1.
+  # @return A list [left_of_radix, right_of_radix].
+  #         A one is added to the front, and the result is returned as a binary array.
+  #         Example: a fraction of 10100 and shift of 3 gives 1101.00
+  #         so 1101 is returned.
+  ##
+  function split_binary_fraction(subnormal)
+  {
+    var fraction = _FCT_ANON_ARGS[0];
+    var shift = _FCT_ANON_ARGS[1];
+    var implicit_bit;
+    if (subnormal)
+    {
+      implicit_bit = 0;
+      shift = 1 - 1023;
+    }
+    else
+    {
+      implicit_bit = 1;
+    }
+
+    var fraction_binary = make_list([implicit_bit], fraction);
+
+    var left, right;
+    if (shift >= 0)
+    {
+      fraction_binary = binary_pad_at_end_to_length(fraction_binary, shift + 2);
+
+      left = sublist(fraction_binary, 0, shift + 1);
+      right = sublist(fraction_binary, shift + 1);
+    }
+    else if (shift == -1)
+    {
+      left = [0];
+      right = fraction_binary;
+    }
+    else
+    { 
+      fraction_binary = binary_pad_at_start_with_num_of_zeros(fraction_binary, 0-shift);
+      left = sublist(fraction_binary, 0, 1);
+      right = sublist(fraction_binary, 1);
+    }
+    right = binary_strip_all_but_one_trailing_zero(right);
+    return [left, right];
+  }
+
+  ##
+  # Removes the trailing 0s from a binary list, except for one
+  #
+  # @remark The code doesn't seem to do what this description says
+  #
+  # @anonparam [1st:binary] The binary list from which to remove the trailing 0s
+  #
+  # @return The binary list without the trailing 0s, an empty list if ``1st`` was only made of 0s.
+  ##
+  function binary_strip_all_but_one_trailing_zero()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    if (max_index(binary) == 0)
+    {
+      return [0];
+    }
+    binary = strip_trailing_zeroes_from_binary(binary);
+    if (max_index(binary) == 0)
+    {
+      binary = [0];
+    }
+    return binary;
+  }
+
+  ##
+  # Pad a number of 0s to the front of the binary list
+  #
+  # @anonparam [1st:binary] The binary list to pad with 0s
+  # @anonparam [2nd:int] The number of 0s to pad
+  #
+  # @return The binary list with ``2nd`` number of 0s in front
+  ##
+  function binary_pad_at_start_with_num_of_zeros()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var number = _FCT_ANON_ARGS[1];
+
+    return make_list(list_of_zeroes_of_length(number), binary);
+  }
+
+  ##
+  # Parse the decimal data from a binary list
+  #
+  # @anonparam [1st:binary] The binary list to parse
+  #
+  # @return The string representing the decimal data of ``1st``
+  ##
+  function decimal_data_from_binary_fraction()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var max_num_of_decimal_places = 1000;  # arbitrarily high, just to prevent infinite loops if errors occur.
+    var tmp;
+    var result = "";
+    while (!binary_contains_all_zeroes(binary) && strlen(result) < max_num_of_decimal_places)
+    {
+      tmp = first_decimal_digit_of_binary_fraction(binary);
+      result += tmp[0];
+      binary = tmp[1];
+    }
+    return result;
+  }
+
+  ##
+  # Parse the first decimal digit from a binary list
+  #
+  # @anonparam [1st:binary] The binary list to parse
+  #
+  # @return A list containing the parsed digit and the remainder of ``1st`` after parsing
+  ##
+  function first_decimal_digit_of_binary_fraction()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var num_of_bits = 64;
+
+    # remove all leading zeroes (keep track of how many)
+    var tmp = binary_strip_leading_zeros(binary);
+    binary = tmp[0];
+    var number_stripped = tmp[1];
+
+    # add 4 0's to front
+    binary = make_list([0,0,0,0], binary);
+
+    # remove least significant digits if we have more than 64 bits
+    binary = sublist(binary, 0, 64);
+
+    # pad end to 64 bits
+    binary = binary_pad_at_end_to_length(binary, num_of_bits);
+
+    # multiply by ten
+    binary = binary_multiply_by_ten(binary);
+
+    # re-add zeroes to the front
+    binary = binary_pad_at_start_with_num_of_zeros(binary, number_stripped);
+
+    # remove front 4 bits as digit, the rest is the remainder
+    var digit = string(int_from_int64(int64_from_binary(sublist(binary, 0, 4))));
+    var remainder = sublist(binary, 4);
+
+    # strip ending zeroes from remainder
+    remainder = binary_strip_trailing_zeros(remainder);
+
+    return [digit, remainder];
+  }
+
+  ##
+  # Removes the leading 0s from a string, counts how many there was
+  #
+  # @anonparam [1st:string] The string from which to remove the leading 0s
+  #
+  # @return A list containing the string without the leading 0s, and the number of 0s the function found
+  ##
+  function binary_strip_leading_zeros()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var i;
+    for (i=0; i<max_index(binary); i++)
+    {
+      if (binary[i] != 0)
+      {
+        return [sublist(binary, i), i];
+      }
+    }
+    return [[], strlen(binary) - 1];
+  }
+
+  ##
+  # Removes the trailing 0s from a binary list
+  #
+  # @anonparam [1st:binary] The binary list from which to remove the trailing 0s
+  #
+  # @return The binary list without the trailing 0s, an empty list if ``1st`` was only made of 0s.
+  ##
+  function binary_strip_trailing_zeros()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var i;
+    for (i=max_index(binary)-1; i>=0; i--)
+    {
+      if (binary[i] != 0)
+      {
+        return sublist(binary, 0, i+1);
+      }
+    }
+    return [];
+  }
+
+  ##
+  # Compute the result of multiplying a binary value by 10
+  #
+  # @anonparam [1st:binary] The binary list to multiply
+  #
+  # @return The binary list resulting from multiplying ``1st`` by 10
+  ##
+  function binary_multiply_by_ten()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var result = mult64(
+        int64_from_binary(binary),
+        int64_from_int(10));
+    return binary_from_int64(result);
+  }
+
+  ##
+  # Tests if a binary list contains only 0s
+  #
+  # @anonparam [1st:binary] The binary list to test
+  #
+  # @return TRUE if ``1st`` contains only 0s, FALSE otherwise
+  ##
+  function binary_contains_all_zeroes()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var i;
+    for (i=0; i<max_index(binary); i++)
+    {
+      if (binary[i] == 1) return FALSE;
+    }
+    return TRUE;
+  }
+
+  ##
+  # Pad a binary list to a given total length, with 0s inserted on the right.
+  #
+  # @anonparam [1st:binary] The binary list to pad
+  # @anonparam [2nd:int] The total length of the padded list to return
+  #
+  # @return The given binary list padded by 0s to make a string of total length ``2nd``
+  ##
+  function binary_pad_at_end_to_length()
+  {
+    var binary = _FCT_ANON_ARGS[0];
+    var total_digits = _FCT_ANON_ARGS[1];
+    var num_to_pad = max(total_digits - max_index(binary), 0);
+
+    var padding = list_of_zeroes_of_length(num_to_pad);
+    return make_list(binary, padding);
+  }
+
+
+  ##
+  # See if a raw big endian floating point value is negative
+  #
+  # @anonparam [1st:data] The raw floating point number to examine
+  #
+  # @return TRUE if ``1st`` is negative, FALSE otherwise
+  ##
+  function raw_floating_point_is_negative()
+  {
+    var raw_floating_point = _FCT_ANON_ARGS[0];
+    var floating_point_int64 = int64_from_data(raw_floating_point);
+    var sign_mask = make_int64(low:0, high:0x80000000);
+
+    var masked64 = and64(sign_mask, floating_point_int64);
+    return masked64[1] < 0;  # Most Significant portion is negative
+  }
+
+
+  ##
+  # Get the exponent portion of a floating point number
+  #
+  # @anonparam [1st:data] The raw floating point number to examine
+  #
+  # @return an int representing the exponent of ``1st``
+  ##
+  function raw_floating_point_exponent()
+  {
+    var raw_floating_point = _FCT_ANON_ARGS[0];
+    var floating_point_int64 = int64_from_data(raw_floating_point);
+    var exponent_mask = make_int64(high:0x7FF00000, low:0x00000000);
+    var result = and64(exponent_mask, floating_point_int64);
+    result = rshift64(result, 52);
+    return int_from_int64(result);
+  }
+
+
+  ##
+  # Get the fraction portion of a floating point number
+  #
+  # @anonparam [1st:data] The raw floating point number to examine
+  #
+  # @return The data string representing the fraction portion of ``1st``
+  ##
+  function raw_floating_point_fraction()
+  {
+    var raw_floating_point = _FCT_ANON_ARGS[0];
+    var floating_point_int64 = int64_from_data(raw_floating_point);
+    var fraction_mask = make_int64(high:0x000fffff, low:0xffffffff);
+    var result = and64(fraction_mask, floating_point_int64);
+    result = data_from_int64(result);
+    result = hex_from_data(result);
+    result += '000';
+    result = substr(result, 3);
+    result = data_from_hex(result);
+    return result;
+  }
+}

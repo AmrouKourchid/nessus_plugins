@@ -1,0 +1,179 @@
+#TRUSTED 1d29d6a23b83f1f64a352a447b42c78ff185b3f4a42e6aa68a07477136a8fc1193ba0faa89d39df47c241b49f415881811b5334e19471483490365e8c9d0a6a2500b2336c7f4810ff3f23a2185d906118c01c945bd7eb6fe1ecc2ef539509bd444363d94ce78a8232e996e285ead58a6de4a5ab512373c5c479b1dadcb4d5132951ea6df99f86d02ebda268ee568ca1b02e184a97d5f84bd6e40b3c96f199bb4197fb19e942d33d35e9b9a455f54db1a6592fbdb3c572319911773b433be1462f631e5cca9efcb999f4f35c1cb08737963febbff544571a19d4ddd72d21c93c0fc8b174c7b2d76ad1e97161b5ffe1f33dc00029b9b38f48c2ad10b31c0b3bd8073f9e054d4d711731b06dd9f7177adcbb200ba99de58c3fac445711949be81435ee3626f37c72cc9f3627e8f09d374c6c8f7c7ea15e8bff500d74d37a072d628928215530742a2c4882ac0e291d3073b6ba36c5f8a53a19b40864b0a8f0488c7c31f7f6ce836175f1e3835338fddd0e6094649a8533b514c3c2a5e51392e15bd616ec0859df99b2497d38fb3bddfbe6b7f72c061588bc00d526583669940a550f748f34fed461df4375d1942a03d03385b9d2a14d8cdebc8d37a83955693e028382c0a67a0ea17a584692e2492fba8fd5d8d53bd018b560bc3077b0c7a452dc102324d8bfb54d23ca4c0028bf11692579f6b7d53cfc86a70a3a16ea828232ab2
+
+namespace firepower
+{
+  #
+  # Get list of patches and hotfixes from expert mode and store in Nessus kb item
+  #
+  function gather_expert_data(id, &channel, session, sh)
+  {
+    ### connect to FTD CLI
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Enumerating information about expert CLI for module number ' + id);
+    var cmd, match, res, line, hotfix_versions, report;
+
+    ##
+    #  uname -a
+    ##
+    cmd = 'uname -a';
+    res = NULL;
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'[Module: '+id+'] Command: ' + cmd);
+    res = sh.run_command(session:session, command:cmd, channel:channel, cmd_shell:sshlib::FP_SH_EXPERT);
+
+    if (check_cmd_interrupted_local_checks(session:session, command:cmd))
+    {
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:0);
+      report += '\nSSH command interrupted due to timeout or error:\n' + cmd + '\n';
+      report += '\nPlugins will be unable to check installed hotfixes.\n';
+      return report;
+    }
+
+    # Check for "linux", which should be present
+    if (!empty_or_null(res) && res =~ "linux")
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'uname -a Validation successful');
+      replace_kb_item(name:"Host/uname", value:res);
+      replace_kb_item(name:"Host/Cisco/FTD_CLI/" + id + "/expert", value:1);
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'uname -a Validation FAILED');
+    }
+
+    ##
+    #  cat /etc/os-release
+    ##
+    cmd = 'cat /etc/os-release';
+    res = NULL;
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'[Module: '+id+'] Command: ' + cmd);
+    res = sh.run_command(session:session, command:cmd, channel:channel, cmd_shell:sshlib::FP_SH_EXPERT);
+
+    if (check_cmd_interrupted_local_checks(session:session, command:cmd))
+    {
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:0);
+      report += '\nSSH command interrupted due to timeout or error:\n' + cmd + '\n';
+      report += '\nPlugins will be unable to check installed hotfixes.\n';
+      return report;
+    }
+
+    # Check for "version", which should be present
+    if (!empty_or_null(res) && res =~ "version")
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'cat /etc/os-release Validation successful');
+      replace_kb_item(name:'Host/Cisco/os-release', value:res);
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:1);
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'cat /etc/os-release Validation FAILED');
+    }
+
+    ##
+    #  cat /etc/sf/model.conf
+    ##
+    cmd = 'cat /etc/sf/model.conf';
+    res = NULL;
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'[Module: '+id+'] Command: ' + cmd);
+    res = sh.run_command(session:session, command:cmd, channel:channel, cmd_shell:sshlib::FP_SH_EXPERT);
+
+    if (check_cmd_interrupted_local_checks(session:session, command:cmd))
+    {
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:0);
+      report += '\nSSH command interrupted due to timeout or error:\n' + cmd + '\n';
+      report += '\nPlugins will be unable to check installed hotfixes.\n';
+      return report;
+    }
+
+    # Check for "cisco", which should be present
+    if (!empty_or_null(res) && res =~ "cisco")
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'cat /etc/sf/model.conf Validation successful');
+      replace_kb_item(name:'Host/Cisco/model_conf', value:res);
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:1);
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'cat /etc/sf/model.conf Validation FAILED');
+    }
+
+    ##
+    #  cat /etc/sf/.versiondb/vdb.conf
+    ##
+    cmd = 'cat /etc/sf/.versiondb/vdb.conf';
+    res = NULL;
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'[Module: '+id+'] Command: ' + cmd);
+    res = sh.run_command(session:session, command:cmd, channel:channel, cmd_shell:sshlib::FP_SH_EXPERT);
+
+    if (check_cmd_interrupted_local_checks(session:session, command:cmd))
+    {
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:0);
+      report += '\nSSH command interrupted due to timeout or error:\n' + cmd + '\n';
+      report += '\nPlugins will be unable to check installed hotfixes.\n';
+      return report;
+    }
+
+    # Check for "current", which should be present
+    if (!empty_or_null(res) && res =~ "current")
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'cat /etc/sf/.versiondb/vdb.conf Validation successful');
+      replace_kb_item(name:'Host/Cisco/vdb_conf', value:res);
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:1);
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'cat /etc/sf/.versiondb/vdb.conf Validation FAILED');
+    }
+
+    ##
+    #  rpm -qa --last
+    ##
+    cmd = 'rpm -qa --last';
+    res = NULL;
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'[Module: '+id+'] Command: ' + cmd);
+    res = sh.run_command(session:session, command:cmd, channel:channel, cmd_shell:sshlib::FP_SH_EXPERT);
+
+    if (check_cmd_interrupted_local_checks(session:session, command:cmd))
+    {
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:0);
+      report += '\nSSH command interrupted due to timeout or error:\n' + cmd + '\n';
+      report += '\nPlugins will be unable to check installed hotfixes.\n';
+      return report;
+    }
+
+    # Check for lib, which is present even on newly set up FTDv, and date like "Mon Apr " from the --last
+    if ( ('lib' >< res || 'fire-linux-os' >< res) && res =~ "[A-Z][a-z]{2} [A-Z][a-z]{2} ")
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'RPM Validation successful');
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/' + cmd, value:res);
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:1);
+      # Store just the hotfix verions in a separate kb item
+      foreach line (split(res))
+      {
+        match = pregmatch(pattern:"Hotfix_[A-Za-z]+-([0-9\.-]+)\.", string:line);
+        if (!empty_or_null(match))
+          hotfix_versions += ',' + match[1];
+      }
+      if (!empty_or_null(hotfix_versions))
+      {
+        # Remove initial comma
+        hotfix_versions -= ',';
+        replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/hotfix_versions', value:hotfix_versions);
+      }
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'RPM Validation FAILED');
+      replace_kb_item(name:'Host/Cisco/FTD_CLI/' + id + '/expert', value:0);
+    }
+
+    # Determine whether or not we are running as root (uid=0).
+    var max_privs = 0;
+    res = sh.run_command(session:session, command:'id', channel:channel, cmd_shell:sshlib::FP_SH_EXPERT);
+    if(res && res =~ "(^|\s)uid=0\(")
+      max_privs = 1;
+
+    if(!isnull(session))
+      replace_kb_item(name:'Host/Auth/SSH/' + session.get_port() + '/MaxPrivs', value:max_privs);
+
+    return NULL;
+  }
+}

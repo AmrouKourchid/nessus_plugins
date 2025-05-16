@@ -1,0 +1,1254 @@
+#TRUSTED 68a0108b85f2da505ad40d53c7afb35d814a47fed773f45c11d811feb072a7a9c7109fa9d7597fab94f47c9c87b8e457f85e5b960d0a9fbac1b12c1294f668c86f355130856cb92a191fcf9f0a14c8e6902dcb7ba46979cb6d84a09a4db57d22dfe1de94c3b3143bb5a8238ad1f7c5c88ce0126f4444b3016ee70c9920c7138d6ee3a7bb2dbb13ed59255ecda36324344e1a73d3c07b9ee6f95d4c1e195bd61ea50822432fe5a7a02a0713831d16ac48b0076c31da9811cd8f088e94c875eecfffc4337ed411b0151f7fede0717541e6aadfe8919922d8dcda68eeec8f7fa9a7e503547123c8d6e95191acced15811a9df54896cd59a342e08ccb15a67d66a6f079df03d0f5e72c63ddee64216574bb4649b74b0b2ac5a4ff8e3b8634b5f3407f4445b31cb75e101ca4e7c1953a521f9424eb119275daff72237ef6d996481ec261ecfddee3ebdc58cbfd6cba35609b4a0cfd496d0f70929b920e4ddc6f8c56d88d51c9dfdc61f580ac9d5101ee625d898179fdc63e76d30df9bbd2a425e1c47bf94f1e0fc47c0d3733a42ce01e9e2806f77fafcbfd59341cc3e32ba1dca6ab5dd46b98b50a5b85a0476f0055e4ff909b21bd57318441d4767650081dd9cdebadf11af2f924adafebb4d00a20db8772f682ef5fa02267dbba5f037064ee56c1842f0bea58ca3f35247b198a39d0cb0959247e49abd76bb12a94653040e424221
+#TRUST-RSA-SHA256 38097478794e406ae6b56e7d1071991a5a89fb34c0f668d437cd9589bd8b0ca21367478696ef758e56fc07f5536cd70f184fc76677ff9359954a76a8ab042584783224fe9070dc3aeae24229c87271123ee3b6906df75b6ea27d433b902ce13525614907becd376bf8bdf3531b128565c29affb8b759814e33f115c8295662fc805482e302434fd20bd607355553e20923b0147bc61bfaf126bb6751f18c0bb385828edc666f0b71ccea66d30476f4b0d28dabad02175a5b36437f925ae9d249262a198d32988dd990d0cd8b5b0708dc34cf0ba7ca4ba72e5d447f8bf1c454ecee7d7877ab9909d1e0bc6c5e8a5539569dffe5b348c17d24dd2185225fb6512a0f3c9583e83c2ca98db4c1c0943f1128bb3621a40f655f2fd7201bfbffbc4be4ece82432d87cdbdeb1fb51b09fc28044579b95a444f838ebd130ddd651c280bd0384ad8810b7e54791425d9e1d9dceff7fee011ffbb5b3c17b2f891b2230266a21b1c98e6ad4371c5384b233d413fb5f37d142cd382331e80b4327d184e7bdefa62bf34e620e732fc9328a15109bce62a4204fe6fc80422404cf43a3b992111680cf872f89f9d695adc1c0af41bb65c01e1411d602e88cdc4f110c6d7fcf44c206f2b9370eadaab7f7a4fc5f416bdebf89be8bb3720b18de3fc239a47c72b6e37b3e844c95d6dfa7f3209096f4c45537c33b7658b793da58d36b2eefa2700d95
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision 1.0
+
+var UBUNTU_DISTRO = "ubuntu";
+var DEBIAN_DISTRO = "debian";
+var REDHAT_DISTRO = "redhat";
+
+function linux_pre_check_fail()
+{
+  # we've already checked that the host is not Linux previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_linux'])
+    return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not Linux if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:linux_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+
+##
+# Run a series of commands to try a gather Timezone Information from the Linux Host
+#
+# @param [session:object]             SSH session
+# @param [use_shell_handler:boolean]  Tell the commands to run in a shell handler.
+# @param [channel:object]             SSH channel
+#
+# @remark
+# Note that this function will only attempt to gather Timezone information
+# if we haven't already made an attempt (as signified by the presence of the
+# KB item: Host/Timezone_checked)
+#
+##
+function linux_timezone_check(session, use_shell_handler, &channel)
+{
+  var res;
+
+  # If the host as already been checked for Timezone data, don't do it again
+  if (get_kb_item('Host/Timezone_checked'))
+    return NULL;
+
+  # Attempt to get Timezone info
+  # Different Distros will have different sources available
+  # and sometimes those sources can contradict
+  # So we'll grab what we can and store it based on the source of the info
+
+  # date +"%Z %z" -> STD UTC Offset (This should work for both GNU and Busybox versions)
+  res = run_command(cmd:'date +"%Z %z"',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (res)
+  {
+    res = trim(chomp(res));
+
+    # Should look like: EST -0500
+    if (pgrep(pattern:"\w{3,}\s*[-+]?\d{4}", string:res))
+      replace_kb_item(name:"Host/Timezone/date", value:res);
+
+  }
+
+  # timedatectl | grep "Time zone:" -> Locale (STD, UTC Offset)
+  res = run_command(cmd:'timedatectl | grep "Time zone:"',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (res)
+  {
+    res = trim(chomp(res));
+
+    if (strlen(res) > 0
+        && 'not found' >!< res
+        && 'restricted' >!< res)
+    {
+      replace_kb_item(name:"Host/Timezone/timedatectl", value:res);
+    }
+  }
+
+  # Let's check $TZ
+  res = run_command(cmd:'echo $TZ',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (res)
+  {
+    res = trim(chomp(res));
+
+    # $TZ could be a filepath, so we should check
+    if ('/usr/share/zoneinfo' >< res)
+    {
+      res = run_command(cmd:'cat '+res+' | tail -n 1',
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+      if (res)
+      {
+        res = trim(chomp(res));
+
+        if (strlen(res) > 0
+            && 'not found' >!< res
+            && 'restricted' >!< res
+            && 'No such file or directory' >!< res)
+        {
+          replace_kb_item(name:"Host/Timezone/TZ", value:res);
+        }
+      }
+
+    }
+    else
+    {
+      if (strlen(res) > 0
+          && 'not found' >!< res
+          && 'restricted' >!< res)
+      {
+        replace_kb_item(name:"Host/Timezone/TZ", value:res);
+      }
+    }
+  }
+
+  # cat /etc/timezone | tail -n 1	-> POSIX TZ
+  res = run_command(cmd:'cat /etc/timezone | tail -n 1',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (res)
+  {
+    res = trim(chomp(res));
+
+    # Should look like: America/New_York or Etc/UTC
+    if (pgrep(pattern:"^\w+(\/|\d)?\w*(-|\+)?\d*$", string:res))
+      replace_kb_item(name:"Host/Timezone/etc_timezone", value:res);
+
+  }
+
+  # cat /etc/localtime | tail -n 1	-> POSIX TZ
+  res = run_command(cmd:'cat /etc/localtime | tail -n 1',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (res)
+  {
+    res = trim(chomp(res));
+
+    # Should look like a POSIX TZ string
+    if (pgrep(pattern:"^\w{2,}-?\d{1,2}(:\d\d)?(\w{2,})?,?", string:res))
+      replace_kb_item(name:"Host/Timezone/etc_localtime", value:res);
+  }
+
+  replace_kb_item(name:'Host/Timezone_checked', value:TRUE);
+}
+
+function cmd_kb(&channel, force_priv_escl)
+{
+  var item = _FCT_ANON_ARGS[0];
+  var cmd = _FCT_ANON_ARGS[1];
+  var session = _FCT_ANON_ARGS[2];
+  var use_shell_handler = _FCT_ANON_ARGS[3];
+  var buf;
+
+  if(isnull(force_priv_escl)) force_priv_escl = FALSE;
+  buf = run_command(cmd:cmd,
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel,
+                    force_priv_escl:force_priv_escl);
+  if (buf)
+  {
+    buf = chomp(buf);
+    # remove any newline chars that may be prepended to hostname response by multiplexers like tmux
+    if (cmd == '/bin/hostname')
+      buf = str_replace(string:buf, find:'\n' , replace:"");
+    if (strlen(buf) > 0)
+    {
+      replace_kb_item(name:item, value:buf);
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+function parse_vm_appliance_buf(buf)
+{
+  local_var vmappliance, vsa_version, matches, ver, pieces;
+  local_var vmappliances = make_array(
+    'VMware vCenter Server Appliance', 'VMware vCenter Server Appliance',
+    'VMware vCenter Operations Manager', 'VMware vCenter Operations Manager',
+    'VMware Studio', 'VMware Studio',
+    'vCloud Director', 'VMware vCloud Director',
+    'VMware vCenter Support Assistant', 'VMware vCenter Support Assistant',
+    'VMware vCenter Orchestrator Appliance', 'VMware vCenter Orchestrator',
+    'VMware vRealize Orchestrator Appliance', 'VMware vCenter Orchestrator',
+    'vSphere Replication Appliance', 'VMware vSphere Replication',
+    'Horizon Workspace', 'VMware Horizon Workspace',
+    'WorkspacePortal', 'VMware Workspace Portal',
+    'vSphere Data Protection', 'vSphere Data Protection',
+    'VMware vRealize Appliance', 'VMware vRealize Automation',
+    'vRealize Operations Manager Appliance', 'vRealize Operations Manager Appliance',
+    'vRealize Business for Cloud', 'VMware vRealize Business for Cloud',
+    'WorkspaceOneAccess', 'VMware Workspace ONE Access',
+    'IdentityManager', 'VMware Identity Manager',
+    'VMware Cloud Builder VM', 'VMware Cloud Foundation',
+    'VMware vCenter Log Insight', 'VMware Aria Operations for Logs'
+  );
+  foreach vmappliance (keys(vmappliances))
+  {
+    if (vmappliance >< buf)
+    {
+      vsa_version = strstr(buf, '<fullVersion>') - '<fullVersion>';
+      vsa_version = vsa_version - strstr(vsa_version, '</fullVersion>');
+      vsa_version = chomp(vsa_version);
+      if (vsa_version =~ '^[0-9\\.]+( Build [0-9]+)?$')
+      {
+        matches = split(vsa_version, sep:' ', keep:FALSE);
+        if ('vCenter Support Assistant' >< vmappliance)
+          ver = matches[0];
+        else
+        {
+          if (vmappliance == 'vSphere Data Protection')
+            ver = matches[0]; # keep all four levels of ver
+          else
+          {
+            pieces = split(matches[0], sep:'.', keep:FALSE);
+            ver = pieces[0];
+            if (isnull(pieces[1]))
+              ver = ver + '.0';
+            else
+              ver = ver + '.' + pieces[1];
+
+            if (isnull(pieces[2]))
+              ver = ver + '.0';
+            else
+              ver = ver + '.' + pieces[2];
+          }
+        }
+        replace_kb_item(name:"Host/" + vmappliances[vmappliance], value:TRUE);
+        replace_kb_item(name:"Host/" + vmappliances[vmappliance] + "/Version", value:ver);
+        # If we got the build number, save that in the KB
+        if (max_index(matches) == 3)
+        {
+          ver += ' Build ' + matches[2];
+          replace_kb_item(name:"Host/" + vmappliances[vmappliance] + "/Build", value:matches[2]);
+        }
+        replace_kb_item(name:"Host/" + vmappliances[vmappliance] + "/VerUI", value:ver);
+      }
+      break;
+    }
+  }
+}
+
+# callback for systems with "Linux..." in uname
+function handle_linux_os(session, use_shell_handler, &channel, cmd_res)
+{
+  var res, res2, cmd;
+  var etc_os_release = NULL;
+
+  if (empty_or_null(host_info_key_val['uname-a_reported'])) {
+    report += '\nThe output of "uname -a" is :\n' + cmd_res;
+    host_info_key_val['uname-a_reported'] = TRUE;
+  }
+
+  # QNAP devices, exit if QTS/QuTS hero detected, these are handled by the qnap_standard shell handler
+  if (cmd_res =~ "Linux\s+[^\s]+\s+[\d.]+-qnap\s")
+  {
+    replace_kb_item(name:'Host/OS/QNAP/standard', value:1);
+    handle_qnap_standard(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:cmd_res);
+    return NULL;
+  }
+
+  replace_kb_item(name:"Host/Handler", value:"handle_linux_os");
+
+  # Attempt to gather Timezone information
+  linux_timezone_check(session:session,
+                  use_shell_handler:use_shell_handler,
+                  channel:channel);
+
+  # Check for Fabric OS version < 8 which can return a "Linux ..." to uname
+  # If it is Fabric OS exit before enabling anything
+  res = run_command(cmd:"version",
+                    session: session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if("Fabric OS" >< res)
+  {
+    handle_fabricos(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    return NULL;
+  }
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+
+  #Capture kernel major.minor version to match with kernel packages later
+  res = pregmatch(string:cmd_res, pattern:"^(?:[^ ]+) +(?:[^ ]+) +(\d+(?:\.\d+)?)(?:[^ ]+) +(?:[^ ]*)");
+  if(!isnull(res))
+    replace_kb_item(name:"Host/uname/major_minor", value:res[1]);
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+  var found_os = 0;
+
+  # Check for various VMware Appliances
+  res = run_command(cmd:"cat /opt/vmware/etc/appliance-manifest.xml",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if (res && strlen(res))
+  {
+    res2 = run_command(cmd:"cat /opt/vmware/var/lib/vami/update/data/info/manifest-installed.xml",
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+    if ('VMware vRealize Appliance' >< res2) res = res2;
+    parse_vm_appliance_buf(buf:res);
+  }
+
+  # Determine whether or not we are running as root (uid=0).
+  var max_privs = 0;
+  res = run_command(cmd:"id", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(res && res =~ "(^|\s)uid=0\(")
+    max_privs = 1;
+
+  if(!isnull(session))
+    replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+
+  cmd_kb(channel:channel,
+         'Host/uname-r',
+         'uname -r',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/cpu',
+         'uname -m',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/uname-v',
+         'uname -v',
+         session,
+         use_shell_handler);
+
+  var uname_m = get_one_kb_item("Host/cpu");
+  if(!isnull(uname_m))
+    host_info_key_val['cpu'] = uname_m;
+
+  var kernel = get_one_kb_item("Host/uname-r");
+  if(!isnull(kernel))
+    host_info_key_val['kernel'] = kernel;
+
+  res2 = NULL;
+
+  # Azure Linux
+  if(preg(pattern:"\.azl\d+$", string:kernel))
+    res2 = handle_azure_linux(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Sophos UTM
+  res2 = NULL;
+  res = run_command(cmd:"cat /etc/product",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if(preg(pattern:"Sophos UTM", string:res))
+    res2 = handle_sophos_utm(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # VMware Photon OS
+  # Note: this detection must be before the VMware defeat below since some VMware appliances run Photon OS
+  files = [ '/etc/photon-release', '/etc/os-release', '/etc/lsb-release' ];
+  foreach file (files)
+  {
+    res = run_command(cmd:"cat " + file,
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+    if (file == "/etc/os-release") etc_os_release = res;
+    if ("VMware Photon" >< res && file >!< res)
+    {
+      if (handle_photon_os(session:session, use_shell_handler:use_shell_handler, channel:channel, file:file, cmd_res:res))
+        return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+    }
+  }
+
+  # Do not progress if the host appears to be a VMware appliance
+  if("VMware" >< res || "vSphere" >< res ||
+     "vCloud" >< res || "Workspace" >< res)
+    return NULL;
+
+  res = run_command(cmd:"cat /etc/vmware-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if("VMware" >< res) return NULL;
+
+  # Gentoo
+  res = run_command(cmd:"cat /etc/gentoo-release",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+  if("Gentoo" >< res && "/etc/gentoo-release" >!< res)
+  {
+    handle_gentoo_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Slackware
+  res = run_command(cmd:"cat /etc/slackware-version",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+  if("Slackware" >< res && "/etc/slackware-version" >!< res)
+  {
+    res2 = handle_slackware_linux(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Cisco FMC
+  if(("Fire Linux" >< res || "Sourcefire Linux" >< res)&& "/etc/slackware-version" >!< res)
+  {
+    res2 = handle_cisco_fmc(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res, distro:"slackware");
+    if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+  # The following OSes all use /etc/redhat-release for for storing
+  # their release information. We will re-use the results of res
+  # for them.
+
+  # Red Hat Enterprise Linux
+  res = run_command(cmd:"cat /etc/redhat-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if(pgrep(pattern:"Red Hat.*(Enterprise|Advanced).*release", string:res))
+  {
+    res2 = handle_rhel_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # Oracle Linux
+  if( pgrep(pattern:"^Enterprise Linux (Enterprise|Advanced|Server).*release [3-8]", string:res) ||
+     ( host_info_key_val['oracle_linux'] && strlen(host_info_key_val['oracle_linux']) ) )
+  {
+    res2 = handle_oracle_linux(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # Oracle VM
+  if( pgrep(pattern:"Oracle VM server release [0-9]+\.[0-9]+", string:res) )
+  {
+    res2 = handle_oracle_vm(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Oracle Corporation', cpe:'cpe:2.3:a:oracle:vm_server');
+  }
+
+  # Scientific Linux
+  if(pgrep(pattern:"^Scientific Linux release [0-9.]+(\D|$)", string:res))
+  {
+    res2 = handle_scientific_linux(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # EulerOS
+  if ( pgrep(pattern:"EulerOS .*", string:res) )
+  {
+    res2 = handle_euleros_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Huawei Technologies Co., Ltd.', cpe:'cpe:2.3:o:huawei:euleros');
+  }
+
+  # AlmaLinux
+  if ( pgrep(pattern:"AlmaLinux.*", string:res) )
+  {
+    # display_label omitted, since same as internal_label
+    res2 = handle_rpm_generic_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res, internal_label:"AlmaLinux");
+    register_rpm_generic_os(release_info:res, vendor:'AlmaLinux OS Foundation', cpe:'cpe:/o:almalinux:almalinux');
+  }
+
+  # RockyLinux
+  if ( pgrep(pattern:"Rocky .*", string:res) )
+  {
+    res2 = handle_rpm_generic_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res, internal_label:"RockyLinux", display_label:"Rocky Linux");
+    register_rpm_generic_os(release_info:res, vendor:'Rocky Enterprise Software Foundation (RESF)', cpe:'cpe:/o:resf:rocky_linux');
+  }
+
+  # Fedora
+  if(pgrep(pattern:"Fedora .*", string:res))
+  {
+    res2 = handle_fedora_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # Citrix Xenserver
+  if (pgrep(pattern:"((X|x)en(S|s)erver|(C|c)itrix (H|h)ypervisor)", string:res))
+  {
+    res2 = handle_citrix_xen(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # Seems to be CentOS
+  if(pgrep(pattern:"CentOS(?: Stream)?(?: Linux)? release ([3-9])(\D|$)", string:res) ||
+     ("Juniper" >< res && "NSM" >< res))  #Juniper NSM is recognized as CentOS
+  {
+
+    # Cisco Nexus 9xxx (Manager) with Bash shell feature (ACI) enabled
+    res2 = run_command(cmd:"cat /aci/system/controllers/summary",
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      force_priv_escl:TRUE,
+                      channel:channel);
+    if (!empty_or_null(res2) && pgrep(pattern:"management", string:res2) )
+    {
+      replace_kb_item(name:"Host/etc/redhat-release", value: res);
+
+      res2 = handle_cisco_aci_manager(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res2);
+      if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+    }
+    else
+    {
+      # CentOS
+      res2 = handle_centos_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    }
+  }
+
+  # Cisco FMC
+  if(pgrep(pattern:"Sourcefire Linux", string:res) || pgrep(pattern:"Fire Linux", string:res))
+  {
+    res2 = handle_cisco_fmc(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res, distro:"redhat");
+  }
+
+  # Virtuozzo
+  if(pgrep(pattern:"Virtuozzo(?: Linux)? release ([0-9.]+)(\D|$)", string:res))
+  {
+    res2 = handle_virtuozzo_linux(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Virtuozzo International GmbH', cpe:'cpe:/o:virtuozzo:virtuozzo');
+  }
+
+  # Juniper Space
+  if(pgrep(pattern:"^Space release ([0-9.]+)(\D|$)", string:res))
+  {
+    res2 = handle_juniper_space(session:session, use_shell_handler:FALSE, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Juniper Networks, Inc.', cpe:'cpe:/o:juniper:junos_space');
+  }
+
+  # Mandriva, OpenMandriva and Mageia
+  if("Mandrake" >< res || pgrep(pattern:"^(Mageia|OpenMandriva.*?) release \d", string:res))
+  {
+    res2 = handle_mandriva_linux(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # IWSVA root shell
+  if(pgrep(pattern:"^IWSVA release ([0-9.]+)(\D|$)", string:res))
+  {
+    res2 = handle_iwsva_linux(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+
+  # Albaba Linux
+  if ( pgrep(pattern:"Alibaba.*", string:res) )
+  {
+    # display_label omitted, since same as internal_label
+    res2 = handle_rpm_generic_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res, internal_label:"Alibaba");
+    register_rpm_generic_os(release_info:res, vendor:'Alibaba Cloud', cpe:'cpe:/o:alibabacloud:alibaba_cloud_linux_3');
+  }
+
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # The following OSes do NOT use /etc/redhat-release for storing
+  # their release information.
+
+  # Arista EOS
+  res = run_command(cmd:'cat /etc/Eos-release',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if(res && res =~ "^Arista Networks EOS")
+  {
+    return handle_arista_eos(session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel,
+                             cmd_res:res);
+  }
+
+  # EulerOS2.0SP9
+  res = run_command(cmd:"cat /etc/euleros-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if ( pgrep(pattern:"EulerOS .*", string:res) )
+  {
+    res2 = handle_euleros_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Huawei Technologies Co., Ltd.', cpe:'cpe:2.3:o:huawei:euleros');
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Kylin OS Advanced Server
+  res = run_command(cmd:"cat /etc/.productinfo",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if ( pgrep(pattern:"^Kylin Linux Advanced Server", string:res) )
+  {
+    res2 = handle_kylinos_as(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Kylin Software Co., Ltd.', cpe:'cpe:/o:kylin:enterprise_linux');
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Kylin Desktop Release
+  res = run_command(cmd:"cat /etc/kylin-build",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if ( pgrep(pattern:"^Kylin-Desktop", string:res) )
+  {
+    res2 = handle_kylinos_desktop(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Microsoft CBL-Mariner
+  # CBL-Mariner 2.0.20220409
+  # MARINER_BUILD_NUMBER=230b79a
+  res = run_command(cmd:"cat /etc/mariner-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if( pgrep(pattern:"^CBL-Mariner .*", string:res) )
+  {
+    res2 = handle_rpm_generic_os(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                 cmd_res:res, internal_label:"CBLMariner", display_label:"CBL-Mariner",
+                                 release_file:"/etc/mariner-release", shorten_cmd_res:TRUE);
+  }
+  if(res2)
+  {
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Amazon Linux
+  res = run_command(cmd:"cat /etc/system-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if( pgrep(pattern:"^Amazon Linux", string:res) )
+  {
+    res2 = handle_amazonlinux_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Amazon Web Services, Inc.', cpe:'cpe:/o:amazon:linux_2');
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Centos based McAfee Linux
+  if(res && strlen(res) && res =~ "^McAfee Linux (OS Server )?release \d")
+  {
+    res2 = handle_mcafee_linux(session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel,
+                             cmd_res:res);
+    register_rpm_generic_os(release_info:res, cpe:'cpe:/o/mcafee:linux', vendor:'McAfee, LLC');
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # SUSE and openSUSE
+  res = run_command(cmd:"cat /etc/os-release 2>/dev/null",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if (isnull(res) || !strlen(res))
+  {
+    # /etc/SuSE-release will deprecate in future. Try /etc/os-release
+    if(!isnull(etc_os_release))
+      res = etc_os_release;
+    else
+    {
+      res = run_command(cmd:"cat /etc/SuSE-release 2>/dev/null",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+      if (!empty_or_null(res))
+      {
+        res = chomp(ereg_replace(pattern: "\r", string: res, replace: ""));
+        replace_kb_item(name:"Host/etc/suse-release", value: res);
+      }
+    }
+  }
+  else
+  {
+    res = chomp(ereg_replace(pattern: "\r", string: res, replace: ""));
+    replace_kb_item(name:"Host/etc/os-release", value: res);
+  }
+  if ( !isnull(res) && strlen(res) &&
+       ( "suse linux" >< tolower(res) || "SuSE SLES" >< res ||
+         "opensuse" >< tolower(res) || "Novell Linux Desktop" >< res ) )
+  {
+    res2 = handle_suse_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Debian and Ubuntu
+  res = run_command(cmd:"cat /etc/debian_version",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if ( !isnull(res) && strlen(res)  && "/etc/debian_version" >!< res)
+  {
+    # Cisco NX-OS with ACI runs on top of Ubuntu 22.04 LTS, older versions run on CentOS
+    if("bullseye" >< tolower(res))
+    {
+      res2 = run_command(cmd:"cat /aci/system/controllers/summary",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        force_priv_escl:TRUE,
+                        channel:channel);
+      if (!empty_or_null(res2) && pgrep(pattern:"management", string:res2))
+      {
+        replace_kb_item(name:"Host/etc/debian-version", value:res);
+
+        res2 = handle_cisco_aci_manager(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res2);
+        if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+      }
+    }
+
+    # Raspbian check
+    if(!isnull(etc_os_release)) res2 = etc_os_release;
+    else
+    {
+      res2 = run_command(cmd:"cat /etc/os-release",
+                         session:session,
+                         use_shell_handler:use_shell_handler,
+                         channel:channel);
+    }
+    if (res2 && "ID=raspbian" >< res2) return NULL;
+
+    # HipChat check
+    res2 = run_command(cmd:"cat /etc/hipchat-release",
+                              session:session,
+                              use_shell_handler:use_shell_handler,
+                              channel:channel);
+    if (res2 && strlen(res2) && "atlassian hipchat" >< tolower(res2)) return NULL;
+
+    # Actual Debian and Ubuntu check
+    res2 = handle_debian_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res, release_info: etc_os_release);
+    if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Wind River Linux
+  if(!isnull(etc_os_release)) res = etc_os_release;
+  else
+  {
+    res = run_command(cmd:"cat /etc/os-release",
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+  }
+
+  if("Wind River Linux" >< res && "/etc/os-release" >!< res)
+  {
+    res2 = handle_windriverlinux_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    if(res2)
+      return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # TencentOS
+  if ("tencentos" >< res && "/etc/os-release" >!< res)
+  {
+    res2 = handle_tencentos(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'Tencent Holdings Ltd.', cpe:'cpe:2.3:o:tencent:tencentos-tiny');
+    if(res2)
+      return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # MontaVista
+  res = run_command(cmd:"cat /etc/mvl-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if("MontaVista" >< res && "/etc/mvl-release" >!< res)
+  {
+    handle_montavista_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Container Linux by CoreOS
+  local_var files, file;
+  files = [ '/etc/os-release', '/etc/lsb-release', '/usr/share/coreos/release' ];
+  foreach file (files)
+  {
+    res = run_command(cmd:"cat " + file,
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+    if (("CoreOS" >< res || "COREOS_" >< res) && file >!< res)
+    {
+      if (handle_container_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel, file:file, cmd_res:res))
+        return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+    }
+  }
+
+  # Container Linux by RancherOS
+  files = [ '/etc/os-release', '/etc/lsb-release'];
+  foreach file (files)
+  {
+    res = run_command(cmd:"cat " + file,
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+    if ("RancherOS" >< res && file >!< res)
+    {
+      if (handle_rancher_os(session:session, use_shell_handler:use_shell_handler, channel:channel, file:file, cmd_res:res))
+        return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+    }
+  }
+
+  # BIG-IP and BIG-IQ check
+  res = run_command(cmd:"cat /VERSION",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if(res && res =~ "^\s*Product:\s*BIG-I([PQ])")
+  {
+    return handle_bigip_bash(session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel,
+                             cmd_res:res);
+  }
+
+  # ZTE CGSL
+  res = run_command(cmd:"cat /etc/cgsl-release 2>/dev/null",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if ( pgrep(pattern:"^NewStart Carrier Grade Server Linux", string:res) )
+  {
+    res2 = handle_zte_cgsl(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    register_rpm_generic_os(release_info:res, vendor:'ZTE Corporation', cpe:'cpe:/a:zte:cgsl_main');
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+
+  # Cisco Nexus 9xxx with Bash shell feature (ACI) enabled
+  res = run_command(cmd:"cat /aci/system/chassis/summary 2>/dev/null",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if ( pgrep(pattern:"description\s+:\sNexus", string:res) )
+  {
+    res2 = handle_cisco_aci(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Teltonika RutOS
+  res = run_command(cmd:"cat /etc/config/system 2>/dev/null",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if ( pgrep(pattern:"option device_code '(TRB|RUT)(.*)'$", string:res) )
+  {
+    res2 = handle_teltonika_rutos(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  }
+  if(res2) return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  # Checkpoint Expert
+  res = run_command(cmd:"cat /etc/cp-release",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if("Check Point Gaia" >< res && "/etc/cp-release" >!< res)
+  {
+    handle_gaia_expert(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Zyxel Devices
+  res = run_command(cmd:"cat /firmware/mnt/info/fwversion",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if(pgrep(pattern:"V[0-9]+\.[0-9]+\([a-zA-Z.0-9]+\)", string:res))
+    res2 = handle_zyxel_device(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  res = run_command(cmd:"cat /info/product_info.xml",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if("tandberg video communication server" >< tolower(res))
+    res2 = handle_cisco_telepresence_vcs(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  res = run_command(cmd:"sg-status",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (pgrep(pattern:"Software version: (Stonesoft|Forcepoint)", string:res))
+    res2 = handle_forcepoint_sg(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  res = run_command(cmd:"cat /mnt/install-artifacts/apps-deploy/install-release.yaml | grep displayVersion",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (pgrep(pattern:"displayVersion: ", string:res))
+    res2 = handle_cisco_catalyst_center(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:res);
+  if(res2)
+    return found_linux_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+  return NULL;
+}
+
+function found_linux_os(session, use_shell_handler, &channel)
+{
+  var buf, cmd;
+  replace_kb_item(name:'Host/Linux', value:TRUE);
+
+  cmd_kb(channel:channel,
+         'Host/NSM/guiSvr/version_src',
+         '/etc/init.d/guiSvr version',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/NSM/devSvr/version_src',
+         '/etc/init.d/devSvr version',
+         session,
+         use_shell_handler);
+
+  cmd = 'LANG=C; /sbin/ifconfig -a';
+
+  buf = run_command(cmd:cmd,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  if (!buf && "Gentoo" >< release)
+  {
+    cmd = 'LANG=C; /bin/ifconfig -a';
+    buf = run_command(cmd:cmd,
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+  }
+
+  if (buf &&
+      ("ifconfig: not found" >!< session.cmd_error &&
+       "ifconfig: not found" >!< buf &&
+       "ifconfig: No such file" >!< session.cmd_error &&
+       "ifconfig: No such file" >!< buf
+      )
+  )
+    replace_kb_item(name:"Host/ifconfig", value:buf);
+
+  if(!buf ||
+     "not found" >< session.cmd_error ||
+     "not found" >< buf ||
+     "No such file" >< session.cmd_error ||
+     "No such file" >< buf
+  )
+  {
+    cmd_kb(channel:channel,
+           'Host/ifconfig',
+           'LANG=C; /sbin/ip addr show',
+           session,
+           use_shell_handler);
+  }
+
+  if (agent())
+  {
+    var ip_addr = agent_get_ip();
+    if (!isnull(ip_addr))
+      report_xml_tag(tag:"host-ip", value:ip_addr);
+  }
+
+  cmd_kb(channel:channel,
+         'Host/hostname',
+         '/bin/hostname',
+         session,
+         use_shell_handler);
+
+
+  # Prevent running 'hostname -A' on Solaris
+  #  as this may _set_ the hostname
+  var uname_chk = get_kb_item("Host/uname");
+  if (uname_chk !~ "sunos")
+  {
+    cmd = 'hostname -A';
+    buf = run_command(cmd:cmd,
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+    buf = chomp(buf);
+    if (!empty_or_null(buf))
+    {
+      buf = str_replace(string:buf, find:'\n', replace:"");
+      replace_kb_item(name:"Host/hostname-A", value:buf);
+      if ("usage:" >< buf ||
+          "usage:" >< session.cmd_error ||
+          "Usage:" >< buf ||
+          "Usage:" >< session.cmd_error ||
+          "hostname" >< buf ||
+          "hostname" >< session.cmd_error)
+      {
+        # this note will be checked by plugins/General/o/os_fingerprint2.nasl
+        replace_kb_item(name:"Host/hostname-A_note", value:"Appears to be an invalid response.");
+      }
+    }
+    else
+    {
+      # this note will be checked by plugins/General/o/os_fingerprint2.nasl
+      replace_kb_item(name:"Host/hostname-A_note", value:"Response invalid: no response.");
+    }
+  }
+  else
+  {
+    # this note will be checked by plugins/General/o/os_fingerprint2.nasl
+    replace_kb_item(name:"Host/hostname-A_note", value:"Operation not attempted on this platform.");
+  }
+
+  cmd_kb(channel:channel,
+         'Host/last_reboot',
+         '/usr/bin/last reboot 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  var arg;
+  foreach arg (make_list('filter', 'nat', 'mangle'))
+  {
+    var simplecmd = 'iptables -L -n -v -t ' + arg;
+    # 2011-01-11: on Ubuntu, "iptables -t nat -L" forces the load of
+    # the conntrack modules and changes the firewall for stateless to
+    # stateful so we run it only if the modules are already loaded
+    if (arg == 'nat')
+      cmd = 'lsmod | grep -q _conntrack_ipv4 && ' + simplecmd;
+    else if (arg == 'mangle')
+      cmd = 'lsmod | grep -q iptable_mangle && ' + simplecmd;
+    else if (arg == 'filter')
+      cmd = 'lsmod | grep -q iptable_filter && ' + simplecmd;
+    else
+      cmd = simplecmd;
+    var iptables = run_command(cmd:cmd,
+                               session:session,
+                               use_shell_handler:use_shell_handler,
+                               channel:channel);
+    if (
+        !isnull(iptables) &&
+        'command not found' >!< tolower(iptables) &&
+        'permission denied' >!< tolower(iptables) &&
+        'table does not exist' >!< tolower(iptables) &&
+        'iptables: not found' >!< tolower(iptables)
+    ) replace_kb_item(name:'Host/fwrules/output/'+cmd, value:iptables);
+    else
+    {
+      var errmsg = session.error;
+      if (!errmsg)
+      {
+        if (
+            'command not found' >< tolower(iptables) ||
+            'permission denied' >< tolower(iptables) ||
+            'table does not exist' >< tolower(iptables) ||
+            'iptables: not found' >< tolower(iptables)
+        ) errmsg = iptables;
+        else errmsg = 'The command \'' + cmd + '\' failed to produce any results.';
+      }
+      replace_kb_item(name:'Host/fwrules/errmsg/'+cmd, value:errmsg);
+    }
+  }
+
+  cmd_kb(channel:channel,
+         'Host/kpatch/list',
+         'kpatch list 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  if (cmd_kb(channel:channel,
+             'Host/uptrack-uname-a',
+             'uptrack-uname -a 2> /dev/null',
+             session,
+             use_shell_handler))
+  {
+    cmd_kb(channel:channel,
+           'Host/uptrack-uname-r',
+           'uptrack-uname -r 2> /dev/null',
+           session,
+           use_shell_handler);
+
+    cmd_kb(channel:channel,
+           'Host/uptrack-show-installed',
+           'uptrack-show 2> /dev/null',
+           session,
+           use_shell_handler);
+
+    cmd_kb(channel:channel,
+           'Host/uptrack-disable-file',
+           'ls /etc/uptrack/disable 2> /dev/null',
+           session,
+           use_shell_handler);
+
+    cmd_kb(channel:channel,
+           'Host/uptrack-show-available',
+           'uptrack-show --available 2> /dev/null',
+           session,
+           use_shell_handler);
+  }
+
+  # Try looking for ksplice status file
+  var ksplice_cmd = "/var/cache/uptrack/Linux/";
+  var uname_m = get_one_kb_item("Host/cpu");
+  var uname_r = get_one_kb_item("Host/uname-r");
+  var uname_v = get_one_kb_item("Host/uname-v");
+  var res;
+  ksplice_cmd += uname_m + "/" + uname_r + "/" + uname_v + "/status";
+  # There should not be command ending symbols in these uname outputs, but play it safe.
+  # Strip them out rather than risk a dangerous situation.
+  # Make sure you allow # because uname -v output is going to include it
+  ksplice_cmd = ereg_replace(string:ksplice_cmd, pattern: "[\\\{\}\$&\|;\(\)<>@!\*`'%]", replace:"");
+  if (info_t != INFO_LOCAL)
+  {
+    # fread fails on quote surrounded filenames
+    ksplice_cmd = '"' + ksplice_cmd + '"';
+  }
+  ksplice_cmd = "cat " + ksplice_cmd;
+  res = run_command(cmd:ksplice_cmd,
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if (res && strlen(res) && "Updates:" >< res)
+  {
+    replace_kb_item(name:"Host/ksplice/status", value:res);
+  }
+
+  # Ingest kernel self-reported mitigations and vulnerabilities if present
+  local_var vuln_line, vuln_lines;
+  res = run_command(cmd:"grep . /sys/devices/system/cpu/vulnerabilities/*",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if (!isnull(res) && strlen(res))
+  {
+    res = chomp(res);
+    res = chomp(ereg_replace(pattern: "\r", string: res, replace: ""));
+    vuln_lines = split(res, sep:'\n', keep:FALSE);
+    foreach (vuln_line in vuln_lines)
+    {
+      res = pregmatch(string:vuln_line, pattern:"^/sys/devices/system/cpu/vulnerabilities/([^:]+):(.+)$");
+      if(!isnull(res))
+        replace_kb_item(name:"Host/cpu/vulnerabilities/"+res[1], value:res[2]);
+    }
+  }
+
+  # Perform Appstream module checks (Supported distros: Red Hat, Oracle Linux, CentOS, AlmaLinux, Rocky Linux).
+  local_var linux_release = get_kb_item("Host/RedHat/release");
+  if (empty_or_null(linux_release)) linux_release = get_kb_item("Host/CentOS/release");
+  if (empty_or_null(linux_release)) linux_release = get_kb_item("Host/AlmaLinux/release");
+  if (empty_or_null(linux_release)) linux_release = get_kb_item("Host/RockyLinux/release");
+  var distro_kb_name = 'RedHat';
+  var linux_distro_match = pregmatch(pattern:"^(AlmaLinux|Rocky Linux).*release", string:linux_release);
+  # Use AlmaLinux or RockyLinux as the distro_kb_name instead of RedHat
+  if (!empty_or_null(linux_distro_match) && !empty_or_null(linux_distro_match[1])) distro_kb_name = ereg_replace(pattern:' ', replace:'', string:linux_distro_match[1]);
+  if (pgrep(pattern:"^(Red Hat|Oracle|CentOS|Alma|Rocky).*release", string:linux_release))
+  {
+    var module_ls = run_command(cmd:"ls /etc/dnf/modules.d/*.module",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+    if (!empty_or_null(module_ls))
+    {
+      module_ls = ereg_replace(pattern:'\r', replace:'', string:module_ls);
+      replace_kb_item(name:"Host/" + distro_kb_name + "/module-list", value:module_ls);
+      var ls_split = split(module_ls, sep:'\n', keep:FALSE);
+      foreach var ls_line (ls_split)
+      {
+        var module_match = pregmatch(pattern:"\/([^\/]+)\.module$", string:ls_line);
+        if (!empty_or_null(module_match) && !empty_or_null(module_match[1]))
+        {
+          var module_name = module_match[1];
+          # Any module names with dangerous characters are attempts at command injection; skip them
+          if (preg(pattern: "[\\\{\}\$&\|;\(\)<>@!\*`'%#]", string:module_name))
+          {
+            lcx::store_dangerous_nix_filepath(item:ls_line);
+            continue;
+          }
+          var module_fetch = run_command(cmd:"cat /etc/dnf/modules.d/" + module_name + ".module",
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+          if (!empty_or_null(module_fetch))
+          {
+            replace_kb_item(name:"Host/" + distro_kb_name + "/modules/" + module_name, value:module_fetch);
+            module_match = pregmatch(pattern:"stream=([0-9a-zA-Z_\-\.]*)", string:module_fetch, multiline:TRUE);
+            if (!empty_or_null(module_match) && !empty_or_null(module_match[1]))
+            {
+              replace_kb_item(name:"Host/" + distro_kb_name + "/appstream/" + module_name, value:module_match[1]);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  # If this is a UCS Director, detect silently for later
+  res = run_command(cmd:"if [ -x /opt/shelladmin ]; then (echo -ne '34\n\n' | /opt/shelladmin); fi",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if(!empty_or_null(res))
+  {
+    var match = pregmatch(pattern:"Version\s*:\s*([0-9.]+) Build\s*:\s*([0-9.]+)", string:res);
+    if(!isnull(match))
+    {
+      if(!isnull(match[1]))
+        replace_kb_item(name:"Host/Cisco/UCSDirector/version", value:match[1]);
+
+      if(!isnull(match[2]))
+        replace_kb_item(name:"Host/Cisco/UCSDirector/build", value:match[2]);
+    }
+  }
+
+  return NULL;
+}
+
+function handle_not_linux_os(session, use_shell_handler, &channel, cmd_res)
+{
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  if (use_shell_handler) store_shell_info();
+  host_info_key_val['host_not_linux'] = TRUE;
+}

@@ -1,0 +1,94 @@
+#TRUSTED 77f60aceec40f1a93d38fe96aff198ece43ac907aceca7efb32349b89b1b362628bfa71f48f31f317ce09a101f4b2fa8656783fb3b98e4ea9b7424b62937431fb3ea3790911bc36ff41579704d0e9ba25788a3294615b03e33a4dc327598434991e79ae2e263eb78305acfbf8ad691b012719b53e800991e7efb3c416a34b78255eaf4f62573c3db2f0a63ccdfc1fd0eb1efa0ccc038a6cc12c7af2b1a74b6dd4145abe39da93298929eddeef8df9da09f24889ae2df712ee27806b43e95f4ffbf36d0de9e60038ee2dbbac9d0a8ab6039efa47a385e68a0a61936429ab1412127c1f7b6a62901f5d51f3d628888b8f43a8ed53697d77528ee96da351ac2db613b12e8802f37dd8f3d097ec4830005a0ccf2467f9252d8d299664ef4f90dfc89413f8077b8fdf30845c5309169ee726eb27904cad0efde3927f54ba4eecf677da545255acd18f2d91486bf0e0590c78808031b9134da7b82ce4840d7a631c1cb2b008d39d8ac92aa3b04057559361b1305378d29c039d397abbaf142ff77d956038631a5ecd0e9af3f0d3bf88e2c6dbec3a405b89c33f6c6914b8ceb2c4ef9ade0c0eea810fc49d6c754f5406740685f66d5865b516e3be5a8f785fb391c2903bd93b2a16a2c0f5fc88e2ff04f3d8ecffbfcc4dbf3f433c5a215702738338dbf355e4476e67b5e568564ddc91c18fd8a2a9714a8cd4e5afad3bc882141be5365
+#TRUST-RSA-SHA256 6687a627b0d9e34a64ef25e0a445c6b137b52b5a5e2e59f4cc7056e89859cc861ed159726842c0e52b848c838df4a924035a11a5de0ccbb8eeab09b80a66b1e397b559d6ec13362818d85e673bab584fd85e6b15dbf6cffcb984a02d446085e13849f39533b3d58d067b9376c0feb179f1a68af3dd4d5a732f7c2533d49725ea12f1676934167452ed79c02593bccb9e65e249e33f68e6f208e4e9cd2946295cf558a7c3398a875fe688b267b61686e94b24893e8b58f8812adf3b7c6168115f470669c55fde500d6be97b13c347d255ebf79cb4f31667c1ecfef8f96f4736f417a95f18e10da84e303791979230c68a3d7c31fe2f3819c82bff49c2f91910f8a61b90a99c538b379c1729138f5e235b194c9d00b791d8ee37cf2473c6c2e9516eaf439863d50e73eabd6c25756f76232caf8325a87a626b933bd22ed9b0572605cf42fb217d3b508b73eaafcf11b1dbfab71e98f260f27ab491513aad8ee1fc5cb6b7d79c21a31cae0c2be939f3606d33a49886cd0cd701e906b74f3777980724d2ddd47f9862bcf50ab35b5236d8b558c0adb6700910b63fb32d04d234dc2a57f3b28318494e4bd2aba159059291a39da1e41348d74ed62c19b66aa9ece87b2a945df3b42360430bc6208fbda0178cb6c7fee9b0d007070c5cf99a6b01ec0f6ffc9cfbae4b639e868baa53cd1b7eeb1ee698131513431bf7fd069bb780ee8a
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+
+# EulerOS helper functions
+
+function handle_euleros_os(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var sp, euler_sp_pattern, uvp_string, uvp_release_pattern, uvp_version_pattern, uvp_version;
+
+  replace_kb_item(name:"Host/etc/redhat-release", value: cmd_res);
+  replace_kb_item(name:"Host/EulerOS/release", value:cmd_res);
+
+  report += '\nThe remote EulerOS system is :\n' + cmd_res;
+
+  # calculate EulerOS minor version
+  euler_sp_pattern = "EulerOS release [0-9]+\.[0-9]+ \(SP([0-9]+)(?:\D|$)";
+  sp = pregmatch(string: cmd_res, pattern: euler_sp_pattern);
+  if(!isnull(sp))
+    replace_kb_item(name: "Host/EulerOS/sp", value: sp[1]);
+
+  # Check for UVP
+  # Start with /etc/uvp-release if it's there, it has an additional level of version detail
+  uvp_release_pattern = "EulerOS Virtualization (?:for ARM 64 )?release ([0-9]+(\.[0-9]+)+)(\D|$)";
+  uvp_string = run_command(cmd:"cat /etc/uvp-release",
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+  if (uvp_string && "/etc/uvp-release" >!< uvp_string && "No such file or directory" >!< uvp_string)
+  {
+    replace_kb_item(name: "Host/etc/uvp-release", value: uvp_string);
+    uvp_version = pregmatch(string: uvp_string, pattern: uvp_release_pattern);
+    if (!isnull(uvp_version))
+    {
+      replace_kb_item(name: "Host/EulerOS/uvp_version", value: uvp_version[1]);
+      report += 'Running Virtualization version : ' + uvp_version[1] + '\n';
+    }
+  }
+  else
+  {
+    # Try /etc/uvp_version
+    uvp_version_pattern = "uvp_version=UVP-KVM-([0-9]+\.[0-9]+)(\D|$)";
+    uvp_string = run_command(cmd:"cat /etc/uvp_version",
+                          session:session,
+                          use_shell_handler:use_shell_handler,
+                          channel:channel);
+    if (uvp_string && "/etc/uvp_version" >!< uvp_string && "No such file or directory" >!< uvp_string)
+    {
+      replace_kb_item(name: "Host/etc/uvp-version", value: uvp_string);
+      uvp_version = pregmatch(string: uvp_string, pattern: uvp_version_pattern);
+      if (!isnull(uvp_version))
+      {
+        uvp_version = uvp_version[1];
+        # Check SP value if uvp_string is 2.5, and try to determine more accurate version
+        if (uvp_version == "2.5")
+        {
+          if (!empty_or_null(sp)) sp = sp[1];
+          if (sp == "2")
+          {
+            uvp_version = "2.5.0";
+          }
+          if (sp == "3")
+          {
+            uvp_version = "2.5.1";
+          }
+        }
+        replace_kb_item(name: "Host/EulerOS/uvp_version", value: uvp_version);
+        report += 'Running Virtualization version : ' + uvp_version + '\n';
+      }
+    }
+  }
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                            internal_label:"EulerOS");
+
+  var cpu = host_info_key_val['cpu'];
+
+  if (rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_euleros.static', value: 90);
+  }
+
+  return TRUE;
+}

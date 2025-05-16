@@ -1,0 +1,130 @@
+#TRUSTED 22695b48d4a499be35243f3cd81bc2491f12b292545bda9e938fb212e73fa62df8e3ffecf6de2436b30779716bce198aaa8b26fd83703706fabd55c523d3ace39b1f91876aaaeddd89da2818418fa4bf6a6d4435add885b55f57e2cb7a267f14468b9581ccdc8572774cd836972a85fe05079547bac59d4f73b8c625ec5ab0dc25701a99cda45124b92fafd28bee191f6788f79edfaae55bb5a1552f6d738efab440d64f1dc404292f334de6d8209f40ffb526830367907bda6a93c52d42054588337fcdcb18c8c8ce4930cdc5170bd9ee461f6bfaa244767e8586095edc03b3a3fdc398c1fc4049dc3d063b24ff0e243c34087c03e2d4c42dc819632668831fb4160732a82daaa9752401527054a855f3cce02c03882aab34dd4dcfb491d597fd9b2dc3b656821c7600b2509a7673ef9502674f283ccc2f081a3c1eccc218bd65dc61077af7d246b923ab7486387bc7355418f047d1818e16bfe315f2ddf0cb859f286cab837adf436688e43f6944abd78e5270d065c26c8b0d988117040fca94c5b1de78562a3ab281562b487af9370c4fe257c0ba7839ae7a264d29e959887f635810a39958e3751c819cdca26cc9c38c6dee6252c5cbd2690b4e5c4f47efa8f40ca3ff49e906aed185686d67d814066b36a4b01dcd4319940c92cdce039277a9f423c5955ba966fd18b25235627d77ff77c95af504d6c13499c6a2fe4f1a
+#TRUST-RSA-SHA256 0a65e1cf8ef1030deff9dd23c539755b5f6c0542804c0b3c41a2bb864b44c3059b57fb08ddb6a134121ddcc6e121a1dc3018a504a06134511ed734bfd16ab0b486bf21cecde1365fdb873a359410ab05112c5681909e5807c99d47bed8a32cccf1f137b8cb3d9194c038bce549edfc62ee3a3233a6c6c99d0aa590f4cbf06376d2b923dd6e1ffd63882008ab4d26cd437aec09d916bafccbaa0e1e1c3c2532a571c6e0fb6136356b06c7f7b67a00b2a27ad8eb7eeb6c483e53b85ef9e9f12255fa91ebbb7a8f1f5deb4140cb84771cf8a4cb48074e0cf5c10887a18d4d41790744f037614fd109ac3bf1748329ce3bb2ad524e4c43dda27fd11004e54927039f0ae8ae71295562a364a8163746a3da45169c2b0686b16eb75f66dc20eb4aa0c4103849e9c44a8da00f5ebb67ba346e75fd68375ebf1a8fd34f2770904833f8b087593463af4540e7ce5916b1238295802ec359cef7414dbddd1d12d8f1232f2b10b16c1a69c4f58c59803db2cb0057179cabb20953460b064949ecb4cf604f82dcf56dcce172ec53acf1477e7189da47909d19f31a3a1b5dee54050a38256d1eb53ea8e6d60a5e56cf8e22d704804c1588ed58a7b2ec04b9373cc1f628e7098b12cf254441ad4ff824f22195334b6b58e650ff080545ab5d56178931a8b5ec573ca637dd06b8aa521f45eb82d5b53edf1536a757f51c8bbe2695e22d04be39d2
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+
+# Fedora helper functions
+
+function handle_fedora_os(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name: "Host/etc/redhat-release", value:cmd_res);
+
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                               internal_label:"RedHat");
+
+  report += '\nThe remote Fedora system is :\n' + cmd_res;
+
+  replace_kb_item(name:"Host/RedHat/release", value:cmd_res);
+
+  var cpu = host_info_key_val['cpu'];
+
+  var edition = "unknown";
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_fedora.static', value: 33);
+  }
+
+  ##
+  #  Server versus Workstation edition
+  #
+  #  Server may have workstation packages, but unlikely vice versa
+  #    Check workstation first and allow server check to overwrite
+  ##
+  if("fedora-release-workstation" >< rpm_buf)
+    edition = "workstation";
+  if("fedora-release-server" >< rpm_buf)
+    edition = "server";
+
+  # Register OS
+  register_fedora_os(release_info:cmd_res, cpu:cpu, edition:edition);
+
+  return TRUE;
+}
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [cpu:str]         CPU architecture
+# @param [edition:str]     workstation|server|unknown - determined in code above via rpm output check
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_fedora_os(release_info, cpu, edition)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Fedora release 36 (Thirty Six)
+  #    Fedora release 37 (Thirty Seven)
+  #    Fedora release 38 (Thirty Eight)
+  #    Fedora release 39 (Thirty Nine)
+  #    Fedora 16 (Verne)
+  #    Fedora 34 (Workstation Edition)
+  #    Fedora Linux 38 (Cloud Edition)
+  #    Fedora Linux 39 (Workstation Edition)
+  #
+  #  - Match groups:
+  #    1: Release (e.g. 36, 37, 38, 39)
+  #    2: Release String (e.g. 'Thirty Six')
+
+  var pattern = "Fedora(?: Linux| release)? ([0-9]+) \((.+)\)$";
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Product
+  #  - Default to Linux if neither are specified.
+  var product = 'Fedora Linux';
+
+  # Release
+  var release = matches[1];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version = release;
+
+  # OS Name
+  var os_name = strcat(product, ' ', release);
+
+  # Edition passed from rpm list output
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:/o:fedoraproject:fedora:36
+  #    cpe:/o:fedoraproject:fedora:39
+  var cpe = 'cpe:/o:fedoraproject:fedora:' + release;
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'The Fedora Project',
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_name     : os_name,
+    os_edition  : edition,
+    target_hw   : cpu,
+
+    cpe         : cpe
+  );
+
+  return NULL;
+}

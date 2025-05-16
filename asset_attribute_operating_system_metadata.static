@@ -1,0 +1,593 @@
+#TRUSTED 968935f411b4b729601e7248c2c163539746e6eddcf164587257cf9bbb5757f1393730d6be2a77864ea8cfa4a8f8ac6c093f15a812a2fd05c66089ba84e5c8e097288225e624760a82b5131b1f74fbbfb1c7514526b7265a2d4842b83d15e60695e065dfcca9454ff0d18ea1768f347a20e8c7b4f933e14c838bb6b5578dd900e66a26a79de07ffe16162b4dc8160b960557c2914a1faa1a956640437d8dd7224d8c5274044539500bab808910d05eebe4e2265c7357ab28591235c6373dc400d00e5900b92d0ce605295fbd4deadfce9b50351c3f10bae99c3e73668219d766eb0c0f90553f798ddbe05d12831c9cc77b5f88b1abb26a654632d5360e0b7b9b20af40869c536f6cc33d047aec6c4d954b723b7b0661c08c6cbc1c1fe08eda3269e99f0c46c2344b5277c890c138bd46c0c78fcae5549d46010a5badab879424e1f1ad7c9f7cd3f6a2c040acf28774327cd7acf4ed37b00266bd4d22dc96712bd421b197f063433a0972f29a5ac1e78ca1434b476cf5918f114bdfa204d6c7370743c097b438d8afbb616af67085a14cdd68a1788ad71df69e5b082cde8155613748209895c907771dd658453e61b2335151b0305502cb724e792c7a7096694b987aae419b6d73be73d09572dc23dfbd87afef0910a2ab5fff73fa4d4ea6efadf2ebcf67edf7b2009873c6247989ae8c3c06356f2723342ef1e8299a7d1e1029
+#TRUST-RSA-SHA256 5e83f3e63e475facf76e5897061f51554b04a76c1b4d778d8f247107835504dfc8e4c368a76da1fe4210328e70b8f9d8f588120809be099e8282ae8daff9b0e84a2f13efe526b2283770d7a6ac4b65fdde503de7e6b8f0532e250f8e61b9049b60ee50c114fbca571a5986d0874c23dada882a0311ba1b574a6718da48a8efd174843063d49f1801c31b64759cf19674a477bea0b3a335b036be689368359ab35389594f676374da47657f8424819a4701f26db26b12cc80bdee6dc2d43d0063b7c0dd4d3bfcd781393b2defe8755cbb594ef6f8e958f81104d4ffe36c119724fe8a6caec6ea99c5f3bc64f17259eb7eb2c43372a5c3fb2e1db8d17bb96d8e38878236ea3537f4b20e66478d663b9b72bf47fbe3590caabb34d574ada15c89ece027cb102677001af396a3781a80ac35d1ecbb5404cbd17c8118037120b10d68bf5064494f1718a29f2f78a9b4086a3bd48b76e1e266145f1f746da86b815b3b23f624ba41e9f64f1e5504e8a0aeec0546d414696a89f02457ec9ac4f5583e32c0a1afc383d5430d9eb1228ad9b567410fdffc2e7e948b84cfb6695878ac578dcdd1572d6bc91182be3e9a87987d036e7bf5d2fa25bc46759c5091994958d1fbcd951de05a98b2303a729224ec387d753305e72a1ab3823c9eacb5aa694ddcbc4115632923a0292ac4df147e776494d8bdd5c9b6f5976e70447699dcb1a6f60d
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# asset_attribute_operating_system_metadata.static
+#
+# Revision: 1.8
+#
+# @library asset_attribute_normalization_library.inc
+#
+###
+
+namespace metadata_updates
+{
+  namespace operating_system_attribute
+  {
+    ##
+    # Create asset_attribute_operating_system::windows object overriding certain variable(s).
+    ##
+    object windows_normalizer : asset_attribute_operating_system::windows
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function windows_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '(?: ([0-9]+\\.[0-9]+\\.([0-9]+ ?[0-3]?)))?';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+        normalize_identifier_update();
+      }
+
+      ##
+      # Normalize 'update' identifier (override base function to accommodate metadata update format)
+      ##
+      protected function normalize_identifier_update()
+      {
+        var matches;
+
+        normalized.update = NULL;
+
+        # Handle builds and service packs (e.g. "10.0.25309" and "6.1.7601 1")
+        #  This is the format that the metadata update uses
+        matches = pregmatch(string:identifiers.update, pattern:'^[0-9]+\\.[0-9]+\\.([0-9]{4,}) ?([0-3])?$');
+        if (!empty_or_null(matches))
+        {
+          # Service Pack
+          if (matches[2])
+            normalized.update = strcat(standards.terms.service_pack, ' ', matches[2]);
+
+          # Build (e.g. "25309" in "10.0.25309")
+          else if (matches[1])
+            normalized.update = strcat(standards.terms.build, ' ', matches[1]);
+        }
+      }
+    }
+
+
+    ##
+    # Create asset_attribute_operating_system::linux_centos object overriding certain variable(s).
+    ##
+    object linux_centos_normalizer : asset_attribute_operating_system::linux_centos
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_centos_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_redhat object overriding certain variable(s).
+    ##
+    object linux_redhat_normalizer : asset_attribute_operating_system::linux_redhat
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_redhat_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_ubuntu object overriding certain variable(s).
+    ##
+    object linux_ubuntu_normalizer : asset_attribute_operating_system::linux_ubuntu
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_ubuntu_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_amazon_two object overriding certain variable(s).
+    ##
+    object linux_amazon_two_normalizer : asset_attribute_operating_system::linux_amazon_two
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_amazon_two_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_fedora object overriding certain variable(s).
+    ##
+    object linux_fedora_normalizer : asset_attribute_operating_system::linux_fedora
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_fedora_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+    
+    ##
+    # Create asset_attribute_operating_system::linux_suse object overriding certain variable(s).
+    ##
+    object linux_suse_normalizer : asset_attribute_operating_system::linux_suse
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_suse_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_suse_sles object overriding certain variable(s).
+    ##
+    object linux_suse_sles_normalizer : asset_attribute_operating_system::linux_suse_sles
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_suse_sles_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+
+    ##
+    # Create asset_attribute_operating_system::linux_sles_sap object overriding certain variable(s).
+    ##
+    object linux_sles_sap_normalizer : asset_attribute_operating_system::linux_sles_sap
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_sles_sap_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::macos object overriding certain variable(s).
+    ##
+    object macos_normalizer : asset_attribute_operating_system::macos
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function macos_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_suse object overriding certain variable(s).
+    ##
+    object linux_oracle_normalizer : asset_attribute_operating_system::linux_oracle
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_oracle_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_rocky object overriding certain variable(s).
+    ##
+    object linux_rocky_normalizer : asset_attribute_operating_system::linux_rocky
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_rocky_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_alma object overriding certain variable(s).
+    ##
+    object linux_alma_normalizer : asset_attribute_operating_system::linux_alma
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_alma_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_gentoo object overriding certain variable(s).
+    ##
+    object linux_gentoo_normalizer : asset_attribute_operating_system::linux_gentoo
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_gentoo_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = ''; 	
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+    ##
+    # Create asset_attribute_operating_system::linux_debian object overriding certain variable(s).
+    ##
+    object linux_debian_normalizer : asset_attribute_operating_system::linux_debian
+    {
+      ##
+      # Constructor (inheriting base constructor)
+      ##
+      function linux_debian_normalizer() : super(_FCT_ANON_ARGS[0])
+      {
+        standards.patterns.update = '';
+      }
+
+      ##
+      # Normalize (override base function)
+      ##
+      public function normalize()
+      {
+        prepare();
+        if (!deconstruct()) return false;
+
+        normalize_identifiers();
+        if (!reconstruct()) return false;
+
+        return true;
+      }
+
+      ##
+      # Normalize identifiers (override base function)
+      ##
+      protected function normalize_identifiers()
+      {
+        super.normalize_identifiers();
+      }
+    }
+
+  }
+}
+

@@ -1,0 +1,129 @@
+#TRUSTED 5a7fd798e544a85734961d5acf737d54f6c941f869d3c6c51140a8b1d198f65e89d632fbe47ccc82188def1d1c92650ae9aa0163aff30017d56de03a8e20d4f4c423855d20a1247a1b240835b50e60069d3fb08c041c543a755d8205cee44e53e0a0ba239c0d0d7ae63a4fe3ec06c6fdb20df316a76f8651d5632a517c6473eb91cd907acf1a1aa4aa3c0ac19ca9df33002479c711fdb2c96859844d36471ddafc2e592bb14a482fb5777c46901a7eabd1afc23493813ac33589ae098909336ac961ed4f0ac3808f160208b15a25cba451bdf4bf027fbe26fffd6aad758fc05f299fdef6a1cf2af5adae5c11199ce4d9df53f96af036e4b3676e4af0c954f033710862c0dd8660b91cd7b0a55856932b47c820a82dd700a28b6fa9637f61613b3d1cf00ae3b832c60cf0e8179aa0b787bf58fdb76d2d946c9b1ed5917570c25a43a3869a88f815b45eda97dfb97d8059b0d85ad3510a09249edf3b9a8f95ecc4d37da98fbbb369316ae028e16e430c3dc303566b5f0056161b89a2d47e59c5bd2f6c6a9ba119ea3550e8feb9a70e46c38c68f02bdebf2d57ae35ad1475496bd3b8b60f681375e45cfc66ca8bc4c7ee1a592d0383298ab214fd6a2af638fdafc5686ec0d206839a9c0cbf19493f74068f29baf76a7929579eb94b7cd4dacd456270d073e8d52fe0287597a48c0022a2575cb8c019df507bd337430d1cd2b8a9cc
+#TRUST-RSA-SHA256 7e8da40ae58ebf166a23024337d17dfaa29e5bafde78a920bc3f246bd9a9224ee091ad0fb8b1b25a0956db728a099d1e8957ff8ebf222208124c26efefc16a737cc941668db72d2be99c00bb14a4ce1c396d1421fd5b23a1083aa318e584d44893cc3a42b89ef372b0b1496684d466a0497643993248a2ce2c863bf549bc3ec36c7e38098872b1ecf520bcb07d917d76355276e836f1a579f322eee5dbf42f20a84bb39dda2c3e440e1386334bc5c3a73a509a75ed29da37297d62461187f4a8c7571eab9a2d8ad44de643a1a19cb8857385b2355e63326c20e423bb70766a069ba141c3bc1933268c5029a4e3b31dcdd376b7a670dea386f244b8a0e8f911117acaa914710703a84acf42216d7d6cbdd6b1d8a10b4c1a84cf966b704c4104024303ca626ae66289e7b8c202629f2c03f4d3bee29e554b967878c03515d0cdd2702f923eb605324ba183ca63d979e18fef8c6aab97a408e131fa647c46150164c5b07781e561013e073bce988bf18740177dd5d862a4dde6a226c24382abc45bc43d06a54dc9c549cab82935467ac31cb6a76afaeefb697ceae71961e1ff7a3b23e53c24e37c744f15a35f791e334f1784771f7328c6215b19d39610544d3cc5a12829a5be3d8580877493f9693af0d87df55dcb2aacaa25ff7391a9901936438c5f7c4849606593917de99cf7d9a988e3cb4e3d104d301c3dbd5c96ce67b22d
+#
+# (C) Tenable Network Security, Inc.
+#
+
+##
+# check if this is a McAfee SecureOS device based on information collected.
+##
+function mcafee_secureos_pre_check_fail()
+{
+  # have we already checked that the host is not a McAfee SecureOS device?
+  if(host_info_key_val['host_not_mcafee_secureos'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['uname-a_unrecognized']) &&
+     host_info_key_val['uname-a_unrecognized'] !~ mcafee_secureos_check['test_cmd_regex'])
+    return TRUE;
+
+  # verify target is not another product based on SSH banner etc
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "^SecureOS" in the output of "uname -a".
+##
+function handle_mcafee_secureos(session, use_shell_handler, channel, cmd_res)
+{
+  var release;
+  report += '\nLocal checks have been enabled for this host.';
+
+  var match = pregmatch(pattern:"^([^ ]+) +([^ ]+)", string:cmd_res);
+  if(!isnull(match) && !isnull(match[1]) && !isnull(match[2]))
+    release = match[1] + "-" + match[2];
+
+  if(isnull(release))
+  {
+    failure_kb_msg = '\nThe remote host appears to be running McAfee SecureOS.\n' +
+                     'However, we were unable to parse the OS type or version.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    report +=
+      '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  replace_kb_item(name:'Host/SecureOS/release', value:release);
+  replace_kb_item(name:'Host/OS/uname', value:release);
+  replace_kb_item(name:'Host/OS/uname/Confidence', value:100);
+  replace_kb_item(name:'Host/OS/uname/Type', value:'firewall');
+
+  cmd_res = run_command(cmd:"srole", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if("Admn" >!< cmd_res)
+  {
+    failure_kb_msg = '\nOS Security Patch Assessment is not available because it was not ' +
+                     "possible to switch to the admin role via the 'srole' command.";
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    report +=
+      '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  cmd_res = run_command(cmd:"cf package list", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if("Local Packages" >!< cmd_res)
+  {
+    failure_kb_msg = '\nOS Security Patch Assessment is not available because the command' +
+                     "'cf package list' failed to produce expected results for some reason.";
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    report +=
+      '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  replace_kb_item(name:'Host/SecureOS/pkg_list', value:cmd_res);
+
+  report += '\nThe remote system is : ' + release + '\n' +
+            '\nOS Security Patch Assessment is available for McAfee SecureOS.\n';
+
+  cmd_res = run_command(cmd:"/sbin/ifconfig -a", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(!empty_or_null(cmd_res))
+    replace_kb_item(name:'Host/ifconfig', value:cmd_res);
+
+  cmd_res = run_command(cmd:"/bin/hostname", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(!empty_or_null(cmd_res))
+    replace_kb_item(name:"Host/hostname", value:cmd_res);
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_mcafee_secureos.static', value: 112);
+  return NULL;
+}
+
+##
+# callback for systems without "^SecureOS" in the output of "uname -a".
+##
+function handle_not_mcafee_secureos(session, use_shell_handler, channel, cmd_res)
+{
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  if (use_shell_handler) store_shell_info();
+
+  host_info_key_val['host_not_mcafee_secureos'] = TRUE;
+  host_info_key_val['uname-a_unrecognized'] = cmd_res;
+}

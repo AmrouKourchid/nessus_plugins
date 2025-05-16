@@ -1,0 +1,138 @@
+#TRUSTED 24f16187e14fb93bac649be2b930ba184dc523df17717c4678d71e836356d4e2fb276bacd8a27762cc3ca61d22df49816c262e0d86c5760fa8fe96c03d99b352a9725e87b1dd48f786e6fe1c02b080063eec814ebc7b03380ed87bacc995764a3115232f1cee2166fb6a0df9948a3e942e992c87929d72fed1007173ee2f19d68b615eb58ad4d6c222de1fb7fad8dc77612fa62593e4e423a0fa2c9fd29ece6ea41555c99224fe9a3480b8a1d810a5b3010c098e66c7715ff442c76d71268beb912d182f314061314159b507a92e0a9f9e6ab66e71824399388338e2dd78dcb3f8c0ff2fc17a2858e0d27e356121ee1aee654ed0b9a48e4f4d4f814bb7bf83ed428640efa71ce614e922a996c25a9a844eafdd8b472a8d149531b778978e9a5ab1d79a9ebf4499bf15c1d1e999fdc1cb973819f8111d1ac133262cd838495add50cfee79adc698aab9a76c7cf928fe1e59e40fdcf2daa60b6ed63360dc52b4046ac74e4058a775e7a6a538ed3239fd0c7c576af2f830cb64a703e95a5b38af1d905435a0383243a1282ae01558497744f218f46dc820dea6f656a1133c6dcc3158d410ac2445a888d02770ebdea5f00d86345f78bcf79bc3f67c01bccb0072479e79afe9f8b5ce71fe6b938e9d37a0ce36116cd11f0c4f872bd783f7aba9cfcefbf169a2020819ceaf7de57235f9111aea2d446dafb24bf96637033e815d1a13
+#TRUST-RSA-SHA256 79120c5600a1dcc77305e62406de190963a84e8aef98aa177ccd957208144c951836e806931745a66e981c734cfdc8288f98c5aa2cc68286a68028623507bf1b697f7e6ed6393d2fdd1e72766044ae1b0c2a2adf359da4e2d6be57de3938059a1daeaad9c600568758a1de83f26aede8e39d53348409fff79fbdb4774a562ddd91b857dba7f33c8d817256e0d27eef5ccfd9cc49b4a07f3dd132b85c6123b6092d5d25b8208165a542ff8a258b683710fa23f659add8246d44c29091821f28a8180c238fa064949908398ab3c5e7340800bdc4750c08c8eaa7f9362e41a9d5c64c3952740af9776c3286cfaff3bd01105fa1635d1a0882bd213ad25b1f38dc0340f2f2bf071b1dd2efba152a3911ceb94af8425e5f6bfc04945737a6eb35e7c783c8410c87d3f58aba83bfd36248c96a65e5ea1b004c46b16b6203311eeb11aafc97184bb5086e0b9089f261454f7674ea1e65cf79508fcde7ed3a2c50ceda114b8eb9227eee75378458e348bb33e496fdfb3eed43796d07e0150caa436c252a162cf894c0255ed74b673410dfd89023d68bdaf3158bd7973c47b713b64ec13424cb0c26501730439bc5bee254fedcc00848b7c2f1e3706b3f4124a5c4d2800d1eb514b3b62d712499e728bfda644127d3bbf693f04fab8edc91b57a7b792679e956f7acf9ce473b88cff994cab13978bdfad03ee33cb6e9c0a3dfcc6c2938b4
+##
+# This is the description of an SSH Info library file for ArrayOS device
+#
+# @license
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.3
+#
+# @library ssh_get_info2.inc
+#
+# @os Array Networks ArrayOS
+#
+# @noexec
+##
+
+function is_arrayos()
+{
+  if (host_info_key_val['host_not_arrayos'])
+    return FALSE;
+
+  if (host_info_key_val['is_arrayos'])
+  {
+    dbg::detailed_log(lvl:2, src:SCRIPT_NAME, msg:"Device is ArrayOS");
+    return TRUE;
+  }
+
+  if ('ArrayOS' >< host_info_key_val['remote_ssh_banner'])
+  {
+    dbg::detailed_log(lvl:2, src:SCRIPT_NAME, msg:"Found ArrayOS via SSH banner");
+    host_info_key_val['is_arrayos'] = TRUE;
+    return TRUE;
+  }
+  
+  if ('usage: ca_shell' >< host_info_key_val['uname-a_unrecognized'])
+  {
+    dbg::detailed_log(lvl:2, src:SCRIPT_NAME, msg:"Found ArrayOS via exec check error");
+    host_info_key_val['is_arrayos'] = TRUE;
+    return TRUE;
+  }
+  
+  if('ArrayOS' >< host_info_key_val['showversion_unrecognized'])
+  {
+    dbg::detailed_log(lvl:2, src:SCRIPT_NAME, msg:"Found ArrayOS via show version unknown");
+    host_info_key_val['is_arrayos'] = TRUE;
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+function arrayos_pre_check_fail() 
+{
+  return FALSE;
+}
+
+function handle_arrayos(session, use_shell_handler, &channel, cmd_res) 
+{ 
+  if('Array Networks' >!< cmd_res || 'ArrayOS' >!< cmd_res)
+    return FALSE;
+  
+  var match = pregmatch(string:cmd_res, pattern:"ArrayOS [^\d]+\.[^\d]+\.(\d+(?:\.\d+)+)\s");
+
+  var version = 'unknown';
+  if(!empty_or_null(match))
+    version = match[1];
+
+  match = pregmatch(string:cmd_res, pattern:"Model : (.*)\r\n");
+
+  var model = NULL;
+  if(!empty_or_null(match))
+    model = match[1];
+
+  match = pregmatch(string:cmd_res, pattern:"Serial Number : (.*)\r\n");
+
+  var serial_number = NULL;
+  if(!empty_or_null(match))
+    serial_number = match[1];
+
+  sshlib::enable_local_checks();
+
+  var ret = register_os(
+    type       : 'local',
+    method     : 'SSH',
+    confidence : 100,
+    vendor     : 'Array Networks',
+    product    : 'ArrayOS',
+    version    : version,
+    os_name    : 'ArrayOS',
+    cpe        : 'cpe:/o:arraynetworks:arrayos_ag'
+  );
+
+  register_hardware(
+    type       : 'local',
+    category   : 'secure_access_gateway',
+    method     : 'SSH',
+    confidence : 100,
+    full_name  : 'ArrayOS',
+    vendor     : 'Array Networks',
+    product    : model,
+    cpe        : 'cpe:/o:arraynetworks:arrayos_ag',
+    serial_number : serial_number
+  );
+
+  var structured_asset_id = new structured_data_asset_identifier();
+  structured_asset_id.append('identifier', {
+    'identifier_source': 'ArrayNetworksSerialNumber',
+    'identifier_value': serial_number,
+    'type': 'Network Device Serial Idenifier'
+  });
+  structured_asset_id.report_internal();
+
+  report += strcat(
+    '\nLocal checks have been enabled for this host.\n',
+    '\nThe remote host is running Array Networks ArrayOS.\n',
+    '\nOS Security Patch Assessment is not supported for Array Networks ArrayOS.\n'
+  );
+
+  return TRUE;
+}
+
+function handle_not_arrayos(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  
+  if (!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:'Host/showversion_unrecognized', value:cmd_res);
+    host_info_key_val['host_not_arrayos'] = TRUE;
+  }
+}

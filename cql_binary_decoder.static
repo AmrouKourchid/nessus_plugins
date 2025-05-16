@@ -1,0 +1,238 @@
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+#
+# @NOGPL@
+#
+# cql_binary_decoder.inc
+#
+# Revision: 1.4
+#
+# @include byte_func.inc
+# @include spad_log_func.inc
+###
+
+object cql_binary_decoder
+{
+  ##
+  # Raw CQL response data.
+  ##
+  var blob;
+
+  ##
+  # Current position in reading the blob.
+  ##
+  var pos = 0;
+
+  ##
+  # List of errors encountered.
+  ##
+  var errors = [];
+
+  ##
+  # Constructor.
+  # Sets the blob member variable
+  ##
+  private function cql_binary_decoder(){
+    blob = _FCT_ANON_ARGS[0];
+    if(!blob)
+      set_error('Message body was empty or not provided as an argument.');
+  }
+
+  ##
+  # Decodes the frame header into an array containing all the fields.
+  #
+  # @return Array containing the frame header values.
+  ##
+  public function get_frame_header()
+  {
+    var fh = {};
+    
+    fh.version  = get_byte() & ~(1 << 7); # Clear the highest bit
+    fh.flags    = get_byte();
+    fh.stream   = get_int16();
+    fh.opcode   = get_byte();
+    fh.body_len = get_int();
+    
+    return fh;
+  }
+
+  ##
+  # Gets a string and advances the read position.
+  #
+  # @return String.
+  ##
+  public function get_string16()
+  {
+    return get_bytes(len:get_int16());
+  }
+  
+  public function get_byte()
+  {
+    var byte = getbyte(blob, pos:pos);
+    pos += 1;
+    return byte;
+  }
+
+  ##
+  # Get len bytes and advances the read position.
+  #
+  # @return Raw bytes.
+  ##
+  public function get_bytes(len)
+  {
+    var bytes = substr(blob, pos, pos + len - 1);
+    pos += len;
+    return bytes;
+  }
+
+  ##
+  # Gets a 32-bit int value and advances the read position.
+  #
+  # @return Integer.
+  ##
+  public function get_int()
+  {
+    var int = getdword(blob, pos:pos);
+    pos += 4;
+    return int;
+  }
+
+  ##
+  # Gets an IP address and returns it as a string
+  #
+  # @return IP address as a string
+  ##
+  public function get_inet()
+  {
+    var inet = get_byte() + '.';
+    inet += get_byte() + '.';
+    inet += get_byte() + '.';
+    inet += get_byte();
+    return inet;
+  }
+
+  ##
+  # Gets a UUID type and returns it as a string
+  #
+  # @return UUID as a string
+  ##
+  public function get_uuid()
+  {
+    var uuid = hexstr(get_bytes(len:4));
+    uuid += '-' + hexstr(get_bytes(len:2));
+    uuid += '-' + hexstr(get_bytes(len:2));
+    uuid += '-' + hexstr(get_bytes(len:2));
+    uuid += '-' + hexstr(get_bytes(len:6));
+    return uuid;
+  }
+
+  ##
+  # Gets a data type and converts it to a epoch timestamp.
+  #
+  # @return Epoch timestamp
+  ##
+  public function get_date()
+  {
+    # Clear the highest bit and multiply to get seconds from days.
+    return (get_int() & ~(1 << 31)) * 24 * 60 * 60;
+  }
+
+  ##
+  # Gets a 2-byte int and advances the read position.
+  #
+  # @return Interger with a 2-byte max size.
+  ##
+  public function get_int16()
+  {
+    var int = getword(blob, pos:pos);
+    pos += 2;
+    return int;
+  }
+
+  ##
+  # Gets a bool value and advances the read position.
+  #
+  # @return 1 or 0 representing true/false values.
+  ##
+  public function get_bool()
+  {
+    var bool = getbyte(blob, pos:pos);
+    pos += 1;
+    return bool;
+  }
+
+  ##
+  # Gets a cql string list and returns it as a nasl list.
+  #
+  # @return List of strings.
+  ##
+  public function get_string_list()
+  {
+    var i, len = get_int16(), list = [];
+    
+    for(i = 0; i < len; i++)
+      append_element(var:list, value:get_string16());
+    
+    return list;
+  }
+
+  ##
+  # Gets a cql string multimap and returns it as a nasl nested array.
+  #
+  # @return Array of lists.
+  ##
+  public function get_string_multimap()
+  {
+    var i, len = get_int16(), key, multimap = {};
+    
+    for(i = 0; i < len; i++)
+    {
+      key = get_string16();
+      multimap[key] = get_string_list();
+    }
+      
+    return multimap;
+  }
+  
+  ##
+  # Logs and appends an error to the error member variable.
+  #
+  # @return NULL.
+  ##
+  public function set_error()
+  {
+    var e =_FCT_ANON_ARGS[0];
+    dbg::detailed_log(
+      lvl: 1,
+      src: FUNCTION_NAME,
+      msg: "Adding error",
+      msg_details: {
+        "Error": {"lvl": 1, "value": e}});
+    append_element(var:errors, value:e);
+  }
+
+  ##
+  # Logs and appends a data type unsupported error to the error member variable
+  #
+  # @return NULL
+  ##
+  public function set_type_error(col_name)
+  {
+    var e = strcat(
+      'The select column data type is not native to Nasl. Use CAST(', col_name, 
+      ' AS text) in the CQL query to retrieve the column value as text.'
+    );
+    dbg::detailed_log(
+      lvl: 1,
+      src: FUNCTION_NAME,
+      msg: "Adding error type",
+      msg_details: {
+        "e": {"lvl": 1, "value": e}});
+    append_element(var:errors, value:e);
+  }
+}

@@ -1,0 +1,410 @@
+#TRUSTED 1b7559ce381312f06b65a388a85f0c6995a3a090779f6657ca5730365fbae4c0d1cfe5f43dab69174e3077ce10a69ced15b1690adbe83b9babfba5421c04dc454bf48af94970cfcf66efc8e9e6b80cbc013fb696f5d63f121f014ed4b00c1ffbf13c1152661b1df3734effeaec7904d2e7e041eb60e8d190e32301c9d3ebc6062fcb2ee8f3db6c71f424412e6c895c23b38b1245cd59940e93976eccf21ec8365c6d7626950ee330cafcc950d313946cbd7cd793e0aa5e4592ebbf25f92f6d1aa33fda1f20d81db0d9a3cddb0ac34e6d0da97ba3bab4bb7d01887482d77574a4b2a8f8ce227b467a8a0c3933e6c2d5afb7c1a0a5015a3871b69956357ca2bf0ee8a0fc7d8f9ca08e939686a4a41ac0c1cb03c5f16befdfe447ff26180aa5eca4b5afb4853c63ad4842fa18150d03b5c488c8cb7d779ce9968afd90428aa2b6721ec766d1861821df72774aef8f1b32cb0d9f97d9eddc98e55c6a1a587c14877272747692ab1966f9ca72507de1949e40742465311aeeb5614d2cc188badcf3ec489e9bb849c8c6d74f95b7964051e820d5ccc5bc439b803ba98adb2a72e572a8249e6e7e2460336568bcc9c32833760e42e78679761c6c922e328e4222a8cf4fe565a842f46ab56b4aaf6fe421fb335afc306620cdf6f07765426d4856387fc131fcd72e183c27d1cdcc4f9758650d74e5efb5f93befd4769661024677eacb4c
+#TRUST-RSA-SHA256 3876ee1405f3fd0ae65cf36e50583d2a6ef9e6ae4f08773f9149eb026cdc6854f167f9ed877f389689bcf21a763923fb5f649b1f5a91699f7dc56cfb6ad0b6424e60df43aed4e7885c44f08a6c5e9901275f5a47e56d2e2e99ba05a5c1c53e894c0fbc481dafb026eb3c394e8dfa8487505737141917e9d05b8a36665ec9c1e27bc99192bf620c9df9b837516e27075ccdded18d81fc07d31c67cb9c54faefe12e5bfac4b0aabf7363af051cdb8473f68170b92a1e7c8dfc845b9d822a7dd2468b96967c1afd69c3e8796a166277c59569fac8589cdcfc5d2a6b86a2d02bf5b668cc238f1d7f5d81ed2801fa1fbc611339e44d84e642f3fcaff3686fc819267880441624508853d8bff5d4affce542f2173f80a675242b42dc707ecf2b120596ce5321ed0bb41054a0ba6eb9e9d010a7bd6d498ac2eb416cdda08a63e733fcb07ee7ffde5050a01ccbadea1a0f300a1d9a862b3166e72e3155691091b896d6cb0c7849891ee437798a492fa4443f00a2b6e99aeb76fc5c098dbe8b0a88579c8753f3bf3dd1984ec445db3815d9020522da0ee65c762c444eed326db3133121aa5caa741db581ece9ed4254c5477fe6c53d7892b0a8bb4df2321419bd3701ffb03d2108c3640878b7ececb1ad3bb2209fd52719229a06f9b60d60eacb3176d9d4e6d5b41e2ae6274965284eefbafee75528b71c3cd993b68394eddba86db66aa8
+
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.o
+
+# Note: There are checks in here for vendors other than Aruba as Aruba now houses
+#       those older firmwares and ownerships. 3Com (Comware) networking was acquired
+#       by HP, was spun off into HPE for networking and then spun off further into Aruba
+
+#
+# check if this is an Aruba Switch device based on information collected
+#
+function aruba_s_pre_check_fail()
+{
+  # have we already checked that the host is not Aruba Switch?
+  if(host_info_key_val['host_not_aruba_s'])
+  {
+    # already checked that host is not Aruba Switch, no need to check again
+    return TRUE;
+  }
+  if(host_info_key_val['showarubacentral_unrecognized'] &&
+     host_info_key_val['showarubacentral_unrecognized'] !~ aruba_s_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Aruba S if one of the following devices
+  if (is_panos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# check if this is an Aruba CX device based on information collected
+#
+function aruba_cx_pre_check_fail()
+{
+  # have we already checked that the host is not Aruba CX?
+  if(host_info_key_val['host_not_aruba_cx'])
+  {
+    # already checked that host is not Aruba CX, no need to check again
+    return TRUE;
+  }
+  if(host_info_key_val['showsystem_unrecognized'] &&
+     host_info_key_val['showsystem_unrecognized'] !~ aruba_cx_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Aruba CX if one of the following devices
+  if (is_panos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# check if this is an HP Comware device based on information collected
+# with `summary`
+function hp_comware_pre_check_fail()
+{
+  # have we already checked that the host is not HP Comware?
+  if(host_info_key_val['host_not_hp_comware'])
+  {
+    # already checked that host is not HP Comware, no need to check again
+    return TRUE;
+  }
+  if(host_info_key_val['summary_unrecognized'] &&
+     host_info_key_val['summary_unrecognized'] !~ hp_comware_check['test_cmd_regex'])
+    return TRUE;
+
+  if (is_qnap_standard() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  return FALSE;
+}
+
+#
+# callback for systems with "Aruba Central" in show aruba-central
+#
+function handle_aruba_s(session, use_shell_handler, &channel, cmd_res)
+{
+  var cmd_no_spaces, cmd_set, cmd, commands, cmd_output, secret_prefix;
+  var os_level, product_label;
+  var aruba_kb_prefix = 'Host/Aruba/';
+  replace_kb_item(name:aruba_kb_prefix + 'show_aruba-central', value:cmd_res);
+  report += '\nCommand execution for Aruba Switch device successful.';
+
+  # Have to run an entirely different command to find the version.
+  # show aruba-central only gets us the knowledge that we're on ArubaOS S.
+  # We'll need show system.
+
+  commands = [
+    {'cmd': 'show system', 'secret': FALSE},
+    {'cmd': 'show inventory', 'secret': FALSE},
+    {'cmd': 'show lldp info local-device', 'secret': FALSE},
+    {'cmd': 'show version', 'secret': FALSE},
+    {'cmd': 'show running-config', 'secret': TRUE}
+  ];
+
+  foreach cmd_set (commands)
+  {
+    cmd = NULL;
+    cmd_output = NULL;
+    secret_prefix = '';
+    if (!empty_or_null(cmd_set['cmd']))
+    {
+      cmd = cmd_set['cmd'];
+    }
+    else
+    {
+      continue;
+    }
+    if (!empty_or_null(cmd_set['secret']) && cmd_set['secret'])
+    {
+      secret_prefix = 'Secret/';
+    }
+    cmd_no_spaces = str_replace(find:" ", replace:"_", string:cmd);
+
+    cmd_output = run_command(cmd:cmd,
+                   session:session,
+                   use_shell_handler:use_shell_handler,
+                   channel:channel,
+                   force_priv_escl:TRUE);
+    if (isnull(cmd_output))
+    {
+      set_kb_item(name:secret_prefix + aruba_kb_prefix + cmd_no_spaces + '/errmsg', value:'The command failed to produce any output.');
+    }
+    else if (preg(pattern:"(^|\n)(Invalid|Incomplete) input: ", string:cmd_output, multiline:TRUE))
+    {
+      set_kb_item(name:secret_prefix + aruba_kb_prefix + cmd_no_spaces + '/errmsg', value:cmd_output);
+    }
+    else
+    {
+      set_kb_item(name:secret_prefix + aruba_kb_prefix + cmd_no_spaces, value:cmd_output);
+    }
+  }
+
+  # Ingest OS version. Bail out if this fails.
+  cmd_output = get_kb_item(aruba_kb_prefix + 'show_system');
+  var show_system_failed = !cmd_output;
+
+  if(cmd_output)
+  {
+    os_level = pregmatch(pattern:"Software revision  : ([A-Z]{2}\.\d{2}\.\d{2}\.\d{4}) ", string:cmd_output);
+    if(!empty_or_null(os_level) && !empty_or_null(os_level[1]))
+    {
+      os_level = os_level[1];
+      replace_kb_item(name:aruba_kb_prefix + 'version', value:os_level);
+    }
+    else
+    {
+      show_system_failed = TRUE;
+    }
+
+  }
+  if(show_system_failed)
+  {
+    # Ideally this should be a separate callback, since the first check is for ArubaOS-Switch,
+    # while this one is for regular ArubaOS, but right now we don't have separate code paths for those two
+    cmd_output = get_kb_item(aruba_kb_prefix + "show_version");
+    os_level = pregmatch(pattern:"ArubaOS \(.*?\), Version ([\d\.-]+)", string:cmd_output);
+    if(!empty_or_null(os_level) && !empty_or_null(os_level[1]))
+    {
+      os_level = os_level[1];
+      replace_kb_item(name:aruba_kb_prefix + 'version', value:os_level);
+    }
+    else
+    {
+      failure_kb_msg =
+        'The remote operating system appears to be a type of ArubaOS or ArubaOS-Switch device.\n' +
+        'However, we were unable to parse the OS version from the command output of show system nor show version,\n' +
+        'and OS security patch assessment will not be enabled at this time.\n';
+      failure_kb_type = lcx::ISSUES_INFO;
+      report += '\n' + failure_kb_msg + '\n';
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+      return NULL;
+    }
+  }
+  # Since we're here, try to get the product descriptor if possible.
+  # Don't bail out if this fails, this is entirely optional and lldp
+  # settings may prevent it from working.
+  cmd_output = get_kb_item(aruba_kb_prefix + 'show_lldp_info_local-device');
+  if(cmd_output)
+  {
+    product_label = pregmatch(pattern:"System Description : (.*?)(?:,|\n)", string:cmd_output);
+    if(!empty_or_null(product_label) && !empty_or_null(product_label[1]))
+    {
+      product_label = product_label[1];
+      replace_kb_item(name:aruba_kb_prefix + 'product', value:product_label);
+      report += '\nProduct: ' + product_label;
+    }
+  }
+
+  if (!empty_or_null(os_level))
+  {
+    replace_kb_item(name:"Host/OS/showver", value:'ArubaOS ' + os_level);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/showver/Type", value:"switch");
+  }
+
+  report += '\nOS security patch assessment checks have been enabled for ArubaOS/ArubaOS-Switch device, version ' + os_level + '.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_aruba.static', value: 225);
+}
+
+#
+# callback for systems with "ArubaOS-CX Version" in show system
+#
+function handle_aruba_cx(session, use_shell_handler, &channel, cmd_res)
+{
+  var cmd_no_spaces, cmd_set, cmd, commands, cmd_output;
+  var os_level, product_label, showver;
+  var aruba_kb_prefix = 'Host/Aruba/';
+  replace_kb_item(name:aruba_kb_prefix + 'show_system', value:cmd_res);
+  report += '\nCommand execution for Aruba CX device successful.';
+
+  showver = get_kb_item("Host/showversion");
+  if (!showver)
+  {
+    cmd = 'show version';
+    showver = run_command(cmd:cmd,
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  }
+
+  if (isnull(showver))
+    replace_kb_item(name:aruba_kb_prefix + 'show_version' + '/errmsg', value:'The command failed to produce any output.');
+  else if (preg(pattern:"(^|\n)(Invalid|Incomplete) input: ", string:showver, multiline:TRUE))
+    replace_kb_item(name:aruba_kb_prefix + 'show_version' + '/errmsg', value:showver);
+  else
+    replace_kb_item(name:aruba_kb_prefix + 'show_version', value:showver);
+
+  # Ingest OS version. Bail out if this fails.
+  os_level = pregmatch(pattern:"\nA(?:ruba)?OS-CX Version *: ([A-Za-z]+\.\d{2}\.\d{2}\.\d{4})", string:cmd_res);
+  if(!empty_or_null(os_level) && !empty_or_null(os_level[1]))
+  {
+    os_level = os_level[1];
+    replace_kb_item(name:aruba_kb_prefix + 'version', value:os_level);
+
+    replace_kb_item(name:"Host/OS/show_system", value:'ArubaOS-CX ' + os_level);
+    replace_kb_item(name:"Host/OS/show_system/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/show_system/Type", value:"switch");
+  }
+  else
+  {
+    failure_kb_msg =
+      'The remote operating system appears to be a type of ArubaOS CX device.\n' +
+      'However, we were unable to parse the OS version from the command output of show system,\n' +
+      'and OS security patch assessment will not be enabled at this time.\n';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  # Try to get the product descriptor if possible.
+  # Don't bail out if this fails, this is entirely optional.
+
+  product_label = pregmatch(pattern:"Product Name *: (.*?)(?:,|\s*\n)", string:cmd_res);
+  if(!empty_or_null(product_label) && !empty_or_null(product_label[1]))
+  {
+    product_label = product_label[1];
+    replace_kb_item(name:aruba_kb_prefix + 'product', value:product_label);
+    report += '\nProduct: ' + product_label;
+  }
+
+  report += '\nOS security patch assessment checks have been enabled for ArubaOS CX, version ' + os_level + '.';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_aruba.static', value: 274);
+}
+
+# HP/HPE Comware Switches, information obtained with `summary` command
+function handle_hp_comware(session, use_shell_handler, &channel, cmd_res)
+{
+  var match, os_name;
+  var comware_kb_prefix = 'Host/HP_Switch';
+
+  replace_kb_item(name:comware_kb_prefix+'/summary',value:cmd_res);
+
+  report += '\nCommand execution for HP Switch (Comware) device successful.';
+
+  # Do not actually need to run any additional commands,
+  # we have the version and product available in one.
+
+  # HP switched to HPE at a point
+  match = pregmatch(pattern:"(HPE?) ([^\s]+) Switch", string:cmd_res);
+  if (!isnull(match))
+  {
+    os_name = match[1] + ' ' + match[2] + ' Switch ';
+    report += '\nProduct: '+os_name+'\n';
+  } else {
+    failure_kb_msg =
+      'The remote operating system appears to be a type of HP switch device.\n'+
+      'However, we were unable to parse the product type from the output of the `summary` command,\n'+
+      'and OS security patch assesment will not be enabled at this time.\n';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  match = pregmatch(pattern:"Comware Software, Version ([0-9][0-9.]+),? Release ([^\s]+)", string:cmd_res);
+  if (!isnull(match))
+  {
+    os_name += "with Comware software version " + match[1] + " release " + match[2];
+    report += 'Version: '+match[1]+' release '+match[2];
+  } else {
+    failure_kb_msg =
+      'The remote operating system appears to be a type of HP switch device.\n'+
+      'However, we were unable to parse the OS version from the output of the `summary` command,\n'+
+      'and OS security patch assesment will not be enabled at this time.\n';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  foreach var line (split(cmd_res, keep:FALSE))
+  {
+    if (preg(pattern:"^HPE? [^ ]+ Switch uptime is ", string:line))
+    {
+      replace_kb_item(name:"Host/last_reboot", value:line);
+      break;
+    }
+  }
+
+  set_kb_item(name:"Host/OS/showver", value:os_name);
+  set_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  set_kb_item(name:"Host/OS/showver/Type", value:"switch");
+  set_kb_item(name:comware_kb_prefix, value:TRUE);
+
+  report += '\nOS security patch assessment checks have been enabled for HP switch\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_aruba.static', value: 339);
+}
+
+#
+# callback for systems without "Aruba Central" in show aruba-central
+#
+function handle_not_aruba_s(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/show_aruba-central", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showarubacentral_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_aruba_s'] = TRUE;
+  }
+}
+
+#
+# callback for systems without "ArubaOS-CX Version" in show system
+#
+function handle_not_aruba_cx(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/show_system", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showsystem_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_aruba_cx'] = TRUE;
+  }
+}
+
+#
+# callback for HP devices without "Comware" in `summary`
+#
+function handle_not_hp_comware(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/summary", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['summary_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_hp_comware'] = TRUE;
+  }
+}
+

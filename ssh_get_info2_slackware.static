@@ -1,0 +1,145 @@
+#TRUSTED 57991da3524d300b1649293a2fe3aee7b68ea6f97047708bff3ac705057d3a7b8c19080e2ec1411671c48d9f0447337042b033d9ebbb48032046ab2429a219e17abd8a2344353bfdba1935a39477b7449bc2b22acb00e37a6ebcca9eb5521d58fd357b8bb49735c4a849754048cb4d8070f7b096cbae09dfe982a1e5dca11394f2ce9e9862e813e9788f2a172edcd1196d6ccf56ebd2b9bac83ed7f07842eaf0c952d53a8df8d7b44a6263585d559bf86d68a0952c0d763e74a7587c86eaeac80c8688033913530ea8dcb96ad945ee02d5d739b4fddb63b34f0083b895af7d8399f5a966fef6fdc681d8154bd951a8bf6edf79353bcf0cc8d00a3ef6c25872138f5b618cdd7a87bdc435504180c6deb127a8ffed2806fcda1061878e1df9e68ff457e032b17101468e7f956b0d282caac45c16264bdfcb9beddcc864cbcce159979c1a492fab22e6cffbee277b0d52b6447c5b7b101a14269cfbda5bf4fb97a777ceb749f0a824c638646afb7c255429e7bc52c0c74bfba97d27a1ac1ee99b5b8b15ac9f88a167c3c586793e7ea32c1f670b17fb34f7a77da60904121906da8391e4f4b4b9111e0e3e02565ca25bbf67178a87bf3e0280828edb1217c966268b9d3a52ffa1ce265d995c1eb164614985c73bb5cba49c3cb2933ece2eea38f29257e504405bbf6f2bedf2e7875e0ac55e3c1565e40f26d3a8a070260551fbfb99
+#TRUST-RSA-SHA256 1b83ec507fe3c0fdd4b68a827af9c797791c07c95743fa1cc0e0a53bd1754c56eace98b62b7f430b77c82a66d1956be68e37aeb218e4edb9d46d04de0ca4c771f88bdc01f70ccfeca9edfe6dc9709cac61e2d8cb90758a8356740cd9b50bdbf2194c29ae2b47f3525102b38394287fe4a942aad25bcd1b9cc07235931967f033c78740c7178dccb458c7d4e10d87b4012ff3b01268fceceb11fa4b4c6f31a58e4ea6850613b6520afc3e90207f97a67af61fe74e094650adc28f72b7cca0c976e68fefb0a01f5bb5ceff78c2e86d001517e49a6af1b50b7d1629a93de42e9182cae5db8f615f51a240c4dd8bfeb472eefef1c170049d78e9b7fe98e6b8ba2cc3c52a31508d9a424ef79fc07559893e88355df5541979a9a432efe25211bc7154fa918007b1c76ec45cd1d9561cc17ca659fcc75ef3404ed80d95414fc16226ed1fb86421b9657fd7d66ca630520135271cf052e607f1e746c92cd1b63612bb9c788ca81298985ab764315456c938021716101f05ab51d651ec0105f5aec4f02419196cc2504e0e1c7e3780c0082d4f4288ca1a44be4767e4b2606cc4896f5304372f92159e0217c55516d2cebee7d3399663500a07865e9a862e449b0757142e619d785a4e7f4128a76d07197069c1b007dc60971112bd55aa753ee222bf4c3e1fcd531cedbe8c21ab42147956bc9441553adfa8d26371f6a7ed2b2442b1bfc5
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+#
+# Revision: 1.5
+#
+
+# Slackware helper functions
+
+
+
+function handle_slackware_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  var err_msg;
+  var packages = run_command(cmd:"ls -1 /var/log/packages",
+                           session:session,
+                           use_shell_handler:use_shell_handler,
+                           channel:channel);
+
+  var cpu = host_info_key_val['cpu'];
+
+  var slack_ver = ereg_replace(string: cmd_res, pattern: "^Slackware +", replace: "");
+  report += '\nThe remote Slackware system is :\n' + slack_ver;
+
+  if (slack_ver !~ '^[0-9.]+[ \t\r\n]*$')
+  {
+    err_msg =
+'\n' + 'The Slackware version is unknown; therefore, OS Security Patch Assessment' +
+'\n' + 'is not available.\n';
+    failure_kb_msg =
+      "Could not identify the version of the remote Slackware system.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += err_msg;
+    return TRUE;
+  }
+  if (session) session.clear_cmd_error();
+
+  register_slackware_os(version:slack_ver, cpu:cpu);
+
+  if (packages && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    set_kb_item(name:"Host/Slackware/packages", value:packages);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_slackware.static', value: 51);
+    set_kb_item(name: "Host/etc/slackware-version", value: cmd_res);
+    set_kb_item(name:"Host/Slackware/release", value: chomp(slack_ver));
+    return TRUE;
+  }
+
+  if (session.cmd_error)
+  {
+    err_msg =
+'\nOS Security Patch Assessment is not available because of the following
+error :
+  ' + session.cmd_error;
+  }
+  else if (session.error)
+  {
+    err_msg =
+'\nOS Security Patch Assessment is not available because of the following
+error :
+
+' + session.error;
+  }
+
+  if (!packages)
+  {
+    if(!err_msg) err_msg =
+'\nOS Security Patch Assessment is not available because Nessus failed to list
+packages under \'/var/log/packages\'.\n';
+    failure_kb_msg = "'/var/log/packages' could not be read";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  return TRUE;
+}
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [version:str]  Slackware version
+# @param [cpu:str]      CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_slackware_os(version, cpu)
+{
+  var pattern = '^([0-9.]+)';
+  var matches = pregmatch(pattern:pattern, string:version, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS version: ' + version);
+    return NULL;
+  }
+
+  version = matches[1];
+
+  # Product
+  #  - Default to Linux if neither are specified.
+  var product = 'Slackware Linux';
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version_split = split(version, sep:'.', keep:FALSE);
+  var release = version_split[0];
+
+  # OS Name
+  var os_name = strcat(product, ' ', version);
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:/o:slackware:slackware_linux:14.2
+  var cpe = 'cpe:/o:slackware:slackware_linux';
+
+  
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'Slackware Linux Project',
+    product     : product,
+
+    release     : release,
+    version     : version,
+
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    cpe         : cpe
+  );
+
+  return NULL;
+}

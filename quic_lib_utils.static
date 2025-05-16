@@ -1,0 +1,495 @@
+#TRUSTED ad6cc931197e426783161b0d9e733f3275fdd780f5ad06f33f4f12b595c0e9c02a6e13cb7c6cfd0e01d8e6b6094ac1935b29a5804561f69c7e21b9a143eaf41b7935cf4b9d645e642744154f35c2ae11264bf676c3e0354e0bd571df03ab484d019ab1c4b7fb9107539ac46ac5f9a43b198dcd1ec0ccef8d0cb1d0cf88c04329e3f14f736cb7a34e5e0824508db854b4cf7b917382b76b6ddf88513a879dc9c233e546d42f84a863fbe2d82f86f61036ce73c787ec19a2e822a8d7df0a1a41fad8825abc9fa02944683bc6b243b7b6504603985b314334693892a830833c255cf1064d0c2abd606b5f851a9e1fb91b022fcc400e92c0c072658b0ea96a9c186cb3280ae35cbbf99671cf47a03f6c2fd186c2b5411deb277dfae50f510344401fba6327a464682bf5f302b3b305c8ef94b3038a820500c07b5097458f987d6419b3aabcab17d93b73c22a66a21007ef6b112db6a36dd660ca298e6915f5c9f8f57e577d4d8e0b8d3c843aedbf8a340193323f047408daf941785795d64fdb2d2ea4406c2fdd628f0a414ccdb26cb5c61a0ae07bda43f48fb9d2230d30ae914274e488877295b84d17bf48b23f14fe266cfde8d0fc899be95bc0d785fa2f30fbd6607b8ecc0c68d7fac8477aec4650cbe500bc723743c8b1b48a6e6de627bff8fa32a47a9cbcbf19632d16224853e2b230dce2a75474c6e39a36811bc8e549fed8
+#TRUST-RSA-SHA256 2d9b68fa44e388f09dd84f5d615e12cb167cefa1cd7cd07d641e489558af3e15783fd5cf62f7cab091e4bb4e87e42d7071837648b4fb49b63439eeac38fac6b2779c27441a564cc152636d58f31890cc28c1dd82360415830a1e60a84ee03613f6d6cfa2b913d19239cf613f0be79703bb181b4a6b3dea9be9c7d1a12e4b841ccc7310ce895ce08adaacd50711f99eadfdb25b0de2815fc60227a97b63ddcc28de6074e46f27bd4990266d2002afbc437c4627aa7a11f706ae2e001772d44f8e4c8d3a1fb72dcf2c78edc7af4eb56c1e49216373bebd9542164123cebbf187f632db968e5d932b6df7c8e375710fa773213285b99826c39334b2203eddbde46b3544d470e5689f7ebd741331b4d2db1b950b36aad0b4a894b2c7df9fbbe9de5a1db439536deb5edb50e8bd9d693024ee39d9b6705a843dabfff73e4d7e32976d5b4520cb953a3d1d16bf0845e139f703232b4d0153a2db9c6e9fd246ae46faa3f737f060315911a04b1e6b63b47e52bfae058a3870d2cdd2db8715c55ad4e668e220402a95e5d8ce8c66b2769c95343a04b0088f8bb8c99f5d1b7bee8d4ab383c58ffa12efd843f538b97ab7e2baea661fab0eb75839583a258bc89409e5c6451ecbba20587805c31bf32dc4eb250ec9dae67992c99b5ec16a8f7bb79c5e279b3ba4ccbff855a33b5a7f31037bfd8f36969d847c347a8be01e5eb5c7329b5b19
+
+###
+#
+# Miscellaneous functions in support of the Nessus QUIC library.
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+###
+
+namespace quic
+{
+  ##
+  # Maps a QUIC error code to descriptive text.
+  #
+  # @param [error:int] A QUIC error code.
+  #
+  # @return [string] Text that describes the error represented by the argument.
+  # @remark
+  #   See https://www.rfc-editor.org/rfc/rfc9000.html#name-error-codes
+  ##
+  function get_error_desc(error)
+  {
+    switch(error)
+    {
+      case STATELESS_RESET:
+        return "Stateless Reset received";
+      case SUCCESS:
+        return "No error";
+      case INTERNAL_ERROR:
+        return "Internal error";
+      case CONNECTION_REFUSED:
+        return "Connection refused";
+      case FLOW_CONTROL_ERROR:
+        return "Flow control error";
+      case STREAM_LIMIT_ERROR:
+        return "Stream limit error";
+      case STREAM_STATE_ERROR:
+        return "Stream state error";
+      case FINAL_SIZE_ERROR:
+        return "Final size error";
+      case FRAME_ENCODING_ERROR:
+        return "Frame encoding error";
+      case TRANSPORT_PARAMETER_ERROR:
+        return "Transport parameter error";
+      case CONNECTION_ID_LIMIT_ERROR:
+        return "Connection ID limit error";
+      case PROTOCOL_VIOLATION:
+        return "Protocol Violation";
+      case INVALID_TOKEN:
+        return "Invalid token";
+      case APPLICATION_ERROR:
+        return "Application error";
+      case CRYPTO_BUFFER_EXCEEDED:
+        return "Crypto buffer overflow error";
+      case KEY_UPDATE_ERROR:
+        return "Key update error";
+      case AEAD_LIMIT_REACHED:
+        return "AEAD limit reached";
+      case NO_VIABLE_PATH:
+        return "No viable path";
+    }
+
+    if(error & CRYPTO_ERROR)
+      return "Crypto error";
+
+    return "Unknown error - code: " + serialize(error);
+  }
+
+
+  ##
+  # Maps a QUIC frame type code to descriptive text.
+  #
+  # @param [type:int] A QUIC frame type code.
+  #
+  # @return [string] Text that describes the frame represented by the argument.
+  # @remark
+  #   See https://www.rfc-editor.org/rfc/rfc9000.html#name-frame-types-and-formats
+  ##
+  function get_frame_desc(type)
+  {
+    switch(type)
+    {
+      case PADDING_FRAME:
+        return "Padding";
+      case PING_FRAME:
+        return "Ping";
+      case ACK_FRAME:
+      case ACK_CONGESTION_FRAME:
+        return "Ack";
+      case RESET_STREAM_FRAME:
+        return "Reset stream";
+      case STOP_SENDING_FRAME:
+        return "Stop sending";
+      case CRYPTO_FRAME:
+        return "Crypto";
+      case NEW_TOKEN_FRAME:
+        return "New token";
+      case STREAM_FRAME:
+      case STREAM_FIN_FRAME:
+      case STREAM_LEN_FRAME:
+      case STREAM_LEN_FIN_FRAME:
+        return "Stream";
+      case MAX_DATA_FRAME:
+        return "Max data";
+      case MAX_STREAM_DATA_FRAME:
+        return "Max stream data";
+      case MAX_STREAMS_BI_FRAME:
+        return "Max bidirectional streams";
+      case MAX_STREAMS_UNI_FRAME:
+        return "Max unidirectional streams";
+      case DATA_BLOCKED_FRAME:
+        return "Data blocked";
+      case STREAM_DATA_BLOCKED_FRAME:
+        return "Stream data blocked";
+      case STREAMS_BLOCKED_BI_FRAME:
+        return "Bidirectional streams blocked";
+      case STREAMS_BLOCKED_UNI_FRAME:
+        return "Unidirectional streams blocked";
+      case NEW_CONNECTION_ID_FRAME:
+        return "New connection ID";
+      case RETIRE_CONNECTION_ID_FRAME:
+        return "Retire connection ID";
+      case PATH_CHALLENGE_FRAME:
+        return "Path challenge";
+      case PATH_RESPONSE_FRAME:
+        return "Path response";
+      case CONNECTION_CLOSE_PROTO_FRAME:
+      case CONNECTION_CLOSE_APP_FRAME:
+        return "Connection close";
+      case HANDSHAKE_DONE_FRAME:
+        return "Handshake done";
+    }
+
+    return "<unknown>";
+  }
+
+
+  ##
+  # Maps a QUIC packet type code to descriptive text.
+  #
+  # @param [type:int] A QUIC packet type code.
+  #
+  # @return [string] Text that describes the packet represented by the argument.
+  # @remark
+  # See https://www.rfc-editor.org/rfc/rfc9000.html#long-packet-types as well as
+  # sections 17.2.1 and 17.3.  Since the specification does not assign packet type
+  # codes to 1-RTT and Version Negotiation packet types, this library assigns -2
+  # and -1 to these packet types respectively.
+  ##
+  function get_packet_desc(type)
+  {
+    switch(type)
+    {
+      case VERSION_NEGO_PACKET:
+        return "Version Negotiation";
+      case INITIAL_PACKET:
+        return "Initial";
+      case ZERO_RTT_PACKET:
+        return "0-RTT";
+      case HANDSHAKE_PACKET:
+        return "Handshake";
+      case RETRY_PACKET:
+        return "Retry";
+      case ONE_RTT_PACKET:
+        return "1-RTT";
+    }
+
+    return "<unknown>";
+  }
+
+
+  ##
+  # Maps the packet space codes defined in this library to descriptive text.
+  #
+  # @param [space_type:int] A code designating a packet space type.
+  #
+  # @return [string] Text that describes the packet space represented by the argument.
+  # @remark
+  # Packet spaces are described in https://www.rfc-editor.org/rfc/rfc9000.html#packet-numbers
+  # This library assigns the following codes to these spaces:
+  #     CRYPTO_LEVEL_INITIAL     0
+  #     CRYPTO_LEVEL_HANDSHAKE   1
+  #     CRYPTO_LEVEL_APPLICATION 2
+  ##
+  function get_packet_space_desc(space_type)
+  {
+    if(space_type == CRYPTO_LEVEL_INITIAL)
+      return "Initial";
+    else if(space_type == CRYPTO_LEVEL_HANDSHAKE)
+      return "Handshake";
+    else if(space_type == CRYPTO_LEVEL_APPLICATION)
+      return "Application";
+
+    return "<unknown>";
+  }
+
+
+  ##
+  # Returns the cipher suites currently supported by this QUIC library.
+  #
+  # @return [list] Returns a list of TLS 1.3 cipher suite descriptors.
+  ##
+  function cipher_suites()
+  {
+    return[
+        "TLS13_AES_128_GCM_SHA256"
+      ];
+  }
+
+
+  ##
+  # Creates a TLS 1.3 ClientHello packet.
+  #
+  # @param [scid:bytes]       A QUIC source connection ID.
+  # @param [public_key:bytes] The public part of a key exchange pair.
+  # @param [challenge:bytes]  A TLS 1.3 challenge encoding the time and random bytes.
+  # @param [app_protos:list]  A list of strings describing supported application protocols.
+  #
+  # @return [bytes] Returns a TLS 1.3 ClientHello message
+  ##
+  function make_tls13_client_hello(scid, public_key, challenge, app_protos)
+  {
+    var transport_params = tls13_transport_params_ext(scid:scid);
+
+    var public_keys = [];
+    public_keys[0x17] = public_key;
+    var ciphers = get_cipherspec_from_names(ciphernames:cipher_suites());
+
+    var ch = tls13_client_hello(cipher_suites:ciphers,
+                                supported_protos:app_protos,
+                                supported_groups:[0x0017],
+                                public_keys: public_keys,
+                                optional_exts:transport_params,
+                                challenge:challenge);
+
+    #Remove the TLS protocol header bytes - this is QUIC!
+    ch = substr(ch, 5);
+
+    return ch;
+  }
+
+
+  ##
+  # Returns the UDP network timeout used for this library in seconds.
+  #
+  # @return [int] Seconds to wait for a response from the server to be complete.
+  ##
+  function get_timeout()
+  {
+    #For this library we will wait one second to determine if any more packets are coming.
+    return 1;
+  }
+
+
+  ##
+  # Encodes a single QUIC transport parameter.
+  #
+  # @param [code:int]  The transport parameter code.
+  # @param [value:int] The parameter value. (optional)
+  #
+  # @return [bytes] The encoded transport parameter.
+  # @remark
+  #   See https://www.rfc-editor.org/rfc/rfc9000.html#transport-parameter-encoding
+  ##
+  function make_int_transport_param(code, value)
+  {
+    var param = '';
+    var pval;
+    if(!isnull(value))
+      pval = encode_variable_length_int(bytes:mkdword(0) + mkdword(value));
+
+    param += mkbyte(code);
+    if(!isnull(value))
+    {
+      param += encode_variable_length_int(bytes:mkdword(0) + mkdword(strlen(pval)));
+      param += pval;
+    }
+    else
+    {
+      param += mkbyte(0);
+    }
+
+    return param;
+  }
+
+
+  ##
+  # Creates a QUIC TLS13 transport parameters extension.  All values are hard-coded,
+  # except for the source connection id.
+  #
+  # @param [scid:bytes] The source connection id.
+  #
+  # @return [bytes] Returns the encoded extension.
+  # @remark
+  # QUIC Transport Parameters Extension - https://www.rfc-editor.org/rfc/rfc9001.html#name-quic-transport-parameters-e
+  ##
+  function tls13_transport_params_ext(scid)
+  {
+    var params = '';
+    var pval;
+
+    #The idle timeout is 300 times our network timeout.
+    var timeout = get_timeout() * 1000;
+    params += make_int_transport_param(code:MAX_IDLE_TIMEOUT_TP, value:timeout * 300);
+    params += make_int_transport_param(code:MAX_UDP_PAYLOAD_TP, value:1200);
+    params += make_int_transport_param(code:INITIAL_MAX_DATA_TP, value:40 * 1024 * 1024);
+    params += make_int_transport_param(code:INITIAL_LOCAL_BIDI_MAX_TP, value:1024 * 1024);
+    params += make_int_transport_param(code:INITIAL_REMOTE_BIDI_MAX_TP, value:1024 * 1024);
+    params += make_int_transport_param(code:INITIAL_UNI_MAX_TP, value:1024 * 1024);
+    params += make_int_transport_param(code:INITIAL_MAX_BIDI_STREAMS_TP, value:40);
+    params += make_int_transport_param(code:INITIAL_MAX_UNI_STREAMS_TP, value:40);
+    params += make_int_transport_param(code:ACK_DELAY_EXP_TP, value:3);
+    params += make_int_transport_param(code:DISABLE_ACTIVE_MIGRATION_TP);
+
+    params += mkbyte(INITIAL_SCID_TP);
+    params += encode_variable_length_int(bytes:mkdword(0) + mkdword(strlen(scid)));
+    params += scid;
+
+    return mkword(0x39) + mkword(strlen(params)) + params;
+  }
+
+
+  ##
+  # Emulates AES-ECB encryption using primitives supported by NASL.
+  #
+  # @param [plaintext:bytes] The data to encrypt.
+  # @param [key:bytes]       An encryption key.
+  #
+  # @return [bytes] Returns the encrypted ciphertext.
+  ##
+  function aes_ecb_encrypt(plaintext, key)
+  {
+    if(empty_or_null(plaintext) || strlen(key) % 16 != 0)
+      return NULL;
+
+    var ciphertext = '';
+
+    if(strlen(plaintext) % 16 > 0)
+      plaintext += crap(data:'\x00', length:16 - (strlen(plaintext) % 16));
+
+    var data = crap(data:'\x00', length:16);
+    var res, block;
+    var ptlen = strlen(plaintext);
+    for(var i = 0; i < ptlen; i += 16)
+    {
+      block = substr(plaintext, i, i + 15);
+      res = aes_cbc_encrypt(data:data, iv:block, key:key);
+      if(isnull(res))
+        return NULL;
+      ciphertext += res[0];
+    }
+
+    return ciphertext;
+  }
+
+
+  ##
+  # Strips the length encoding from a QUIC variable length int
+  # and pads it to eight bytes.
+  #
+  # @param [bytes:bytes] A QUIC variable length int
+  #
+  # @return [bytes|NULL] Returns eight bytes possibly pre-padded with zeros, representing a big-endian integer.
+  #                      Invalid input returns NULL.
+  ##
+  function decode_variable_length_int(bytes)
+  {
+    if(isnull(bytes) || typeof(bytes) != "data")
+      return NULL;
+
+    var size = 1 << ((ord(bytes[0]) & 0xc0) >> 6);
+    if(strlen(bytes) < size)
+      return NULL;
+
+    bytes[0] = raw_string(ord(bytes[0]) & 0x3f);
+    if(strlen(bytes) < 8)
+      bytes = crap(data:'\x00', length: 8 - strlen(bytes)) + bytes;
+
+    return bytes;
+  }
+
+
+  ##
+  # Encodes eight bytes representing a big-endian integer as a
+  # QUIC variable length integer.
+  #
+  # @param [bytes:bytes] Eight bytes of integer data
+  #
+  # @return [bytes|NULL] A QUIC variable length integer on success, NULL otherwise.
+  ##
+  function encode_variable_length_int(bytes)
+  {
+    if(strlen(bytes) != 8 || ord(bytes[0]) >= 0x40)
+      return NULL;
+
+    var sub = substr(bytes, 0, 3);
+    if(getdword(sub) == 0 && ord(bytes[4]) < 0x40)
+    {
+      sub = substr(bytes, 4, 5);
+      if(getword(sub) == 0 && ord(bytes[6]) < 0x40)
+      {
+        if(getbyte(bytes[6]) == 0 && ord(bytes[7]) < 0x40)
+          return mkbyte(ord(bytes[7]));
+
+        bytes[6] = mkbyte(ord(bytes[6]) | 0x40);
+        return substr(bytes, 6, 7);
+      }
+
+      bytes[4] = mkbyte(ord(bytes[4]) | 0x80);
+      return substr(bytes, 4, 7);
+    }
+
+    bytes[0] = mkbyte(ord(bytes[0]) | 0xc0);
+    return bytes;
+  }
+
+
+  ##
+  # Increments an eight byte QUIC 0..2^62 big-endian integer.
+  #
+  # @param [bytes:bytes] A decoded variable length integer per RFC9000 Sec. 16
+  # @param [protected:int] Number of protected LSB bits.  This is for stream IDs (optional)
+  #
+  # @return [bytes] Returns an eight byte big-endian integer that is larger than the input param by one.
+  ##
+  function inc_full_integer(bytes, protected)
+  {
+    var inc2 = FALSE;
+    if(isnull(protected))
+      protected = 0;
+
+    var increment = 1;
+    increment <<= protected;
+
+    if(strlen(bytes) != 8 || ord(bytes[0]) >= 0x40)
+      return NULL;
+
+    var lower = getdword(blob:bytes, pos:4);
+    lower += increment;
+
+    if(lower < increment)
+      inc2 = TRUE;
+
+    var upper = getdword(blob:bytes, pos:0);
+    if(inc2)
+    {
+      # The RFC9000 maximum variable length integer value
+      if((upper & 0x3fffffff) == 0x3fffffff)
+        return crap(data:'\x00', length:8);
+
+      upper++;
+    }
+
+    return mkdword(upper) + mkdword(lower);
+  }
+
+
+  ##
+  # Interprets the bytes following offset in the provided blob
+  # as an encoded QUIC variable length integer.
+  #
+  # @param [blob:bytes] A data blob containing a variable length integer.
+  # @param [offset:int] Offset of the integer bytes.
+  #
+  # @return [list] Returns [int, offset] representing the parsed value and an offset
+  #                into the blob following the encoded integer.  If an error occurs [-1, -1] is returned.
+  ##
+  function parse_variable_length_int(blob, offset)
+  {
+    if(isnull(blob) || isnull(offset) || strlen(blob) < offset + 1)
+      return [-1, -1];
+
+    var size = 1 << ((ord(blob[offset]) & 0xc0) >> 6);
+    if(size < 1 || size > 8)
+      return [-1, -1];
+
+    if(strlen(blob) < offset + size)
+      return [-1, -1];
+    var bytes = substr(blob, offset, offset + size - 1);
+    bytes = decode_variable_length_int(bytes:bytes);
+    var val = getdword(blob:bytes, pos:4);
+    return [val, offset + size];
+  }
+}
+

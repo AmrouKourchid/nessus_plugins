@@ -1,0 +1,203 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The descriptive text and package checks in this plugin were
+# extracted from Red Hat Security Advisory RHSA-2012:0343. The text
+# itself is copyright (C) Red Hat, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(193977);
+  script_version("1.2");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2024/04/29");
+
+  script_cve_id(
+    "CVE-2011-3389",
+    "CVE-2011-3545",
+    "CVE-2011-3547",
+    "CVE-2011-3548",
+    "CVE-2011-3549",
+    "CVE-2011-3552",
+    "CVE-2011-3556",
+    "CVE-2011-3557",
+    "CVE-2011-3560"
+  );
+  script_xref(name:"RHSA", value:"2012:0343");
+  script_xref(name:"CEA-ID", value:"CEA-2019-0547");
+
+  script_name(english:"RHEL 5 : java-1.4.2-ibm-sap (RHSA-2012:0343)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote Red Hat host is missing one or more security updates for java-1.4.2-ibm-sap.");
+  script_set_attribute(attribute:"description", value:
+"The remote Redhat Enterprise Linux 5 host has packages installed that are affected by multiple vulnerabilities as
+referenced in the RHSA-2012:0343 advisory.
+
+  - HTTPS: block-wise chosen-plaintext attack against SSL/TLS (BEAST) (CVE-2011-3389)
+
+  - Oracle/IBM JDK: unspecified vulnerability fixed in 6u29 (Sound) (CVE-2011-3545)
+
+  - OpenJDK: InputStream skip() information leak (Networking/IO, 7000600) (CVE-2011-3547)
+
+  - OpenJDK: mutable static AWTKeyStroke.ctor (AWT, 7019773) (CVE-2011-3548)
+
+  - Oracle/IBM JDK: unspecified vulnerability fixed in 6u29 (Swing) (CVE-2011-3549)
+
+  - OpenJDK: excessive default UDP socket limit under SecurityManager (Networking, 7032417) (CVE-2011-3552)
+
+  - OpenJDK: RMI DGC server remote code execution (RMI, 7077466) (CVE-2011-3556)
+
+  - OpenJDK: RMI registry privileged code execution (RMI, 7083012) (CVE-2011-3557)
+
+  - OpenJDK: missing checkSetFactory calls in HttpsURLConnection (JSSE, 7096936) (CVE-2011-3560)
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://access.redhat.com/security/updates/classification/#moderate");
+  script_set_attribute(attribute:"see_also", value:"http://www.ibm.com/developerworks/java/jdk/alerts/");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=737506");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=745379");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=745387");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=745397");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=745459");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=745464");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=745473");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=747191");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=747198");
+  # https://access.redhat.com/security/data/csaf/v2/advisories/2012/rhsa-2012_0343.json
+  script_set_attribute(attribute:"see_also", value:"http://www.nessus.org/u?bb06e747");
+  script_set_attribute(attribute:"see_also", value:"https://access.redhat.com/errata/RHSA-2012:0343");
+  script_set_attribute(attribute:"solution", value:
+"Update the RHEL java-1.4.2-ibm-sap package based on the guidance in RHSA-2012:0343.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:H/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:H/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2011-3549");
+  script_set_attribute(attribute:"cvss3_score_source", value:"CVE-2011-3389");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+  script_set_attribute(attribute:"exploited_by_malware", value:"true");
+  script_set_attribute(attribute:"metasploit_name", value:'Java RMI Server Insecure Default Configuration Java Code Execution');
+  script_set_attribute(attribute:"exploit_framework_metasploit", value:"true");
+  script_set_attribute(attribute:"vendor_severity", value:"Moderate");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2011/09/06");
+  script_set_attribute(attribute:"patch_publication_date", value:"2012/02/29");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2024/04/27");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:redhat:enterprise_linux:4");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:redhat:enterprise_linux:5");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.4.2-ibm-sap");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.4.2-ibm-sap-demo");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.4.2-ibm-sap-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.4.2-ibm-sap-javacomm");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.4.2-ibm-sap-src");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Red Hat Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2024 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl", "redhat_repos.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/RedHat/release", "Host/RedHat/rpm-list", "Host/cpu");
+
+  exit(0);
+}
+
+
+include('rpm.inc');
+include('rhel.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+var os_release = get_kb_item('Host/RedHat/release');
+if (isnull(os_release) || 'Red Hat' >!< os_release) audit(AUDIT_OS_NOT, 'Red Hat');
+var os_ver = pregmatch(pattern: "Red Hat Enterprise Linux.*release ([0-9]+(\.[0-9]+)?)", string:os_release);
+if (isnull(os_ver)) audit(AUDIT_UNKNOWN_APP_VER, 'Red Hat');
+os_ver = os_ver[1];
+if (!rhel_check_release(operator: 'ge', os_version: os_ver, rhel_version: '5')) audit(AUDIT_OS_NOT, 'Red Hat 5.x', 'Red Hat ' + os_ver);
+
+if (!get_kb_item('Host/RedHat/rpm-list')) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 's390' >!< cpu && 'aarch64' >!< cpu && 'ppc' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'Red Hat', cpu);
+
+var constraints = [
+  {
+    'repo_relative_urls': [
+      'content/dist/rhel/server/5/5Server/x86_64/sap/os',
+      'content/dist/rhel/server/5/5Server/x86_64/sap/source/SRPMS'
+    ],
+    'pkgs': [
+      {'reference':'java-1.4.2-ibm-sap-1.4.2.13.11.sap-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'java-1.4.2-ibm-sap-demo-1.4.2.13.11.sap-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'java-1.4.2-ibm-sap-devel-1.4.2.13.11.sap-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'java-1.4.2-ibm-sap-javacomm-1.4.2.13.11.sap-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'java-1.4.2-ibm-sap-src-1.4.2.13.11.sap-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE}
+    ]
+  }
+];
+
+var applicable_repo_urls = rhel_determine_applicable_repository_urls(constraints:constraints);
+if(applicable_repo_urls == RHEL_REPOS_NO_OVERLAP_MESSAGE) exit(0, RHEL_REPO_NOT_ENABLED);
+
+var flag = 0;
+foreach var constraint_array ( constraints ) {
+  var repo_relative_urls = NULL;
+  if (!empty_or_null(constraint_array['repo_relative_urls'])) repo_relative_urls = constraint_array['repo_relative_urls'];
+  foreach var pkg ( constraint_array['pkgs'] ) {
+    var reference = NULL;
+    var _release = NULL;
+    var sp = NULL;
+    var _cpu = NULL;
+    var el_string = NULL;
+    var rpm_spec_vers_cmp = NULL;
+    var epoch = NULL;
+    var allowmaj = NULL;
+    var exists_check = NULL;
+    var cves = NULL;
+    if (!empty_or_null(pkg['reference'])) reference = pkg['reference'];
+    if (!empty_or_null(pkg['release'])) _release = 'RHEL' + pkg['release'];
+    if (!empty_or_null(pkg['sp'])) sp = pkg['sp'];
+    if (!empty_or_null(pkg['cpu'])) _cpu = pkg['cpu'];
+    if (!empty_or_null(pkg['el_string'])) el_string = pkg['el_string'];
+    if (!empty_or_null(pkg['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = pkg['rpm_spec_vers_cmp'];
+    if (!empty_or_null(pkg['epoch'])) epoch = pkg['epoch'];
+    if (!empty_or_null(pkg['allowmaj'])) allowmaj = pkg['allowmaj'];
+    if (!empty_or_null(pkg['exists_check'])) exists_check = pkg['exists_check'];
+    if (!empty_or_null(pkg['cves'])) cves = pkg['cves'];
+    if (reference &&
+        _release &&
+        rhel_decide_repo_relative_url_check(required_repo_url_list:repo_relative_urls) &&
+        (applicable_repo_urls || (!exists_check || rpm_exists(release:_release, rpm:exists_check))) &&
+        rpm_check(release:_release, sp:sp, cpu:_cpu, reference:reference, epoch:epoch, el_string:el_string, rpm_spec_vers_cmp:rpm_spec_vers_cmp, allowmaj:allowmaj, cves:cves)) flag++;
+  }
+}
+
+if (flag)
+{
+  var extra = NULL;
+  if (isnull(applicable_repo_urls) || !applicable_repo_urls) extra = rpm_report_get() + redhat_report_repo_caveat();
+  else extra = rpm_report_get();
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_HOLE,
+      extra      : extra
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'java-1.4.2-ibm-sap / java-1.4.2-ibm-sap-demo / etc');
+}

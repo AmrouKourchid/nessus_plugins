@@ -1,0 +1,356 @@
+#TRUSTED 119f62cef7644b2bc6daad17ebea29aaff761332ae6b5a3714f4d5aee66c0da66218bfac987ca2a40874e54745acb4d458768cb91ad3a309299f2aaa4e86370259b9ad4ac6c67cec9d6cd2d63a8d07744d297cb57566d01af5306bcfe30c2cbee954ef48eaf65bf2432be62e79bf56e722ef56a8c87326bbf29b3e04cca7c0b299ffc3066e6e98b75826d4057f8765e31927e7f0ac719f98e9bcc238f298720835d12d259eb225d5cb9e8a7dfe11483d5fdec771b82b42a986bb11ba32af5bf12581963451da109ff0fd7d830225bcdade91463c1d0018be2ea731f2abbb883df7cb1f31132ed938f827eaae32dfae78ba063a9d3dda33cdad33243e3e96d9695d61b18f1ff07fd21a8ec07228e180b60625a2265491887e537749a7517214b2881eeb5522517b2ce7c17348bbe40ba4d4cc2cf3f3eb37ce2799a5cfd1f2d073c7e2e2cec20298c7c7da5c184e3132d3dd191598b78b31a6ae92453fcc3e03b79b48d940be77d58f21fd8609e6d5f102c557808a1a73eb0d89b7a92d2caac074dd377a932ad1962d76a9ef0529fb4e84cc5c3943c1637ee7bb79521e32f57449c22880c88b7e9ae7c624629162870151cba73b9e94acb22f5de6a9c56de0f4281d9873d0deff4feb68be52ea5f98d3c56b80e930a9b2522484280bc41d1b44ca3ad858452843a9061176b5235e04981e4c7118d0de337b79dd4ffa9445678fac
+#TRUST-RSA-SHA256 7f2e11d4b2f247fecfe319f0c8630a53a2ee87c8f2ecbd213f35a5a73b4e07ecdeeab8aa8d9901c5ae28524d754943bb4b7337708cd0c1d909109e7420b7806e396efb2840f1e95ad671e60dd6b576410fe5f5d328bbbaf1bb7badd02b9e197a4bd41839b571122a8cc74b61ab07146840aa272fe5e6e3ba829ebeb4a8923fe1b82a2c720a828ced4568edb65f9faaeae152872b8e7c32f29ad624cf09c1dc8e6e268705971ce9799b8d9775cbd698a01dda7fc9ab1288d4719039b13c6558fa6bc9098051555bd075bf3126e8aa97b40898084026dc4d640f6b006ab0c6e5ff91d686d21806b746c9a269b907df7fd68ce45ebe3c6867f8ed85fc8198ec3412062c026275ebabcbadda78ed3d07696715461c5e251a8193ad975f843be54277f6e35177ba270cef966aedaf0d15d1d4489c37011e4c3fa03f2c6995cbf77c3c6f72d142a630681a941287365ab1da49328e9c50f6e5c3704c1724e0b8309dd5ac10925bc2fc60c66576023334c49f618e000025274315ee2bdc32142de88856d661fdbc43780d129374c68f7a7863b143a10c21a2b5d7bee9018a9b4fb3e675e06e41328df6bb5ba6312dbe37b9ee6f3955c7cf9b5d2e73b4fb0fe986a05eed548857e8c26442bf7bc248fcae89959c997c04fea5d59d0e8ad272f463d2277e3c2a63d16f2da45489e557bff05eec2e8d6fec8ae95093c6e851cc9596493cb2
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# ucf_os.static
+#
+# Revision: 1.4
+#
+# @library ucf.inc
+#
+###
+
+namespace ucf
+{
+  ##
+  # Get the installed OS only returning OS info only if the optional specified arguments match.
+  #
+  # @param  [type:str]     The fingerprinting type used to determine the OS (local, remote, or combined) (optional).
+  # @param  [method:str]   The fingerprinting method used to determine the OS (optional).
+  #
+  # @param  [vendor:str]   Describes person or organization that manufactured or created the product (optional).
+  # @param  [product:str]  Describes the most common and recognizable title or name of the OS (optional).
+  #
+  # @param  [release:str]  The release of the product when the vendor provides one (optional).
+  # @param  [os_name:str]  Full name of the detected operating system that is most recognizable (e.g. vendor + product + release) (optional).
+  #
+  # @param  [exit_if_not_found:bool] exits if the OS is not found (default:true) (optional)
+  #
+  # @remark
+  # This wrapper is meant to contain code specific to SEOL plugins.
+  #
+  # If multiple OSes are found, the OS with the highest confidence will be returned.
+  #
+  # @return [array|NULL] OS install info (see register_os() for values) if successful
+  #         NULL otherwise
+  ##
+  function get_os(type, method, vendor, product, release, os_name, exit_if_not_found)
+  {
+    # Defaults
+    if (empty_or_null(exit_if_not_found))
+      exit_if_not_found = false;
+
+    var os_array = ::get_os(
+      type    : type,
+      method  : method,
+      vendor  : vendor,
+      product : product,
+      release : release,
+      os_name : os_name,
+      exit_if_not_found : exit_if_not_found
+    );
+
+    if (empty_or_null(os_array))
+    {
+      if (!exit_if_not_found && TAP_MODE)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'The specified arguments did not match the installed OS.');
+        return NULL;
+      }
+
+      if (!empty_or_null(os_name))
+        audit(AUDIT_OS_NOT, os_name);
+
+      audit(AUDIT_OS_NOT, 'affected');
+    }
+
+    var os_object = new ucf::os::installed_os(os_array);
+
+    return os_object;
+  }
+
+
+  ##
+  # Get the installed OS based on the CPE attributes only returning OS info only if the optional specified arguments match.
+  #
+  # @param  [type:str]        The fingerprinting type used to determine the OS (local, remote, or combined).
+  # @param  [method:str]      The fingerprinting method used to determine the OS.
+  #
+  # @param  [part:str]        Type of the product ('a' for applications, 'o' for operating systems, 'h' for hardware)
+  # @param  [vendor:str]      Describes person or organization that manufactured or created the product.
+  # @param  [product:str]     Describes the most common and recognizable title or name of the product.
+  # @param  [version:str]     Describes the particular version of the product.
+  # @param  [update:str]      Describes the particular update, service pack, or point release of the product.
+  # @parma  [edition:str]     Alias to the 'sw_edition' CPE attribute.
+  # @param  [language:str]    [RFC5646] language tag describing the supported language of the product.
+  # @param  [sw_edition:str]  Describes how the product is tailored to a particular market or class of end users
+  # @param  [target_sw:str]   Describes the software environment of the app (ie: OS)
+  # @param  [target_hw:str]   Describes the instruction set architecture of the app (ie: x86, x64)
+  # @param  [other:str]       Additional CPE 2.3 info
+  #
+  # @param  [branch:bool]     Branch the results (default:true) (optional)
+  #
+  # @param  [exit_if_not_found:bool] exits if the OS is not found or confidence is not high enough (default:true) (optional)
+  #
+  # @remark
+  # This is wrapper for `os_install:get_os_cpe()`_ that performs some additional processing for UCF/VCF functions.
+  #
+  # Example usage: ``var os = ucf::get_os_cpe(vendor:'microsoft', product:'windows_10_1507', type:'local');``
+  #
+  # Wildcards are allowed in the value since the match() function is used
+  #
+  # Warning: this function may branch.
+  # 
+  # If multiple OSes are found, the OS with the highest confidence will
+  # be returned or, if multiple OSes have the same confidence,
+  # branching will occur for each OS.
+  #
+  # @return [array|NULL] OS install info (see `register_os()`_ for values) if successful
+  #         NULL otherwise
+  ##
+  function get_os_cpe(type, method, part, vendor, product, version, update, edition, language, sw_edition,
+                      target_sw, target_hw, other, branch, exit_if_not_found)
+  {
+    # Defaults
+    if (empty_or_null(exit_if_not_found))
+      exit_if_not_found = true;
+
+    if (empty_or_null(branch))
+      branch = true;
+
+    # Since 'edition' is deprecated, use it as an alias to 'sw_edition'
+    if (!empty_or_null(edition) && empty_or_null(sw_edition))
+    {
+      sw_edition = edition;
+      edition = NULL;
+    }
+
+    var os_info_list = os_install::get_os_cpe(
+
+      type    : type,
+      method  : method,
+  
+      part       : part,
+      vendor     : vendor,
+      product    : product,
+      version    : version,
+      update     : update,
+      edition    : edition,
+      language   : language,
+      sw_edition : sw_edition,
+      target_sw  : target_sw,
+      target_hw  : target_hw,
+      other      : other,
+  
+      branch     : false,
+
+      exit_if_not_found : exit_if_not_found
+    );
+
+    if (empty_or_null(os_info_list))
+    {
+      if (!exit_if_not_found && TAP_MODE)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'The specified arguments did not match the installed OS.');
+        return NULL;
+      }
+
+      audit(AUDIT_OS_NOT, 'affected');
+    }
+
+    var num_of_oses = len(os_info_list);
+    var os_info, check, os_object;
+    var os_objects = [];
+
+    # Iterate over matching OS info list processing and adding to a list of UCF OS objects.
+    foreach os_info (os_info_list)
+    {
+      # Make sure the confidence level of the OS is high enough.
+      check = ucf::os::check_confidence(os_info:os_info, num_of_oses:num_of_oses, exit_on_fail:exit_if_not_found);
+      if (!check) continue;
+
+      # Create UCF OS object for compatibility with UCF/VCF.
+      os_object = new ucf::os::installed_os(os_info);
+
+      append_element(var:os_objects, value:os_object);
+    }
+
+    if (!branch)
+      return os_objects;
+    
+    return branch(os_objects);
+  }
+
+
+  namespace os
+  {
+    var confidence_level_threshold = 80;
+
+    ##
+    # Check confidence level of the detected OS.
+    #
+    # @param  [os_info:array ref]  OS information retrieved from `get_os()`_ or `os_install::get_os_cpe()`_
+    # @param  [num_of_oses:int]    The number of OSes detected for the same method, protocol, and port.
+    # @param  [exit_on_fail:bool]  exit/audit out if the confidence level does not match criteria (default:true) (optional)
+    #
+    # @return [bool] true if the OS confidence level matches the criteria; false if not
+    ##
+    function check_confidence(&os_info, num_of_oses, exit_on_fail)
+    {
+      if (empty_or_null(os_info))
+        return vcf::arg_error(arg:'os_info', func:FUNCTION_NAME);
+
+      if (empty_or_null(exit_on_fail))
+        exit_on_fail = true;
+
+      var msg;
+
+      if (empty_or_null(os_info.confidence))
+      {
+        msg = 'The confidence level of the detected OS is unexpectedly missing.';
+
+        if (exit_on_fail)
+          exit(1, msg);
+
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:msg);
+        return false;
+      }
+
+      # Check that the confidence level is high enough
+      if (int(os_info.confidence) < confidence_level_threshold)
+      {
+        msg = strcat(os_info.os_name, ' was detected but the confidence level (', os_info.confidence, ') was too low.');
+
+        if (exit_on_fail)
+          exit(0, msg);
+
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:msg);
+        return false;
+      }
+
+      # If multiple OSes are returned, only continue if "Show potential false alarms" is enabled.
+      if (num_of_oses > 1 && report_paranoia < 2)
+      {
+        msg = strcat('Nessus could not conclusively determine the version of ', os_info.product, ". Therefore, the OS is potentially affected and is only reported if 'Report Paranoia' is set to 'Paranoid'.");
+
+        if (exit_on_fail)
+          exit(0, msg);
+
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:msg);
+        return false;
+      }
+
+      return true;
+    }
+
+
+    ##
+    # Check the specified constraints against the installed OS then report on findings.
+    #
+    # @param  [os_info:array]     Installed OS info returned from `get_os()`_ or `get_os_cpe()`_.
+    # @param  [constraints:list]  List of constraint arrays containing 'seol, 'min_depth', 'max_depth', and/or 'cpe_attributes' key/value pairs.
+    # @param  [severity:string]   Severity used for reporting
+    # @param  [hardware:list]     Hardware CPE list to be applied to all constraints (optional)
+    #
+    # @remark
+    # This function is mostly a wrapper for `ucf::check_and_report()`_ but also performs a comparison of the CPE attributes (if specified)
+    # 
+    # This function can potential audit out and exit plugin execution.
+    #
+    # @return [list] VCF exit call
+    ##
+    function check_and_report(os_info, constraints, severity, hardware)
+    {
+      if (empty_or_null(os_info))     return vcf::arg_error(arg:'os_info',     func:FUNCTION_NAME);
+      if (empty_or_null(severity))    return vcf::arg_error(arg:'severity',    func:FUNCTION_NAME);
+      if (empty_or_null(constraints)) return vcf::arg_error(arg:'constraints', func:FUNCTION_NAME);
+
+      var matching_constraints = [];
+      var constraint, msg, installed_cpe_attributes, comparison;
+
+      # CPE attributes to compare against specified
+      foreach constraint (constraints)
+      {
+        if (!empty_or_null(constraint.cpe_attributes))
+        {
+          # Compare the two arrays
+          comparison = cpes::compare_attributes_list(
+            installed_cpe_attributes : os_info.cpes.attributes,
+            query_attributes_list    : constraint.cpe_attributes
+          );
+
+          if (comparison)
+          {
+            # Remove 'cpe_attributes' from array since it's no longer needed.
+            delete_element(var:constraint, idx:'cpe_attributes');
+
+            append_element(var:matching_constraints, value:constraint);
+          }
+        }
+        else
+        {
+          # If there is no CPE constraints, that's treated the same as CPE constraints that do match.
+          append_element(var:matching_constraints, value:constraint);
+        }
+      }
+
+      if (empty_or_null(matching_constraints))
+        return vcf::audit(os_info);
+
+      # Call the main check_and_report() function
+      return ucf::check_and_report(app_info:os_info, constraints:matching_constraints, severity:severity, hardware:hardware);
+    }
+
+    ##
+    # OS object
+    ##
+    object installed_os
+    {
+      var info;
+
+      ##
+      # Constructor
+      #
+      # @anonparam  [array]  array of the OS install info from `get_os()`_ (see `register_os()`_ for values)
+      ##
+      function installed_os()
+      {
+        info = _FCT_ANON_ARGS[0];
+
+        # Required for `ucf::check_and_report()`_
+        if (empty_or_null(info.parsed_version) && !empty_or_null(info.version))
+          info.parsed_version = vcf::parse_version(info.version);
+        
+        # ucf::cpe_parse() is expecting only the base CPEv2.2 ID in 'cpe'
+        info.cpes = info.cpe;
+        info.cpe = info.cpe.v22;
+
+        # Set 'app' key to appease the call to `register_unsupported_product()`_ in `ucf::report_results()`_
+        info.app = info.os_name;
+
+        # Extended support
+        info.eseol = info.extended_support;
+      }
+
+      ##
+      # Check if the OS is on extended support.
+      #
+      # @return string of the extended support type (e.g. LTS, ESU) if set
+      #         NULL otherwise
+      ##
+      public function check_extended_support()
+      {
+        var extended_support = info.extended_support;
+
+        return extended_support;
+      }
+    }
+  }
+}

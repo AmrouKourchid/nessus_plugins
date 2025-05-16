@@ -1,0 +1,133 @@
+#TRUSTED 1a64834b553ed530278b66c771c54dce0eb906fef0ceaba2a7dd5b5fbb989574a3847e25cc7cb835c354e3559bc2e3fb126a1698215d322a791c7265751586686dded8542bd9e759be0b4f1e62cf6fd45d4a25490d71e7505dfc7807f752348cf8c7c3a3408fa1dabaed2ba684c1b843ba0cb60d5d7135ea6c5852271cc0c8d6403688f425195b0023ef83858096be2bf4d9412c38ba5bdf4f09a6ef955c1d34a7b2b03b3f8f4e7bdeb37261c825d4749661bf96121b0edb2f2a02810afe0bad1b0a07122cc80f99683ae2d2fc889cc9b0f62beca2b8a6a760a9a61d3e2477248f540f4e21f29e58b56cf884914c66c72c1899dafcb8bc5029cac7f965757f3942da720232fb6c1782c668d7d6129ea8d974bfdfde91509f72a637f2ce1170055f30216568d1fb38663d156fb475e4cc70270a70486e01c02f59894b0ddba520e3b44984c5c9289762b409e23b20328594826028f4c2201b0f03ed1438175132dcb1b40f3e68ec2b8a030591ced8ce9c69b33c399508904c64047c7ef0cc371fb4e811a0aa7edaaff464346062600d97ee4c792e29aedd0bcbb138ddb18e767fd758b5ecda07758afd697c14275d64518519de9fd8be1e0ca926a407b8dbfd0765eee411b19267fc1472d710d6fcef3056b180177ee4bf19be1e645e8445f6b92d370e887cd307811ed5c5531369866f596983089579b68eca1cf285b65d6d34
+#TRUST-RSA-SHA256 16246c06a7be4c7acad0840fd250f087414a38b2cc15c477122ebfb6aa6c1e6e24c0170343b91545f44a7d77d53c8d0d99305856e80101c11d129f56b707b75f8bdd7d3cb4b785f275b1d06bbc65514efbbfbed46033715912b32e278fa25142ad4e35e85fa573726980a9d5776b7a59f8843d7a5a60727c30f32a033271a04f6130a0de294881af296e88f79dba55ac00eecc3a9534b3692f534ecbe026805975e0ac4aab6e72a7001da1965c660cd102534b25e39fb5a6087b942a0ee53883ce00689be8fcfb64a3f9587879e8dbd6f39cd750c65ca0cb072d94ce4130cbf6b247679a79df1c66bec82bf4ffaa7255d27416bbf535519749930e9d959d6731b98b0a72f8eddc12d691324e2c676eea48ff034576caa09842408ec12bfa0f72c03059ba16fc1fb937169d52efbd46dd28e6ce3572b4ae81b573060e646f786817e3c242de468ed854a2af202b3257b546a2ab966c9f9091bea519a64335bed7ea265c1b4760b05d35041dcaeb197ad5cbad0cba3fe639fcf2604b71e30e17f4efe90e1a5edd7fbbeea250b5391b22e9e7a5d9988664e51c76983e47a329a7583a8cafa0fe6a0e9ee449c905cf61142379cff122e5ce90f6949d1e909c6c15c5c3477a5ba139a18bd084733873ed239f967eb854101bb78eb3d8f2d0adced070d22d5b96936af3488dad5b7ea88d4a54a0a73385a4e691de94ee131d582f1df4
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+
+##
+# check if this is a Riverbed RIOS device based on information collected
+#
+# @return Returns TRUE if we know this is not RIOS, FALSE otherwise.
+##
+
+function rios_pre_check_fail()
+{
+  # have we already checked that the host is not ios?
+  if(host_info_key_val['host_not_rios'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ rios_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not RIOS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_cisco_nxos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+
+}
+
+##
+# Function to identify Riverbed systems
+#
+# @param buf cmd output
+#
+# @misc This function is invoked from ssh_get_info2_nxos.inc.
+# No direct checks are run for riverbed detection. Instead, we use
+# already existing information in the KB from other checks.
+##
+function handle_rios(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var os_name, pat, line, match;
+
+  # set support level LOCAL_CHECKS_UNAVAILABLE
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+  # functionality migrated from ssh_get_info.nasl (around line 1605),
+  # parsing cmd_res from ssh_get_info2_nxos.inc/handle_not_nxos()
+
+  set_kb_item(name:"Host/Riverbed/show_version", value:cmd_res);
+
+  # OS fingerprint info
+  os_name = "Riverbed Optimization System (RiOS)";
+
+  pat = "(?:^|\n)Product release:\s+([0-9.]+)";
+  match = pregmatch(pattern:pat, string:cmd_res);
+  if (!isnull(match) && !isnull(match[1]))
+    os_name += ' ' + match[1];
+
+  pat = "(?:^|\n)Product model:\s+([^ \t\r\n]+)";
+  match = pregmatch(pattern:pat, string:cmd_res);
+  if (!isnull(match) && !isnull(match[1]))
+    os_name += ' on a ' + match[1];
+
+  report += '\n' + 'The remote operating system is : ' + os_name +
+            '\n';
+
+  set_kb_item(name:"Host/OS/showver", value:os_name);
+  set_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  set_kb_item(name:"Host/OS/showver/Type", value:"embedded");
+
+  # Collect time of last reboot.
+  pat = "(?:^|\n)Uptime:\s+([0-9][^\r\n]*)(?:[\r\n]|$)";
+  match = pregmatch(pattern:pat, string:cmd_res);
+  if (!isnull(match) && !isnull(match[1]))
+    set_kb_item(name:"Host/last_reboot", value:match[1]);
+
+  report += '\n' + 'Although OS Security Patch Assessment for Riverbed Optimization System' +
+            '\n' + '(RiOS) is not supported, Nessus has managed to run commands in' +
+            '\n' + 'support of OS fingerprinting.' +
+            '\n';
+}
+
+##
+# callback for systems without "Product name:[ \t]+rbt" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+
+function handle_not_rios(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler)
+    store_shell_info();
+
+  host_info_key_val['host_not_rios'] = TRUE;
+
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+  }
+}
+

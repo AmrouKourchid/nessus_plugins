@@ -1,0 +1,153 @@
+#TRUSTED 28ec1c9cd37d2f2c3ecd4a086975f0fdedbba7c150335044efef4aa4345b22e93666162177ffeac78788309b7ba901eb5484ee6c96b6994d62143911ea84b1e88743634bb5579fe6f33cfd9961b63e5a6035c8f977844091b0150e89e2fa5d2154c54e20b269b01977c3ad5bac06ab1a319f55b995f47851b863c47d7edd76b1bc153a654beefa42bd4d950d4bd6c1bbe16f52bfd2e1fa6111d37721aee2a59c3e9bba78e51e227b463b9a9b887f0252e4e759602756542edac0c23cb9eb8389406c6076c1ea241af11a52d514640d05d7dab3b123354d30fc5f72b7e4ece5ae5017df1ffe292f43fbba0e8106f7028e947e31222fec814926c0b948f572e19fd8e677a084c001b64b2ae317b8d6bffc3482db2f11af6579a0d210701c6f649b291cf3cc92fb72ea16b9a946ce4f0b26c1a8daae15998becd987f42c5a20bd030e9dc0329d8dc3d4be3bafe869933087b6bc96a2e3953c5b08683c7da81325de1cbe5a83678015076f8416aa02182946ae31c27c617a51277be783b45154aaf545188740c817542847e484f7deb67f7f706b238a37d0ddade82979077c03845f575191a1f8c2a7cc5a0483518bc21a5536da7dfd680ef5d182e40cfb933c0156515eb8be3735c322893ae8c8060f870157a2815dcb9c570eb6962e00aaad33716aaee4e1b494d3fd32d3166bfbcf7f53bef1290f587464874f1fda2c8102623b
+#TRUST-RSA-SHA256 2f7fc5370c26d3dbb8b36bc3895ac724441629908c5d2f190a696d61ed2b8406c1495b54b08a1537e5574cbfc2a0cd1e7da25b95985bb0c412ac3f58451f3ef7abfd5adf81428ae533421d4bf6fef18131fb50bdcd8bf1fbe4465d2587818875be7822b21b857c6959461e8eaf0195542e02dd9cfcc80773583d24881908abdf67f2fb2340774421bf63fe72148b5fd1b459c3eb835127d4a01890ae7a760e894278309bb5ef4910652a45b2188b16bd56e246e52c760fdd2f23525a46ed93d0e54bc3eb825e5355717dba7b950f1bd7a105a1157e42bed53680067641b0906c963c9946fd88aa47b931105669095c173d973dc6b211e1d7bc637109a237e71b6dd95b8c342c3b540ea2cf8a1d20c3974b7b398515dc8336013cdb3d45a231548a416f40fa02dc772f62a3bbd881212e58d13d9e9eb4647304a5c5d00342e4a63e3ba83b725b71c718d0201c6802b391ed699f9a81455f4ec9a2aa96058cc01b2026ad263ceecb3845aa54cb365df6b84313d617e5fbec32c3564fa0067ef41b009195ad36372841d5d9f2f2f731c166034e38aeb7ca4bb78ea3e6ba30276bd98efa5d30f72e753e6881ddc169b5a8e90edb7aee688dd24688b172ba81bafe34ed705ee350ed0eae46433909ee4802e4ec63b5029ec2331a24de67b317bd9082ab956286df9e5d9745a91900799dc9e5f27eee45ef1c689d6faf8f8023ba8aa2
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.2
+
+#Gentoo helper functions
+
+function extract_gentoo_portdir(buf)
+{
+  local_var lines, portdir, gr, len;
+
+  gr = egrep(string: buf, pattern: '^[ \t]*PORTDIR[ \t]*=[ \t]*');
+  # Keep the last line, just in case
+  lines = split(gr, keep: 0);
+  portdir = lines[max_index(lines)-1];
+  lines = split(portdir, sep: '=', keep: 0);
+  portdir = lines[1];
+  len = strlen(portdir);
+  if ( portdir[0] == "'" && portdir[len-1] == "'" ||
+       portdir[0] == '"' && portdir[len-1] == '"' )
+   portdir = substr(portdir, 1, len-2);
+  return portdir;
+}
+
+function handle_gentoo_os(session, use_shell_handler, &channel, cmd_res)
+{
+  var buf, portdir;
+  set_kb_item(name: "Host/etc/gentoo-release", value:cmd_res);
+  report += '\nThe remote Gentoo system is :\n' + egrep(pattern:"^Gentoo", string:cmd_res);
+
+  release = ereg_replace(pattern:"Gentoo Base System version (([0-9]+\.)*[0-9]+).*",
+                         string:egrep(string:cmd_res, pattern:"Gentoo"), replace:"\1");
+
+  set_kb_item(name:"Host/Gentoo/release", value: release);
+
+  buf = run_command(cmd:'egrep "ARCH=" /etc/make.profile/make.defaults',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if ( buf )
+  {
+    buf = ereg_replace(string: buf, pattern: 'ARCH="(.*)"', replace: "\1");
+    set_kb_item(name: "Host/Gentoo/arch", value: buf);
+  }
+
+  buf = run_command(cmd:'readlink /etc/make.profile',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (buf)
+   set_kb_item(name: "Host/Gentoo/make.profile", value: buf);
+
+  buf = run_command(cmd:"LC_ALL=C emerge --info",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (buf)
+  {
+    set_kb_item(name: "Host/Gentoo/emerge_info", value: buf);
+    portdir = extract_gentoo_portdir(buf: buf);
+  }
+
+  buf = run_command(cmd:"LC_ALL=C cat /etc/make.conf",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (buf)
+  {
+    set_kb_item(name: "Host/etc/make_conf", value: buf);
+    if (! portdir || portdir[0] != "/")
+      portdir = extract_gentoo_portdir(buf: buf);
+  }
+  if (portdir)
+    set_kb_item(name: "Host/Gentoo/portdir", value: portdir);
+
+  if (! portdir || portdir[0] != "/") portdir = "/usr/portage";
+  # Sanitize portdir, just in case...
+  portdir = str_replace(find:"'", replace:"'\''", string: portdir);
+  buf = run_command(cmd:"LC_ALL=C cat '"+portdir+"/metadata/timestamp.x'",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (buf)
+    set_kb_item(name: "Host/Gentoo/timestamp_x", value: buf);
+
+  buf = run_command(cmd:"LC_ALL=C cat '"+portdir+"/metadata/timestamp'",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (buf)
+    set_kb_item(name: "Host/Gentoo/timestamp", value: buf);
+  buf = run_command(cmd:'timeout 30 find /var/db/pkg/ -mindepth 2 -maxdepth 2 -printf "%P\\n" | sort',
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (buf)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    set_kb_item(name:"Host/Gentoo/qpkg-list", value:buf);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_gentoo.static', value: 113);
+
+    buf = run_command(cmd:"timeout 240 find '"+portdir+"/' -wholename '"+portdir+"/*-*/*.ebuild' || [ $? -eq 124 ] && echo cmd_timeout | sed 's,"+portdir+"/\([^/]*\)/.*/\([^/]*\)\.ebuild$,\1/\2,' | sort",
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+    if (buf =~ "cmd_timeout$")
+    {
+      set_kb_item(name:"Host/Gentoo/ebuild-list/timedout", value:TRUE);
+    }
+    else
+    {
+      if (buf && !preg(pattern:"^find: .+: No such file or directory", string:buf))
+      {
+       set_kb_item(name:"Host/Gentoo/ebuild-list", value:buf);
+      }
+    }
+  }
+  else
+  {
+    if (session.cmd_error)
+    {
+      report +=
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+    }
+    else
+    {
+      report +=
+'OS Security Patch Assessment is not available because Nessus failed to
+locate any ebuilds under \'/var/pk/pkg\'.';
+    }
+    failure_kb_msg = "'find /var/db/pkg/' did not return any result";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+  }
+}

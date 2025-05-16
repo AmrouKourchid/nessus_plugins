@@ -1,0 +1,250 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(232305);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/10");
+
+  script_cve_id("CVE-2021-28689");
+
+  script_name(english:"Linux Distros Unpatched Vulnerability : CVE-2021-28689");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The Linux/Unix host has one or more packages installed with a vulnerability that the vendor indicates will not be
+patched.");
+  script_set_attribute(attribute:"description", value:
+"The Linux/Unix host has one or more packages installed that are impacted by a vulnerability without a vendor supplied
+patch available.
+
+  - x86: Speculative vulnerabilities with bare (non-shim) 32-bit PV guests 32-bit x86 PV guest kernels run in
+    ring 1. At the time when Xen was developed, this area of the i386 architecture was rarely used, which is
+    why Xen was able to use it to implement paravirtualisation, Xen's novel approach to virtualization. In
+    AMD64, Xen had to use a different implementation approach, so Xen does not use ring 1 to support 64-bit
+    guests. With the focus now being on 64-bit systems, and the availability of explicit hardware support for
+    virtualization, fixing speculation issues in ring 1 is not a priority for processor companies. Indirect
+    Branch Restricted Speculation (IBRS) is an architectural x86 extension put together to combat speculative
+    execution sidechannel attacks, including Spectre v2. It was retrofitted in microcode to existing CPUs. For
+    more details on Spectre v2, see: http://xenbits.xen.org/xsa/advisory-254.html However, IBRS does not
+    architecturally protect ring 0 from predictions learnt in ring 1. For more details, see:
+    https://software.intel.com/security-software-guidance/deep-dives/deep-dive-indirect-branch-restricted-
+    speculation Similar situations may exist with other mitigations for other kinds of speculative execution
+    attacks. The situation is quite likely to be similar for speculative execution attacks which have yet to
+    be discovered, disclosed, or mitigated. (CVE-2021-28689)
+
+Note that Nessus relies on the presence of the package as reported by the vendor.");
+  script_set_attribute(attribute:"solution", value:
+"There is no known solution at this time.");
+  script_set_attribute(attribute:"agent", value:"unix");
+  script_set_cvss_base_vector("CVSS2#AV:L/AC:L/Au:N/C:P/I:N/A:N");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2021-28689");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+  script_set_attribute(attribute:"vendor_unpatched", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2021/02/18");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/03/10");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info2.nasl");
+  script_require_keys("Host/cpu", "Host/local_checks_enabled", "global_settings/vendor_unpatched");
+  script_require_ports("Host/Debian/dpkg-l", "Host/Debian/release");
+
+  exit(0);
+}
+include('vdf.inc');
+
+# @tvdl-content
+var vuln_data = {
+ "metadata": {
+  "spec_version": "1.0p"
+ },
+ "requires": [
+  {
+   "scope": "scan_config",
+   "match": {
+    "vendor_unpatched": true
+   }
+  },
+  {
+   "scope": "target",
+   "match": {
+    "os": "linux"
+   }
+  }
+ ],
+ "report": {
+  "report_type": "unpatched"
+ },
+ "checks": [
+  {
+   "product": {
+    "name": [
+     "libxen-dev",
+     "libxencall1",
+     "libxendevicemodel1",
+     "libxenevtchn1",
+     "libxenforeignmemory1",
+     "libxengnttab1",
+     "libxenhypfs1",
+     "libxenmisc4.17",
+     "libxenstore4",
+     "libxentoolcore1",
+     "libxentoollog1",
+     "xen-doc",
+     "xen-hypervisor-4.17-amd64",
+     "xen-hypervisor-4.17-amd64-dbg",
+     "xen-hypervisor-4.17-arm64",
+     "xen-hypervisor-4.17-arm64-dbg",
+     "xen-hypervisor-4.17-armhf",
+     "xen-hypervisor-4.17-armhf-dbg",
+     "xen-hypervisor-common",
+     "xen-system-amd64",
+     "xen-system-arm64",
+     "xen-system-armhf",
+     "xen-utils-4.17",
+     "xen-utils-4.17-dbg",
+     "xen-utils-common",
+     "xenstore-utils"
+    ],
+    "type": "dpkg_package"
+   },
+   "check_algorithm": "dpkg",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "debian"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "12"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "product": {
+    "name": [
+     "libxen-dev",
+     "libxencall1",
+     "libxendevicemodel1",
+     "libxenevtchn1",
+     "libxenforeignmemory1",
+     "libxengnttab1",
+     "libxenhypfs1",
+     "libxenmisc4.14",
+     "libxenstore3.0",
+     "libxentoolcore1",
+     "libxentoollog1",
+     "xen-doc",
+     "xen-hypervisor-4.14-amd64",
+     "xen-hypervisor-4.14-arm64",
+     "xen-hypervisor-4.14-armhf",
+     "xen-hypervisor-common",
+     "xen-system-amd64",
+     "xen-system-arm64",
+     "xen-system-armhf",
+     "xen-utils-4.14",
+     "xen-utils-common",
+     "xenstore-utils"
+    ],
+    "type": "dpkg_package"
+   },
+   "check_algorithm": "dpkg",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "debian"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "11"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "product": {
+    "name": [
+     "libxen-dev",
+     "libxencall1",
+     "libxendevicemodel1",
+     "libxenevtchn1",
+     "libxenforeignmemory1",
+     "libxengnttab1",
+     "libxenhypfs1",
+     "libxenmisc4.19",
+     "libxenstore4",
+     "libxentoolcore1",
+     "libxentoollog1",
+     "xen-doc",
+     "xen-hypervisor-4.19-amd64",
+     "xen-hypervisor-4.19-amd64-dbg",
+     "xen-hypervisor-4.19-arm64",
+     "xen-hypervisor-4.19-arm64-dbg",
+     "xen-hypervisor-common",
+     "xen-system-amd64",
+     "xen-system-arm64",
+     "xen-utils-4.19",
+     "xen-utils-4.19-dbg",
+     "xen-utils-common",
+     "xenstore-utils"
+    ],
+    "type": "dpkg_package"
+   },
+   "check_algorithm": "dpkg",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "debian"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "13"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+};
+
+var vdf_res = vdf::check_and_report(vuln_data:vuln_data, severity:SECURITY_NOTE);
+vdf::handle_check_and_report_errors(vdf_result: vdf_res);

@@ -1,0 +1,1169 @@
+## vendors in alphabetical order
+## order of regexes matters
+namespace tenable_ot
+{
+  namespace regexes
+  {
+    var always_fail_regex = 'a^';
+
+    # Generic order numbers regex
+    var orderNumberRegex = "\d[a-z]{2}\d{4}-\d[a-z]{2}\d{2}-\d[a-z]{2}\d";
+
+    // Vendor / cpe_group: {
+    //    CPE vendor part / cpe_name: {
+    //      cpe_family: regex
+    //  }
+    //}
+
+    var families = {
+        "ABB": {
+            "abb": {
+                "AbbAC500": "ac500",
+                "AC700F": "ac_?700f|pm[\-_ ]?7\d{2}f",
+                "AC800F": "ac_?800f|pm[\-_ ]?8\d{2}f",
+                "AC900F": "ac_?900f|pm[\-_ ]?9\d{2}f",
+                "AbbAC800M": "ac_?800m",
+                "Abb800xA": "800xa|abb.*cp6\d{2}",
+                "AbbRelion": "(re[a-z]|pml).*[56][0-9][015]",
+                "AbbFox": "fox[^a-z]",
+                "AbbTotalflow": "(uflog\d+|x[rf]cg\d+|xio|udc|rmc-\d+)",
+                "AbbRTU500": "rtu5\d{2}",
+                "AbbM2M": "abb:fw_firmware",
+                "MelodyRack": "pm(\s+|-|_)?87[567](-1)?|[cf][cm][cfr]?(\s+|-|_)?[3172][07][0]?(\s+|-|_)?[p2](\s+|-)?p?",
+                "HarmonyRack": "spc(\s+|-|_)?810ev|spbrc(\s+|-|_)?[34][01]0|spiet(\s+|-|_)?800|spiit(\s+|-|_)?1[23]|spnis(\s+|-|_)?21|spnpm(\s+|-|_)?22|spcpm(\s+|-|_)?02|sprio(\s+|-|_)?22|spipt(\s+|-|_)?800|spenm(\s+|-|_)?01",
+                "SDSeries": "[hs]pc(\s+|-|_)?[678]00|sci(\s+|-|_)?200|ci(\s+|-|_)?850|pni(\s+|-|_)?800|pio(\s+|-|_)?800|ior(\s+|-|_)?810|pdp(\s+|-|_)?800|hrbx(\s+|-|_)?01"
+            },
+            "hitachienergy":{
+                "AbbRelion": "(re[a-z]|pml).*[56][0-9][015]",
+                "AbbRTU500": "rtu5\d{2}"
+            }
+        },
+        "Andritz": {
+            "andritz": {
+                "Andritz": ".*"
+            }
+        },
+        "ArecontVision": {
+            "arecont": {
+                "MegaVideoD4": "d4\w+[\-_]av(?:11|21|31|51)1[56]|megavideo[\-_]?d4",
+                "ConteraIPBullet": "av\d+clb|av\d426|contera[\-_]?ip[\-_]?bullet",
+                "ConteraIPFisheye": "av12(?:cfe|cpd)|contera[\-_]?ip[\-_]?fisheye",
+                "ConteraIPIndoorDome": "av\d+cid|contera[\-_]?ip[\-_]?indoor[\-_]?dome",
+                "ConteraIPMicroBullet": "av\d+cmb|contera[\-_]?ip[\-_]?micro[\-_]?bullet",
+                "ConteraIPMicroDomeDuo": "av(?:48|49|58)56|contera[\-_]?ip[\-_]?micro[\-_]?dome[\-_]?duo",
+                "ConteraIPMicroDome": "av(?:27|57|88)56|contera[\-_]?ip[\-_]?micro[\-_]?dome",
+                "ConteraIPOmniLXRS": "av(?:8|20|32)[45]76rs|contera[\-_]?ip[\-_]?omni[\-_]?lx[\-_]?rs",
+                "ConteraIPOmniLX": "av(?:8|20|32)[45]76dn|contera[\-_]?ip[\-_]?omni[\-_]?lx",
+                "ConteraIPOutdoorDome": "av\d+cld|av\d456|contera[\-_]?ip[\-_]?outdoor[\-_]?dome",
+                "ConteraIPPanoramic": "av\d+cpd|contera[\-_]?ip[\-_]?panoramic",
+                "MegaBallG2": "av(?:22|32|52)4[56]|megaball[\-_]?g2",
+                "MegaBall": "av(?:11|21|31|51)4[56]|megaball",
+                "MegaDomeG3RS": "av(?:13|23|33|53|103)5[56]rs|megadome[\-_]?g3[\-_]?rs",
+                "MegaDomeG3": "av(?:13|23|33|53|103)5[56]pm|megadome[\-_]?g3",
+                "MegaDome2": "av(?:12|22|26|32|52|102)5[56]|megadome[\-_]?2",
+                "MegaDome4K": "av08zmd|megadome[\-_]?4k",
+                "MegaDomeUltraHD": "av12zmd|megadome[\-_]?ultrahd",
+                "MegaDome": "av(?:13|21|31|51)5[56]|megadome",
+                "MegaVideo4K": "av08zmv|megavideo[\-_]?4k",
+                "MegaVideoCompact": "av\d+(?:110|115|116|310|815)|megavideo[\-_]?compact",
+                "MegaVideoFlex": "av(?:11|21|31|51)9[56]|megavideo[\-_]?flex",
+                "MegaVideoG5": "av\d+(?:215|216)|megavideo[\-_]?g5",
+                "MegaVideo": "av\d1[03][05]|av1000[05]|megavideo",
+                "MegaView2": "av(?:12|22|26|32|52|102)2[56]|megaview2",
+                "MegaView": "av(?:11|13|21|28|31|51)25|megaview",
+                "MicroBullet": "v(?:23|33)2[56]|avcmb|microbullet",
+                "MicroDomeDuo": "av(?:46|66|106|108|109|168)5[56]|microdome[\-_]?duo",
+                "MicroDomeG2": "av(?:15|25|35|55)5[56]|microdome[\-_]?g2",
+                "MicroDome": "av(?:14|24|34|54)5[56]|microdome",
+                "SurroundVideoG5Mini": "av(?:5|12|20)5[68][56]dn|surroundvideo[\-_]?g5[\-_]?mini",
+                "SurroundVideoG5": "av(?:5|12|20)58[56]pm|surroundvideo[\-_]?g5",
+                "SurroundVideoOmniG3": "av(?:12|20)37[56]rs|surroundvideo[\-_]?omni[\-_]?g3",
+                "SurroundVideoOmniSX": "av(?:12|20)[29]7[56]|surroundvideo[\-_]?omni[\-_]?sx",
+                "SurroundVideoOmni": "av(?:12|20)17[56]|surroundvideo[\-_]?omni",
+                "SurroundVideo": "av(?:8|12|20|40)18[056]|av(?:8|12|20)(?:36)[056]|surroundvideo"
+            }
+        },
+        "AutomatedLogicCorporation":{
+            "automatedlogic":{
+                "WebCTRL": "webctrl"
+            },
+            "carrier": {
+                "WebCTRL": "webctrl"
+            }
+        },
+        "AxisCommunication": {
+            "axis": {
+                "AxisCommunication": "[a-z]+\d+(-[a-z0-9]+)*"
+            }
+        },
+        "Bachmann": {
+            "bachmann": {
+                "Bachmann": ".*"
+            }
+        },
+        "Beckhoff": {
+            "beckhoff": {
+                "BeckhoffCSeries": "twincat"
+            }
+        },
+        "BoschSecuritySystems": {
+            "bosch": {
+                "AUTODOME": ".*autodome.*[4-7]\d{3}",
+                "MIC": ".*[\W_]mic.*[4-7]\d{3}",
+                "B426": ".*b426"
+            }
+        },
+        "CarrierCorporation": {
+            "automatedlogic": {
+                "iVu": "i-vu"
+            }
+        },
+        "Cisco": {
+            "cisco": {
+                "NXOS": ".*nx[\-_]os",
+                "CiscoIPPhones": ".*ip_phone",
+                "CiscoSmallBusiness": "cbs[235]\d{2}[a-z0-9\-]+"
+            }
+        },
+        "Cognex": {
+            "cognex": {
+                "InSight": "in-?sight"
+            }
+        },
+        "DahuaSecurity": {
+            "dahuasecurity": {
+                "DahuaSecurityCameras":":(?:dh-)?(?:(?:ipc-|hac-)?(?:h(?:x|f[sw]?|d[bp]?w?|eb?w?|pfw|um|lc|me|dew)|eb?[ew]?|m[bdf]?w?|ps?[df]b?w?|[bdt]\d\w|[ack](?:15|35))|tpc-|sd).*",
+                "DahuaSecurityVideoRecorders":":(?:dhi?-)?(?:[nxd]|hc)vr-?(?:\d{3,4}|1b)[a-z0-9\-]+"
+            }
+        },
+        "Danfoss": {
+            "danfoss": {
+                "AKSM800A": "ak-sm[\-_\ ]800a",
+                "AKSM800": "ak-sm[\-_\ ]800"
+            }
+        },
+        "Dell": {
+            "dell": {
+                "iDRAC6": ".*idrac6",
+                "iDRAC7": ".*idrac7",
+                "iDRAC8": ".*idrac8",
+                "iDRAC9": ".*idrac9",
+                "DellLaserPrinter":"\d{4}c?d?n"
+            }
+        },
+        "Eaton": {
+            "eaton": {
+                "PLCEC4P": ".*ec4p",
+                "PLCEasyE4": ".*easy[\-_]?e4",
+                "PLCXC100": ".*xc100",
+                "PLCXC150": ".*xc150",
+                "PLCXC200": ".*xc200",
+                "PLCXC300": ".*xc300",
+                "PLCXN300": ".*xn300",
+                "UPS3S": ".*3s[\-_]",
+                "UPS5PX": ".*5px[\-_]",
+                "UPS5P": ".*5p[\-_]",
+                "UPS5SC": ".*5sc[\-_]",
+                "UPS5S": ".*5s[\-_]",
+                "UPS9155": ".*9155[\-_]",
+                "UPS9355": ".*9355[\-_]",
+                "UPS9395": ".*9395[\-_]",
+                "UPS93PM": ".*93pm[\-_]",
+                "UPS93E": ".*93e[\-_]",
+                "UPS9PHD": ".*9phd[\-_]",
+                "UPS9PXM": ".*9pxm[\-_]",
+                "UPS9PX": ".*9px[\-_]",
+                "UPS9SX": ".*9sx[\-_]",
+                "UPS9000X": ".*(s[vp]x[\-_]?9000|9000x)",
+                "PXM2000": ".*power[\-_]xpert[\-_]meter[\-_]2000",
+                "PXM4000": ".*power[\-_]xpert[\-_]meter[\-_]4000",
+                "PXM6000": ".*power[\-_]xpert[\-_]meter[\-_]6000",
+                "PXM8000": ".*power[\-_]xpert[\-_]meter[\-_]8000",
+                "PXG900": "(?:power[\-_]xpert[\-_]gateway|pxg)[\-_]900",
+                "SMP": ".*smp"
+            }
+        },
+        "Emerson": {
+            "emerson": {
+                "Ovation": ".*ovation_(ocr1100|occ100|ocr400|ocr3000)",
+                "SSeries": ".*deltav.*(sd.*plus|sq.*|sz.*)",
+                "MSeries": ".*deltav.*md",
+                "SISSeries": ".*deltav.*sz",
+                "DeltaV": ".*deltav:",
+                "ROC300": ".*roc_300",
+                "FloBoss": ".*flo_boss",
+                "ROC800": ".*(roc_800|dl_8000)",
+                "RegFlo": ".*reg_flo"
+            }
+        },
+        "FanucRobotics": {
+            "fanuc": {
+                "FanucRobotics": ".*r-3[012]i[ab]"
+            }
+        },
+        "Festo": {
+            "festo": {
+                "TerminalCPX": ".*cpx[\-_](m[\-_])?fb[34]\d",
+                "CECC": ".*cecc-[a-zA-Z0-9\-]+",
+                "CECX": ".*cecx-[a-zA-Z0-9\-]+"
+            }
+        },
+        "GE": {
+            "ge": {
+                "PACSystemsRX7i": ".*(?:pacsystems_)?rx7i",
+                "PACSystemsRX3i": ".*(?:pacsystems_)?rx3i"
+            },
+            "emerson": {
+                "PACSystemsRX7i": ".*(?:pacsystems_)?rx7i",
+                "PACSystemsRX3i": ".*(?:pacsystems_)?rx3i"
+            }
+        },
+        "GeoVision": {
+            "geovision": {
+                "GeoVisionBoxIPCameras": "gv-e?bx[A-Za-z0-9\-]+",
+                "GeoVisionBulletIPCameras": "gv-(?:gblf|blfc|gbl|rbl|tbl[^p]|abl|lpc|ebl|ubl|bl)[A-Za-z0-9\-]+",
+                "GeoVisionDomeIPCameras": "gv-(?:gvd|gdr|tfd|tdr|tvd|avd|qsd|efd|mfd|evd|adr|edr|fd|sd|vd|md)[A-Za-z0-9\-]+",
+                "GeoVisionEyeballIPCameras": "gv-(?:gebf|geb|ebfc|ebd[^p]|reb)[A-Za-z0-9\-]+",
+                "GeoVisionFisheyeIPCameras": "gv-(?:rfer|pfer|qfer|efer|fer|fe|vr)[A-Za-z0-9\-]+",
+                "GeoVisionIndoorIPCameras": "gv-(?:ubx|caw|cbw|ca|cb)[A-Za-z0-9\-]+",
+                "GeoVisionPTZIPCameras": "gv-(?:ptz|pt)[A-Za-z0-9\-]+",
+                "GeoVisionPanoramicIPCameras": "gv-(?:ebdp|tblp|rms|tms|pdr|pbl)[A-Za-z0-9\-]+",
+                "GeoVisionPinholeIPCameras": "gv-unp[A-Za-z0-9\-]+",
+                "GeoVisionTOFIPCameras": "gv-3d",
+                "GeoVisionThermalIPCameras": "gv-tmeb[A-Za-z0-9\-]+",
+                "GeoVisionVideoServers": "gv-vs[A-Za-z0-9\-]+",
+                "GeoVisionNetworkVideoRecorders": "gv-(?:rnvr|snvr)[A-Za-z0-9\-]+"
+            }
+        },
+        # Generic case is specifically for tridium niagara where the asset vendor may be anything
+        "Generic": {
+            "tridium": {
+                "Niagara": "(niaga?ra_ax|niaga?ra\d?)"
+            }
+        },
+        "HanwhaVision": {
+            "hanwhavision": {
+                "HanwhaCameras" : "(anv|ano|ane|lno|pno|pnm|pnv|pnb|pnd|sla|xnd|qno|qnv|qne|qnd|qnp|qnb|qnf|tnv|tno|tnm|tnu|tnf|tnb|xnp|xnv|xno|xnb|xnf|xnz|xnd|hcb|hcd|hcm|hco|hcp|hcv|hcz|lnd|lnv|pnf|pnp|scb|scd|sco|scv|scz|smt|snb|snd|snf|sno|snp|snv|snz|tnp)-\d?[aclmt]?\d{4}[a-z0-9\/\-]*",
+                "HanwhaVideoRecorders" : "(arn|hrx|prn|qrn|xrn|trm|xrn|hrd|spe|srd|lrn|srn)-\d{3,4}[a-z]*"
+            },
+            "hanwha-security": {
+                "HanwhaCameras" : "(anv|ano|ane|lno|pno|pnm|pnv|pnb|pnd|sla|xnd|qno|qnv|qne|qnd|qnp|qnb|qnf|tnv|tno|tnm|tnu|tnf|tnb|xnp|xnv|xno|xnb|xnf|xnz|xnd|hcb|hcd|hcm|hco|hcp|hcv|hcz|lnd|lnv|pnf|pnp|scb|scd|sco|scv|scz|smt|snb|snd|snf|sno|snp|snv|snz|tnp)-\d?[aclmt]?\d{4}[a-z0-9\/\-]*",
+                "HanwhaVideoRecorders" : "(arn|hrx|prn|qrn|xrn|trm|xrn|hrd|spe|srd|lrn|srn)-\d{3,4}[a-z]*"
+            },
+            "hanwhasecurity": {
+                "HanwhaCameras" : "(anv|ano|ane|lno|pno|pnm|pnv|pnb|pnd|sla|xnd|qno|qnv|qne|qnd|qnp|qnb|qnf|tnv|tno|tnm|tnu|tnf|tnb|xnp|xnv|xno|xnb|xnf|xnz|xnd|hcb|hcd|hcm|hco|hcp|hcv|hcz|lnd|lnv|pnf|pnp|scb|scd|sco|scv|scz|smt|snb|snd|snf|sno|snp|snv|snz|tnp)-\d?[aclmt]?\d{4}[a-z0-9\/\-]*",
+                "HanwhaVideoRecorders" : "(arn|hrx|prn|qrn|xrn|trm|xrn|hrd|spe|srd|lrn|srn)-\d{3,4}[a-z]*"
+            }
+        },
+        "Hikvision": {
+            "hikvision": {
+                "HikvisionIPCamerasAntiCorrosionSeries" : ":ds-2(dt[568]|xc6)[a-z0-9\(\)\/\- ]+",
+                "HikvisionIPCamerasDeepinViewSeries" : ":ids-2cd[78][a-z0-9\(\)\/\-]+",
+                "HikvisionIPCamerasExplosionProofSeries" : ":(ds-2(db42|df4420|dy[79]|xe6)[a-z0-9]*-[a-z0-9\(\)\/]+|ds-2df6c431-cx\(t5\/316l\))",
+                "HikvisionIPCamerasPTSeries" : ":(ds-2cd1a23g0-izu|ds-2cd1a43g0-izu|ds-2ce70df3t-pts)",
+                "HikvisionIPCamerasPanoramicSeries" : ":(ds-2cd6[39dw][a-z0-9]+-[a-z0-9\(\)\/]+|ds-2cd3956g2-is\(u\))",
+                "HikvisionIPCamerasProSeries" : ":(ds-2(cd2[01345679eht]|de[457]|se[47])[a-z0-9]+-[a-z0-9\(\)\/]+|ds-2cd1343g2-i\(uf\)|ds-2cd2821g0|ds-2cd2147g2\(-su\))",
+                "HikvisionIPCamerasSolarPoweredSeries" : ":(ds-2xs[236][a-z0-9]+-[a-z0-9\(\)\/]+|ds-2xs6a46g1\/p-izs\/4g|ds-2xs6a46g1\/p-izs\/c36s80|ds-2de2c200iwg-k\/4g\/c05s10|ds-2de2c200iwg-k\/4g\/c09s20|ds-2de2c400iwg-k\/4g\/c05s10|ds-2de2c400iwg-k\/4g\/c09s20|ds-2de5425iwg-k\/4g|ds-2se7c432iwg-k\/4g\/14\(f0\))",
+                "HikvisionIPCamerasSpecialSeries" : ":(ds-2cd2d25g1-d\/nf|ds-2cd2d25g1\/m-d\/nf|ds-2cd2d45g1\/m-d\/nf|ds-2cd6425g1-xx|ds-2cd6425g2-c1|ds-2cd6425g2-c2|ds-2cd6445g1-xx|ds-2cd6445g2-c1\/hdmi|ds-2cd6825g0\/c-i\(s\)\(b\)|ds-2cd6825g0\/c-iv\(s\)\(b\)|ds-2xt6445g2-l\/c08|ds-2xt6645g0-lizs\/c15|ds-2xt6645g0-lizs\/c25|ds-2xt6685g0-lizs\/c25)",
+                "HikvisionIPCamerasUltraSeries" : ":(ds-2(cd3|df[356789]|dp[138]|sf8c4[24]|dy[3579h]|sf8c432mxg)[a-z0-9]*-[a-z0-9\(\)\/ ]+|ds-2cd4b25g0-izs|ds-2cd4c36fwd\(-ap\)|ids-2vs435-f840-ey\(t5\)|ids-2vs445-f835h-mey\(t5\)|ds-2cd4a26fwd-izs)",
+                "HikvisionIPCamerasValueSeries" : ":(ds-2de2a204iw-de3\(s6\)|ds-2de2a204iw-de3\/w\(s6\)|ds-2de2a404iw-de3\(s6\)|ds-2de2a404iw-de3\/w\(s6\)|ds-2de2c200iwg\/w|ds-2de2c200mw-de\(s7\)|ds-2de2c200mwg-4g|ds-2de2c200mwg-e|ds-2de2c200mwg\/w|ds-2de2c200scg-e|ds-2de2c400iwg\/w|ds-2de2c400mwg-4g|ds-2de2c400mwg-e|ds-2de2c400mwg\/w|ds-2de2c400scg-e|ds-2de3204w-de\(t5\)|ds-2de3a400bw-de\(t5\)|ds-2de3a400bw-de\/w\(t5\)|ds-2de3a404iw-de\(s6\)|ds-2de3a404iw-de\/w\(s6\)|ds-2de3a404iwg-e|ds-2de3a404iwg-e\/w|ds-2se3c204mwg-e\/12|ds-2se3c404mwg-e\/14)",
+                "HikvisionIPCamerasWiFiSeries" : ":(ds-2c[dv]1[a-z0-9\(\)\/\-]+|ds-2cd2121g1-idw|ds-2cd2421g0-i\(d\)w|ds-2cd2423g0-iw|ds-2cv2041g2-idw|ds-2cv2141g2-idw|ds-2cv2q21fd-iw|ds-2cv2u21fd-iw)",
+                "HikvisionVideoRecordersDeepinMindSeries" : ":ids-[679][a-z0-9]+-[a-z0-9\(\)\/]+",
+                "HikvisionVideoRecordersProSeries" : ":(ds-7[67][a-z0-9]+-[a-z0-9\(\)\/]+|ds-6700ni-s|ds-8632nxi-i8\/24p\/s|ds-8632nxi-i8\/s|ds-8632nxi-k8|ds-9632nxi-i8\/s|ds-9664nxi-i8\/s)",
+                "HikvisionVideoRecordersSpecialSeries" : ":(ds-7102ni-s1\/w|ds-7104ni-k1\/w\/m\(c\)|ds-7104ni-k1\/w\/m|ds-7104ni-s1\/w|ds-7604ni-k1\/4p\/4g|ds-7604ni-l1\/w|ds-7608ni-k2\/8p\/4g|ds-7608ni-l1\/w|ds-7616ni-k2\/16p\/4g|ds-9000ai-s16-d|ds-9604lni-v\/b12|ds-e04ni-q1\/4p|ds-e04ni-q1|ds-e08ni-q1\/8p|ds-e08ni-q1)",
+                "HikvisionVideoRecordersUltraSeries" : ":(ds-96[a-z0-9]+-[a-z0-9\(\)\/]+|ds-7604ni-m1\/4p|ds-7608nxi-m2\/8p\/vpro|ds-7608ni-m2\/8p|ds-7608ni-m2|ds-7608nxi-m2\/vpro|ds-7616nxi-m2\/16p\/vpro|ds-7616ni-m2\/16p|ds-7616ni-m2|ds-7616nxi-m2\/vpro|ds-7632ni-m2|ds-7716ni-m4\/16p|ds-7716ni-m4|ds-7732ni-m4\/16p|ds-7732ni-m4\/24p|ds-7732ni-m4|ds-7764ni-m4)",
+                "HikvisionVideoRecordersValueSeries" : ":ds-(67|7[136]|8|9)[a-z0-9\(\)\/\-]+",
+                "HikvisionIPCameras" : ":((ipc|hwi|ptz|hwp)-[a-z0-9\(\)\/\-]+|ds-2cd9111-s|ds-2cd7153-e)",
+                "HikvisionVideoRecorders" : ":(ds-(67|7[1236]|8|9)|hw|hl|dvr|nvr)[a-z0-9\(\)\/\-]+",
+                "Hikvision" : ":ds-[a-z0-9\\(\\)\\/]+"
+            }
+        },
+        "Hirschmann": {
+            "belden": {
+                "Hirschmann" : "hi(?:sec)?os"
+            }
+        },
+        "Honeywell": {
+            "honeywell": {
+                "EHPMX": "(?:c300[op]m|ehpmx)",
+                "HoneywellExperion": "c[23]00(?![op])e?"
+            }
+        },
+        "Illustra": {
+            "johnsoncontrols": {
+                "IllustraEssentials" : "illustra_essentials",
+                "IllustraFlex" : "illustra_flex",
+                "IllustraPro" : "illustra_pro",
+                "Illustra" : "illustra_\w+"
+            }
+        },
+        "Ingeteam": {
+            "ingeteam": {
+                "INGECONSUN": "ingecon"
+            }
+        },
+        "IRZ": {
+            "irz": {
+                "IRZRouters" : "r[a-z0-9]+"
+            }
+        },
+        "Janitza": {
+            "janitza" : {
+                "UMG": ".*umg_\d{3}"
+            }
+        },
+        "JohnsonControls": {
+            "johnsoncontrols": {
+                "Metasys": "\bmetasys",
+                "MetasysNae": ".*nae",
+                "MetasysNce": ".*nce",
+                "MetasysNie": ".*nie"
+            }
+        },
+        "Keyence": {
+            "keyence": {
+                "Keyence": ".*"
+            }
+        },
+        "Korenix": {
+            "korenix": {
+                "JetNet": "jetnet.*"
+            }
+        },
+        "Meinberg": {
+            "meinberg": {
+                "LANTIME": "lantime_m\d+s?"
+            },
+            "meinbergglobal": {
+                "LANTIME": "lantime_m\d+s?"
+            }
+        },
+        "MettlerToledo": {
+            "mt": {
+                "IND360" : "ind360",
+                "IND500" : "ind5[67]0",
+                "IND780" : "ind780"
+            }
+        },
+        "Microhard": {
+            "microhardcorp": {
+                "MicrohardCellularModem" : "(?:bulletplus|(?:dragon|bullet)-lte|ipn[34]g|vip4g)"
+            }
+        },
+        "MikroTik": {
+            "mikrotik": {
+                "RouterOS": ".*router(os|board)"
+            }
+        },
+        "Mitsubishi": {
+            "mitsubishi":{
+                "MELSECiQRCP" :".*r[dj][0-9]{2}",
+                "MELSECiQR" : ".*(r[0-9]{2,}[_enpcsfmtpu]*cpu(-v)?|r[0-9]{2,})",
+                "MELSECLCP" : ".*lj71",
+                "MELSECL"   : ".*l[0-9]+[s]*cpu[pbtcm\\\(\)-]*",
+                "MELSECQCP" : ".*qj71",
+                "MELSECQ"   : ".*(?:q[0-9]+[a-z]+cpu|mr-mq[0-9]+)",
+                "MELSECiQFCP" : ".*(?:fx5-(?:asl|cclief|cclgn|ccl|dp|enet\/ip|enet|opc|485|422|232)(?:-?(?:ADP|ASL|BD|GOT|MS|M)?)*)",
+                "MELSECiQF" : ".*fx5",
+                "MELSECWS" : ".*ws0",
+                "MELSECQS" : ".*qs[09]",
+                "MELSECFCP" : ".*(?:fx[32][a-z]-(?:can|enet|j1939|usb|485|422|232)(?:-?(?:ADP|ASL|BD|CL|CCL|DNET|DP|D|IF|MBH|MB|M|P502|RJ)?)*)",
+                "MELSECF" : ".*fx[32][a-z]",
+                "MERTU"  : ".*smartrtu"
+            },
+            "mitsubishielectric": {
+                "MELSECiQRCP" :".*r[dj][0-9]{2}",
+                "MELSECiQR" : ".*(r[0-9]{2,}[_enpcsfmtpu]*cpu(-v)?|r[0-9]{2,})",
+                "MELSECLCP" : ".*lj71",
+                "MELSECL"   : ".*l[0-9]+[s]*cpu[pbtcm\\\(\)-]*",
+                "MELSECQCP" : ".*qj71",
+                "MELSECQ"   : ".*(?:q[0-9]+[a-z]+cpu|mr-mq[0-9]+)",
+                "MELSECiQFCP" : ".*(?:fx5-(?:asl|cclief|cclgn|ccl|dp|enet\/ip|enet|opc|485|422|232)(?:-?(?:ADP|ASL|BD|GOT|MS|M)?)*)",
+                "MELSECiQF" : ".*fx5",
+                "MELSECWS" : ".*ws0",
+                "MELSECQS" : ".*qs[09]",
+                "MELSECFCP" : ".*(?:fx[32][a-z]-(?:can|enet|j1939|usb|485|422|232)(?:-?(?:ADP|ASL|BD|CL|CCL|DNET|DP|D|IF|MBH|MB|M|P502|RJ)?)*)",
+                "MELSECF" : ".*fx[32][a-z]",
+                "MERTU"  : ".*smartrtu"
+            },
+            "inea": {
+                "MERTU" : ".*me[\-_]rtu"
+            }
+        },
+        "Mobotix": {
+            "mobotix": {
+                "MobotixCameras": "[a-z]\d{2}[a-z]*(-[a-z0-9]+)?"
+            }
+        },
+        "Moxa": {
+            "moxa":{
+                "MoxaNPort5600" :".*nport_56\d+",
+                "NPort" : ".*nport",
+                "MoxaEDS":".*eds",
+                "MoxaMGate": ".*(mgate|mb\d{4})",
+                "ioLogik": ".*iologik",
+                "EDR": ".*edr",
+                "PT": ".*pt",
+                "AWK": ".*awk",
+                "IKS": ".*iks"
+            }
+        },
+        "Omron": {
+            "omron": {
+                "CJ2H": ".*cj2h[\-_](cpu\d+|plc)",
+                "CJ2M": ".*cj2m[\-_](cpu\d+|plc)",
+                "NJ101": ".*nj101",
+                "NJ201": ".*nj301",
+                "NJ501": ".*nj501",
+                "NX1": ".*nx102",
+                "NX7": ".*nx701",
+                "CP": ".*cp[12][ehl]",
+                "CJ1": ".*cj1w",
+                "CS1": ".*cs1w",
+                "NE":".*ne[01]a",
+                "G9SP":".*g9sp[\-_]n[12]0[sd]",
+                "DST1":".*dst1[\-_][a-z0-9\-]+"
+            }
+        },
+        "Neuberger": {
+            "neuberger": {
+                "Open.Room":"open\.room",
+                "PMC2_4000":"(?:pmc2?_)?cp4200",
+                "PMC2_4000CP":"(?:pmc2?_)?c[ms]4\d00",
+                "PMC2_DR4000": "(?:pmc2?_)?dr4000",
+                "PMC2_DR4000CP": "(?:pmc2?_)?[bc][mn]4\d00s",
+                "PMC2_6000":"(?:pmc2?_)?cp6200",
+                "PMC2_6000CP":"(?:pmc2?_)?(?:[bc][mn]4\d00s1|cm6300)"
+            }
+        },
+        "Nexans": {
+            "nexans": {
+                "iGigaSwitch":".*i?gigaswitch"
+            }
+        },
+        "Panasonic": {
+            "panasonic": {
+                "PanasonicIPCameras" : "(?:aw-[uh]e\d{3}|bb-hcm\d{3}[a-z]|dg-np\d{3}|wj-(?:nt|gxe)\d{3}|wv-(?:nf|np|ns|nw|s[cfpt]?[nrvw]?|u|x)\d{3,5}[a-z0-9\-]*)"
+            },
+            "i-pro": {
+                "PanasonicIPCameras" : "(?:aw-[uh]e\d{3}|bb-hcm\d{3}[a-z]|dg-np\d{3}|wj-(?:nt|gxe)\d{3}|wv-(?:nf|np|ns|nw|s[cfpt]?[nrvw]?|u|x)\d{3,5}[a-z0-9\-]*)"
+            }
+        },
+        "PhoenixContact": {
+            "phoenixcontact": {
+                "ILC100":"ilc[\-_]1\d{2}(?:[^0-9]|$)",
+                "ILC200":"ilc[\-_]2\d{2}(?:[^0-9]|$)",
+                "ILC2000":"ilc[\-_]2\d{3}(?:[^0-9]|$)",
+                "ILC300":"ilc[\-_]3\d{2}(?:[^0-9]|$)",
+                "ILC":"ilc",
+                "RFC400":"rfc[\-_]4\d{2}(?:[^0-9]|$)",
+                "RFC":"rfc",
+                "AXC3000":"axc[\-_]3\d{3}(?:[^0-9]|$)",
+                "AXC1000":"axc[\-_]1\d{3}(?:[^0-9]|$)",
+                #"AXCF3000":"axc[\-_]f[\-_]3\d{3}(?:[^0-9]|$)", # These are not supported by tenable.ot yet.
+                #"AXCF2000":"axc[\-_]f[\-_]2\d{3}(?:[^0-9]|$)", # These are not supported by tenable.ot yet.
+                #"AXCF1000":"axc[\-_]f[\-_]1\d{3}(?:[^0-9]|$)", # These are not supported by tenable.ot yet.
+                "AXC":"axc",
+                "S_MAX400":"s[\-_]?max[\-_]4\d{2}(?:[^0-9]|$)", # There aren't any CVEs with CPEs for S MAX HMIs
+                "S_MAX":"s[\-_]?max" # There aren't any CVEs with CPEs for S MAX HMIs
+            }
+        },
+        "Qnap": {
+            "qnap": {
+                "QES": "qes",
+                "QTS": "qts",
+                "QuTShero": "quts[\_\-]?hero"
+            }
+        },
+        "RICOH": {
+            "ricoh": {
+                "MFP": "(?:aficio[\_\-])?(?:sp|mp|p|im|pro|m)[\_\-][a-zA-Z0-9]+"
+            }
+        },
+        "Rockwell": {
+            "rockwellautomation": {
+                "GuardLogix5370": ".*(1769.*l3[0367]ermo?s|guardlogix.*537[0-9])",
+                "GuardLogix5380": ".*(5069.*l3\d{2,3}erm?s?[23]|guardlogix.*538[0-9])",
+                "GuardLogix5560": ".*(1756.*l6[1-3]s|guardlogix.*556[0-9])",
+                "GuardLogix5570": ".*(1756.*l7[1-3]s|guardlogix.*557[0-9])",
+                "GuardLogix5580": ".*(1756.*l8[1-4]es|1756.*l8sp|guardlogix.*558[0-9])",
+                "GuardLogix": ".*guardlogix",
+                "MicroLogix1000": ".*(1761.*l|micrologix.*1000)",
+                "MicroLogix1100": ".*(1763.*l|micrologix.*1100)",
+                "MicroLogix1200": ".*(1762.*l|micrologix.*1200)",
+                "MicroLogix1400": ".*(1766.*l|micrologix.*1400)",
+                "MicroLogix1500": ".*(1764.*l|micrologix.*1500)",
+                "MicroLogix": ".*(176[1-46]|micrologix)",
+                "CompactLogix5320": ".*(1769.*l2[03]|compactlogix.*532[0-9])",
+                "CompactLogix5330": ".*(1769.*l3[0-25]|compactlogix.*533[0-9])",
+                "CompactLogix5340": ".*(1768.*l[0-9]|compactlogix.*534[0-9])",
+                "CompactLogix5370": ".*(1769.*l[1-3][0346-9]er|compactlogix.*537[0-9])",
+                "CompactLogix5380": ".*(5069.*l3|compactlogix.*538[0-9])",
+                "CompactLogix5480": ".*(5069.*l4|compactlogix.*548[0-9])",
+                "CompactLogix": ".*(176[89]|5069|compactlogix)",
+                "ControlLogix5550": ".*(1756.*l5[15]|controllogix.*555[0-9])",
+                "ControlLogix5560": ".*(1756.*l6[1-5]|controllogix.*556[0-9])",
+                "ControlLogix5570": ".*(1756.*l7[1-5][^s]*|controllogix.*557[0-9])",
+                "ControlLogix5580": ".*(1756.*l8[1-5]|controllogix.*558[0-9])",
+                "ControlLogix": ".*(1756|controllogix)",
+                "FlexLogix": ".*(1794|flexlogix)",
+                "DriveLogix": ".*(57[23]0|drivelogix)",
+                "SoftLogix5800": ".*(1789|softlogix)",
+                "Micro810": ".*(2080.*lc10|micro.*810)",
+                "Micro820": ".*(2080.*lc20|micro.*820)",
+                "Micro830": ".*(2080.*lc30|micro.*830)",
+                "Micro850": ".*(2080.*lc50|micro.*850)",
+                "Micro870": ".*(2080.*lc70|micro.*870)",
+                "SLC5": ".*(1747|slc.*5)",
+                "PLC5": ".*(1785|plc-?5)",
+                "ArmorStartST": "armorstart.*28[14](es?|gs)",
+                "ArmorStartLT": "armorstart.*29[014]",
+                "ArmorStartSC": "armorstart.*28([01]d?|4[de])",
+                "PowerMonitor1000": ".*(powermonitor.*1000|1408-[a-z0-9\-]+)",
+                "PowerMonitor5000": ".*(powermonitor.*5000|1426-[a-z0-9\-]+)",
+                "PowerMonitor": ".*powermonitor",
+                "Stratix":"stratix[\-_]\d{4}?"
+            }
+        },
+        "Saia":{
+            "saia_burgess_controls": {
+                "PCD1": ".*pcd1\.m[02][0-9a-z]{2}0",
+                "PCD2": ".*pcd2\.m5[0-9a-z]{2}0",
+                "PCD3": ".*pcd3\.(m[0-9a-z]{3}0|t66[56])",
+                "PCD7": ".*pcd7\.d4([0-9a-z]{2}d|[0-9a-z]{2}wtpf|[0-9a-z]{3}t5f[0-9a-z]{2}v)",
+                "PCD": ".*pcd"
+            }
+        },
+        "Schneider": {
+            "schneider-electric": {
+                "SmartxASBController": ".*struxureware.*server.*as[\-_]b",
+                "SmartxASPController": ".*struxureware.*server.*as[\-_]p",
+                "SmartxServer": ".*struxureware.*server",
+                "Ecostruxure": ".*struxureware",
+                "Micom": "micom[\-_]?[pc][0-9]{3}[a-z]?",
+                "ModiconMC80": ".*(modicon_mc80|bmk[\-_]?c80[\-_]?\d{5})",
+                "ModiconEasyM100": ".*modicon_m100",
+                "ModiconEasyM200": ".*modicon_m200",
+                "ModiconM171": ".*modicon_m171",
+                "ModiconM172": ".*modicon_m172",
+                "ModiconM218": ".*modicon_m218",
+                "ModiconM221": ".*modicon_t?m221",
+                "ModiconM241": ".*modicon_m241",
+                "ModiconM251": ".*modicon_m251",
+                "ModiconM258": ".*modicon_m258",
+                "ModiconM262": ".*modicon_m262",
+                "ModiconM340M580CP":".*(bmx|bme)[\-_]?(eia|noc|noe|nom|nor|nrp)[\-_]?\d{0,5}[a-z]{0,2}",
+                "ModiconM340PRA": ".*bmx[\-_]?pra[\-_]?\d{0,}[a-z]{0,2}",
+                "ModiconM340": ".*(modicon|modicom)?.*m340|.*bmx[\-_]?p34[\-_]?\d{0,}[a-z]{0,2}",
+                "ModiconM580": ".*(modicon|modicom)?.*m580|.*bme[\-_]?[hp]58[\-_]?\d{0,}[a-z]?",
+                "MomentumUnity": ".*171cbu\d{0,}",
+                "PremiumCP": ".*tsx(esy|etc|ety|ibx|iby|pby|say|scy|wmy)\d{0,}[a-z]{0,2}",
+                "Premium": ".*premium|.*tsx(h57|p57|pci)[_]?\d{0,}[a-z]?",
+                "QuantumUnityCP": ".*140(crp|eia|noc|noe|nog|nom|nrp|nwm|xbe)\d{0,}",
+                "QuantumUnity": ".*quantum|.*140cpu((3|6)\d+|(43412|53414)[a-z0-9])",
+                "QuantumConcept": ".*140cpu((1|2|42)\d+|(43412|53414))",
+                "Compact": ".*pc[\-_]?e[\-_]?984",
+                "MomentumConcept": ".*171(cbb|ccc|ccs)\d{0,}",
+                "Atrium": ".*180[\-_]?cco[\-_]?\d{3}[\-_]?\d{2}",
+                "Concept": ".*(140|bmx)cra|lmc\d{3}",
+                "PowerLogicHDPM": ".*hdpm6\d{3}",
+                "PowerLogicPM": ".*pm(?:3|5|8)\d{3}",
+                "PowerLogicEGX100": ".*egx100",
+                "PowerLogicEGX": ".*egx(?:[234]00|150)",
+                "ION": "(?:powerlogic_)?ion\d{4}",
+                "WiserSmart": ".*eer2100*[0-9]"
+            }
+        },
+        "SEH": {
+            "seh": {
+                "SEHUSBDeviceServers" : "(?:utn|inu)"
+            },
+            "computertechnik": {
+                "SEHUSBDeviceServers" : "(?:utn|inu)"
+            }
+        },
+        "SEL": {
+            "selinc": {
+                "Rtac": ".*sel-(3350|35[05]5|353[023]|3560|2241)",
+                "Sel": ".*sel-(2240|2032|2100|2411|2440|3373|3378|3573|3620|3622)"
+            }
+        },
+        "Siemens": {
+            "siemens": {
+                "ET200SP": ".*((?<!siplus_)et[\-_]?200[\-_]?sp|6(es7|ag1)15[15]-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "ET200M": ".*(simatic.*et[\-_]?200m[^a-z]|6(es7|ag1)153-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "ET200": ".*(et[\-_]?200|6es715[14]-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "Siprotec4": ".*(siprotec_4|digsi_4|en100_ethernet_module|6md6[136]|7sa522|7sa6|7sd5|7sd61|7sj4[56]|7sj6[12346]|7ss52|7ss60|7st6|7um6[12]|7ut61[23]|7ut63|7ve6|7vk61|7vu68|7rw600|7sd600|7sj60[012]|7sn600|7sv600|7uw50|7vh60|7sj80|7sk80|7rw80)",
+                "Siprotec5": ".*(siprotec_5|digsi_5|6md85|6md86|6md89|6mu80|6mu85|7ke85|7sa82|7sa86|7sa87|7sd82|7sd86|7sd87|7sj81|7sj82|7sj85|7sj86|7sk81|7sk82|7sk85|7sl82|7sl86|7sl87|7ss85|7st85|7um85|7ut82|7ut85|7ut86|7ut87|7ve85|7vk87|siprotec.*cp\d00|eth[_\-]?b[abd][_\-]?2(?:fo|el))",
+                "Siprotec": ".*siprotec",
+                "S7200": ".*s7-200",
+                "S7300": ".*(s7[\-_]?300|cpu?[\-_]?3\d{2}|6((es|gk)73\d{2}|ag131\d)-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "S7400": ".*(s7[\-_]?400|cpu?[\-_]?4\d{2}|6((es|gk)74\d{2}|ag141\d)-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "S71200": ".*(s7[\-_]?1200|c[pm]u?[\-_]?12\d{2}|6((es|gk)72\d{2}|ag121\d)-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "S71500": ".*(s7[\-_]?1500|c[pm]u?[\-_]?15\d{2}|6((es|gk)75\d{2}|ag151\d)-\d[a-z]{2}\d{2}-\d[a-z]b0)",
+                "SicamAK1703ACP": ".*sicam_ak",
+                "SicamBC1703ACP": ".*sicam_bc",
+                "SicamTM1703ACP": ".*sicam_tm",
+                "SicamTM1703EMIC": ".*sicam_emic",
+                "SicamTM1703MIC": ".*sicam_mic",
+                "SicamA8000CP800": ".*cp-?800",
+                "SicamA8000CP802": ".*cp-?802",
+                "SicamA8000CP803": ".*cp-?803",
+                "SicamA8000CP805": ".*cp-?805",
+                "SicamQ100": ".*(?:7kg9501(\s+|-|_)0aa|sicam[\-_]q100[\-_]firmware)",
+                "SicamQ200": ".*(?:7kg9711(\s+|-|_)0aa|sicam[\-_]q200[\-_]firmware)",
+                "SicamP850": ".*(?:7kg850[01](\s+|-|_)0aa|sicam[\-_]p850[\-_]firmware)",
+                "SicamP855": ".*(?:7kg855[01](\s+|-|_)0aa|sicam[\-_]p855[\-_]firmware)",
+                "Sicam": ".*sicam",
+                "PxcModular": "(apogee_.*modular)|(pxc1?00-p?e96\.a)",
+                "PxcCompact": "(apogee_.*compact)|pxc\d\d(?:\.[23])?-(?:[perf]{0,3}(?:32)?)?(?:UCM)?\.a",
+                "Desigo": "(desigo_pxc)|(pxg\d\.w\d{3})|(pxm\d\d)|(pxc00-e\.d)|(pxc001(?:-e)?.*\.d)|(pxc[123][26](?:\.1)?(?:-E)?\.d)|(pxc[1-9]00?-e\.d)|((dxr[12]\d*))",
+                "Apogee": ".*apogee", # we don't use apogee as family only as part of the hierarchy, so we'd likely never see 'apogee' but we already have it, so leave for now
+                "SCALANCEX000": "scalance_x[b]?[\-_]?0\d{2}",
+                "SCALANCEX100": "scalance_x[bcr]?[\-_]?1\d{2}",
+                "SCALANCEX200IRT": "scalance_xf?[\-_]?2\d{2}.*irt",
+                "SCALANCEX200": ".*(scalance_x[bcfp]?[\-_]?2\d{2}|6ag12\d{2}-\d[a-z]{2}00-(7ac2|2ba3)|6gk52\d{2})",
+                "SCALANCEX300": ".*(scalance_(x[cr]?|xcm)[\-_]?3\d{2}|6gk53\d{2})",
+                "SCALANCEX400": ".*(scalance_(?:xm?|pe)[\-_]?4\d{2}|6gk54\d{2})",
+                "SCALANCEX500": ".*(scalance_xr[\-_]?5\d{2}|6gk55\d{2})",
+                "SCALANCEX": "scalance_x",
+                "SCALANCEW": ".*(scalance_w|6gk57\d{2})",
+                "SCALANCES": ".*(scalance_s|6gk56\d{2})",
+                "SCALANCEM": ".*(scalance_m|6gk58\d{2})",
+                "SCALANCE": ".*scalance",
+                "RuggedCom": ".*ruggedcom.*(rs[tg]?|rx|rmc?|i|mx?)\d+",
+                "TDCCPU551": ".*simatic_tdc_cpu551",
+                "TDCCPU555": ".*simatic_tdc_cpu555",
+                "TDCCP50m1": ".*simatic_tdc_cp50m1",
+                "TDCCP51m1": ".*simatic_tdc_cp51m1",
+                "LOGO!BM": "logo.*(12\W+24|24|230|8)[\-_]?(r?ceo?|bm)",
+                "LOGO!EM": "logo.*(([ad]m\d+[\-_]?(24r?|230r|rtd|aq|12\W+24r)?)|(8[\-_]em))",
+                "LOGO!CM": "logo.*(((cmk|cmr)\d+|cim|csm[\-_]?12\W+24)|(8[\-_]cm))",
+                "APE1808": ".*(insydeh2o|ape[\-_]?1808)",
+                "SITOP": ".*sitop[\-_](psu|ups)",
+                "NETCP1600": ".*cp[\_\-]16\d{2}"
+            }
+        },
+        "Sony": {
+            "sony": {
+                "SonyIPCameras": "(?:snc|snt|ilme|brc|srg)-[a-z0-9\/]+"
+            }
+        },
+        "SprecherAutomation": {
+            "sprecher-automation": {
+                "SPRECONE": "sprecon-e"
+            }
+        },
+        "Synology": {
+            "synology": {
+                "DiskStation": "(?:disk_?station|dsm|ds\d+(?:j|xs|slim)?\+?)"
+            }
+        },
+        "Teltonika": {
+            "teltonika-networks": {
+                "RUT1": "rut1\d{2}",
+                "RUT2": "rut2\d{2}",
+                "RUT3": "rut3\d{2}",
+                "RUT9": "rut9\d{2}",
+                "RUT5G": "(?:rutm50|rutx50)",
+                "RUTC50": "rutc50",
+                "RUTM": "rutm\d{2}",
+                "RUTX": "(?:rutx\d{2}|rutxr1)",
+                "TCR100": "tcr100",
+                "OTD140": "otd140"
+            }
+        },
+        "Toyota": {
+            "toyoda": {
+                "Toyoda": ".*"
+            }
+        },
+        "Trane": {
+            "trane": {
+                "Symbio": ".*symbio",
+                "TracerSCPlus": ".*tracer_sc%2b",
+                "TracerSC": ".*tracer_sc"
+            }
+        },
+        "UbiquitiNetworks": {
+            "ubiquiti_networks": {
+                "UbiquitiAP": "unifi_ap.*"
+            }
+        },
+        "Vertiv": {
+            "automatedlogic": {
+                "LiebertSiteScan": "sitescan"
+            },
+            "emerson": {
+                "LiebertSiteScan": "sitescan"
+            },
+            "vertiv": {
+                "Watchdog": "watchdog_(100|15)[\-_]?(uk|nps|p|un)"
+            }
+        },
+        "Wago": {
+            "wago": {
+                "EdgeController": "(752-8[34]0[03]|edge_controller)",
+                "CompactController": "751-9301",
+                "Controller750": "750-((3[356]\d)|(8[3546789]\d))",
+                "ControllerPFC100": "(750-810\d)|(pfc_?100)",
+                "ControllerPFC200": "(750-82[0139]\d?)|(pfc_?200)",
+                "ControllerPFC300": "(750-830\d)|(pfc_?300)"
+            }
+        },
+        "Welotec": {
+            "welotec": {
+                "WelotecIndustrialRouters" : "tk[a-zA-Z0-9\-]+"
+            }
+        },
+        "Westermo": {
+            "westermo": {
+                "WestermoCellular" : "mrd?-\d{3}",
+                "WestermoEDW": "edw[\-_]\d{3}",
+                "WestermoLynx" : "(?:l\d+-?(?:f\dg|s\d)?)|weos",
+                "WestermoXDSL" : "(?:brd|dr)-\d{3}"
+            }
+        },
+        "WiesemannTheis": {
+            "wut" : {
+                "WTComServer": "com-server_\w",
+            }
+        },
+        "Yokogawa": {
+            "yokogawa": {
+                "CentumVP": ".*centum.*",
+                "ProSafe": ".*prosafe-rs.*"
+            }
+        },
+        "Zebra": {
+            "zebra": {
+                "ZP500" : "zp5\d{2}",
+                "FX9500" : "fx95\d{2}",
+                "Zebra" : "((?!zp|fx)[a-z]{2}\d+|\d+xi\d+)"
+            }
+        },
+        "Elspec": {
+            "elspec": {
+                "G5" : "elspec-g5"
+            }
+        }
+    };
+
+    # Regex used for model matching
+    # Mulitple logic are used, depending on the need to identify parts, subfamilies ...
+    # Mix of vendor, families and asset types, NOT sorted by alphabetical order
+    var models = {
+        "simatics7": {
+            "genericModelRegex" : "(c[pm]u?)[\-_\s]?+(?:s7[-_])?(\d+[a-zA-Z0-9]+\-?[a-zA-Z0-9]*)[\-_ ]*(?!firmware)([\-a-zA-Z0-9\/]*)",
+            "subfamilyRegex" : "(?:s7|c[pm]u?)[\-_\s]?\d+[\-_\s]?\d*[\-_\s]?(?!firmware|v\d|c[pm]u?)([\-a-zA-Z\/]*)"
+        },
+        "ruggedcom": {
+            "genericModelRegex" : "((?:rs[tg]?|rx|rmc?|i|mx?)\d+[a-z]*)(?:.*(nam|eu))?"
+        },
+        "logo!bm": {
+            "genericModelRegex" : "(?:(12)\W+)?((?:24|230)r?ceo?)"
+        },
+        "logo!em": {
+            "genericModelRegex" : "([ad]m\d+)[\-_\s]?(24r?|230r|rtd|aq|12)?(?:\W+(24r))?"
+        },
+        "logo!cm": {
+            "genericModelRegex" : "((?:cmk|cmr)\d+|cim|csm)(?:[\-_](12)\W+(24))?"
+        },
+        "rockwell": {
+            # Controller model regexes, default if no other asset type model regex exists
+            "controller": {
+                "genericModelRegex" : "([0-9]{4})-([0-9a-z]{2,4})",
+                "partNumberRegex" : "17[0-9]{2}|5069|2080",
+                "modelIndicatorRegex" : "lc?[0-9]{1,2}",
+                "subFamilyRegex" : "5[1-9][0-9]{2}",
+                "subfamilies" : {
+                    "GuardLogix5370": "5370",
+                    "GuardLogix5380": "5380",
+                    "GuardLogix5560": "5560",
+                    "GuardLogix5570": "5570",
+                    "GuardLogix5580": "5580",
+                    "CompactLogix5320": "5320",
+                    "CompactLogix5330": "5330",
+                    "CompactLogix5340": "5340",
+                    "CompactLogix5370": "5370",
+                    "CompactLogix5380": "5380",
+                    "CompactLogix5480": "5480",
+                    "ControlLogix5550": "5550",
+                    "ControlLogix5560": "5560",
+                    "ControlLogix5570": "5570",
+                    "ControlLogix5580": "5580",
+                    "SoftLogix5800": "5800"
+                }
+            },
+            # Communication modules model regexes
+            "cp": {
+                "genericModelRegex": "([0-9]{4})-([0-9a-z]+)",
+                "partNumberRegex": "(?<=[a-z]\/|%2f|series_)[a-z]"
+            }
+        },
+        "melodyrack": {
+            "controller": {
+                "genericModelRegex" : "pm(\s+|-|_)?87[567](-1)?"
+            },
+            "cp": {
+                "genericModelRegex": "[cf][cm][cfr]?(\s+|-|_)?[3172][07][0]?(\s+|-|_)[p2](-p|_p)?",
+            }
+        },
+        "harmonyrack": {
+            "controller": {
+                "genericModelRegex" : "spc(\s+|-|_)?810ev|spbrc(\s+|-|_)?[34][01]0"
+            },
+            "cp": {
+                "genericModelRegex": "spiet(\s+|-|_)?800|spiit(\s+|-|_)?1[23]|spnis(\s+|-|_)?21|spnpm(\s+|-|_)?22|spcpm(\s+|-|_)?02|sprio(\s+|-|_)?22|spipt(\s+|-|_)?800|spenm(\s+|-|_)?01",
+            }
+        },
+        "sdseries": {
+            "controller": {
+                "genericModelRegex" : "[hs]pc(\s+|-|_)?[678]00"
+            },
+            "cp": {
+                "genericModelRegex": "sci(\s+|-|_)?200|ci(\s+|-|_)?850|pni(\s+|-|_)?800|pio(\s+|-|_)?800|ior(\s+|-|_)?810|pdp(\s+|-|_)?800|hrbx(\s+|-|_)?01",
+            }
+        },
+        "modiconm340m580cp": {
+            "genericModelRegex" : "(?:bmx|bme)[\-_ ]?(?:eia|noc|noe|nom|nor|nrp)[\-_ ]?\d{0,5}[a-z]{0,2}",
+        },
+        "modiconm340pra": {
+            "genericModelRegex" : "bmx[\-_ ]?pra[\-_ ]?\d{0,}[a-z]{0,2}",
+        },
+        "modiconm340": {
+            "genericModelRegex" : "bmx[\-_ ]?p34[\-_ ]?\d{0,}[a-z]{0,2}|bmx[\-_ ]?noe[\-_ ]?01[01]0|bmx[\-_ ]?noc[\-_ ]?0401",
+        },
+        "modiconm580": {
+            "genericModelRegex" : "bme[\-_ ]?[hp]58[\-_ ]?\d{0,}[a-z]?",
+        },
+        "modiconmc80": {
+            "genericModelRegex" : "bmk[\-_ ]?c80[\-_ ]?\d{5}",
+        },
+        "momentumunity": {
+            "genericModelRegex" : "171[\-_ ]?cbu[\-_ ]?\d{0,}",
+        },
+        "premiumcp": {
+            "genericModelRegex" : "tsx[\-_ ]?(esy|etc|ety|ibx|iby|pby|say|scy|wmy)[\-_ ]?\d{0,}[a-z]{0,2}",
+        },
+        "premium": {
+            "genericModelRegex" : "tsx[\-_ ]?(h57|p57|pci)[\-_ ]?\d{0,}[a-z]?",
+        },
+        "quantumunitycp": {
+            "genericModelRegex" : "140[\-_ ]?(crp|eia|noc|noe|nog|nom|nrp|nwm|xbe)[\-_ ]?\d{0,}",
+        },
+        "quantumunity": {
+            "genericModelRegex" : "140[\-_ ]?cpu[\-_ ]?\d{0,}[a-z]?",
+        },
+        "quantumconcept": {
+            "genericModelRegex" : "140[\-_ ]?cpu[\-_ ]?\d{0,}[a-z]?",
+        },
+        "atrium": {
+            "genericModelRegex" : "180[\-_ ]?cco[\-_ ]?\d{3}[\-_ ]?\d{2}",
+        },
+        "concept": {
+            "genericModelRegex" : "(?:(?:140|bmx)[\-_ ]?cra|lmc)[\-_ ]?\d{0,3}[\-_ ]?\d{0,2}",
+        },
+        "compact": {
+            "genericModelRegex" : "pc[\-_ ]?e[\-_ ]?984",
+        },
+        "momentumconcept": {
+            "genericModelRegex" : "171[\-_ ]?(cbb|ccc|ccs)[\-_ ]?\d{0,}",
+        },
+        "micom": {
+            "genericModelRegex" : "micom.*([pc][0-9]{3}[a-z]?)",
+        },
+        "tridium" : {
+            "genericModelRegex" : "niaga?ra"
+        },
+        "metasys" : {
+            "genericModelRegex" : "(n[aic]e)-?([0-9]{2,})"
+        },
+        "metasysnae" : {
+            "genericModelRegex" : "(nae)-?([0-9]{2,})"
+        },
+        "metasysnie" : {
+            "genericModelRegex" : "(nie)-?([0-9]{2,})"
+        },
+        "metasysnce" : {
+            "genericModelRegex" : "(nce)-?([0-9]{2,})"
+        },
+        "moxa" : {
+            "moxanport5600" : {
+                "genericModelRegex" : "56\d0[\-a-z1-9]*",
+            },
+            "nport" : {
+                "genericModelRegex" : "[a-z]*[256]\d{3}[\-a-z1-9]*",
+            },
+            "moxaeds" : {
+                "genericModelRegex" : "g?[45]\d{2,}[ae]?",
+            },
+            "moxamgate" : {
+                "genericModelRegex" : "(?:mb\d{4}[\-a-z1-9]*|\d{4}-mb-eip[\-a-z]*|\d{4})",
+            },
+            "iologik" : {
+                "genericModelRegex" : "e?\d{4}",
+            },
+            "edr" : {
+                "genericModelRegex" : "g?[89]\d{2}[\-a-z1-9]*",
+            },
+            "pt" : {
+                "genericModelRegex" : "7[578]\d{2}[\-a-z1-9]*",
+            },
+            "awk" : {
+                "genericModelRegex" : "\d{4}[\-a-z1-9]*",
+            },
+            "iks" : {
+                "genericModelRegex" : "g?6\d{3}[\-a-z1-9]*",
+            }
+        },
+        "powerlogicpm" : {
+            "genericModelRegex" : "(pm[358]\d{3})"
+        },
+        "powerlogicegx" : {
+            "genericModelRegex" : "egx(?:[1234][05]0)"
+        },
+        "ion" : {
+            "genericModelRegex" : "(\d{4})"
+        },
+        "scalance" : {
+            "genericModelRegex" : "([msxw][camu]*.?\d{3,4}|lpe9\d{3})",
+            "subfamilies":
+            {
+                "scalancem" : {
+                    "regex" : "(?:scalance_)?(m[um]*(?:[\w\-\s]+?(?=_firmware)|[\w\-\s]+))"
+                },
+                "scalancex" : {
+                    "regex" : "(?:scalance_)?(x(?:[\w\-\s]+?(?=_firmware)|[\w\-\s]+))"
+                },
+                "scalances" : {
+                    "regex" : "(?:scalance_)?(sc?(?:[\w\-\s]+?(?=_firmware)|[\w\-\s]+))"
+                },
+                "scalancew" : {
+                    "regex" : "(?:scalance_)?(w[amu]*(?:[\w\-\s]+?(?=_firmware)|[\w\-\s]+))"
+                }
+            }
+        },
+        "siprotec" : {
+            "genericModelRegex" : "(?:[67][a-z]{2}\d{2,3}|eth[_\-\s]?b[abd][_\-\s]?2(?:fo|el))"
+        },
+        "pxcmodular" : {
+            "genericModelRegex" : "pxc\d+[\w\-\.]+",
+            "mecModelRegex": "549-6\d{2}",
+            "mbcModelRegex": "454-7\d{2}"
+        },
+        "pxccompact" : {
+            "genericModelRegex" : "pxc\d+[\w\-\.]+"
+        },
+        "desigo" : {
+            "genericModelRegex" : "([a-z]{3}\d{1,3})"
+        },
+        "armorstart" : {
+            "genericModelRegex" : "(28[14](?:es?|gs))|(29[014])|(28(?:[01]d?|4[de]))"
+        },
+        "omron" : {
+            "cj2" : {
+                "genericModelRegex" : "cj2[hm][\s\-_](cpu\d+)"
+            },
+            "cj1" :{
+                "genericModelRegex" : "cj1w[\s\-_][a-z0-9\-\s]+",
+            },
+            "cs1" :{
+                "genericModelRegex" : "cs1w[\s\-_][a-z0-9\-\s]+",
+            },
+            "cp" :{
+                "genericModelRegex" : "cp[12][ehl][\s\-_][a-z0-9\-\s]+",
+            },
+            "nj" :{
+                "genericModelRegex" : "nj\d+[\s\-_][a-z0-9]+",
+            },
+            "nx" :{
+                "genericModelRegex" : "nx\d+[\s\-_]\d+",
+            },
+            "ne" :{
+                "genericModelRegex" : "ne[01]a[\s\-_][a-z0-9\-\s]+",
+            },
+            "g9sp" :{
+                "genericModelRegex" : "g9sp[\s\-_][a-z0-9]+",
+            },
+            "dst1" :{
+                "genericModelRegex" : "dst1[\-_][a-z0-9\-\s]+",
+            }
+        },
+        "rtac" : {
+            "genericModelRegex" : "(sel-(?:3350|35[05]5|353[023]|3560[es]?|2241)(?:-\d+)?)"
+        },
+        "sel" : {
+            "genericModelRegex" : "(sel-(?:2240|2032|2100|2411p?|2440|3373|3378|3573|3620|3622)(?:-\d+)?)"
+        },
+        "eaton" : {
+            "genericModelRegex" : "(?:eaton )?(ec4p|easy[\-_]?e4|x[cn]\d{3}|[359][a-z0-9]+|pxg[\-_\s]?900)"
+        },
+        "mitsubishi" : {
+            "subfamilies":{
+                "melsecf" : "fx[32][a-z]+-\d+\w+(?:\/|-)?[a-z]+",
+                "melsecfcp" : ".*(fx[32][a-z]-(can|enet|j1939|usb|485|422|232)([\-]?(ADP|ASL|BD|CL|CCL|DNET|DP|D|IF|MBH|MB|M|P502|RJ)?)*)",
+                "melseciqf": "fx5[a-z]+-\d+\w+(?:\/|-)?[a-z]+",
+                "melseciqfcp": ".*(fx5-(asl|cclief|cclgn|ccl|dp|enet\/ip|enet|opc|485|422|232)(-?(ADP|ASL|BD|GOT|MS|M)?)*)",
+                "melseciqr": ".*(r[0-9]{2,}[_enpcsfmtpu]*cpu(-v)?|r[0-9]{2,})",
+                "melseciqrcp": ".*(r[dj][0-9]{2}[a-z]+[0-9sn]*(-[a-z0-9]+)?)",
+                "melsecl": ".*(l[0-9]+[s]*cpu[pbtcm\\\(\)-]*)",
+                "melseclcp": ".*(l[dj][0-9]{2}[a-z]+[0-9sn]*(-[a-z0-9]+)?)",
+                "melsecq": "",
+                "melsecqcp": ".*(q[dj][0-9]{2}[a-z]+[0-9sn]*(-[a-z0-9]+)?)",
+                "melsecqs": ".*(qs[-a-z0-9]+)",
+                "melsecws": ".*(ws0-[a-z0-9]+)",
+            }
+        },
+        "symbio": {
+            "genericModelRegex" : "(?:symbio\s*\W?\s*)?([4578]00|210)"
+        },
+        "ehpmx": {
+            "genericModelRegex" : "c300[op]m"
+        },
+        "honeywellexperion": {
+            "genericModelRegex" : "c[23]00(?![op])e?"
+        },
+        "sitop": {
+            "genericModelRegex" : "(?:psu|ups)?\s*(\d+)"
+        },
+        "terminalcpx": {
+            "genericModelRegex" : "(?:cpx-terminal,\s*)?(fb[34]\d)"
+        },
+        "cecc": {
+            "genericModelRegex" : "cecc-[a-zA-Z0-9\-]+"
+        },
+        "cecx": {
+            "genericModelRegex" : "cecx-[a-zA-Z0-9\-]+"
+        },
+        "stratix": {
+            "genericModelRegex" : "s(?:tratix)?[\-_\s]?(\d{4})"
+        },
+        "phoenixcontact" : {
+            "genericModelRegex" : "(ilcx?|rfc|axc(?:\s[a-zA-Z])?)[\-_\s]?(\d+[rs]?)[\-_\s]?((?:eth|uni|ib|pn|vlc|\d?tx|ib|pac|xc)(?:\/m)?)?[\-_\s]?((?:eth|uni|ib|pn|vlc|\d?tx|ib|pac|xc)(?:\/m)?)?[\-_\s]?((?:eth|uni|ib|pn|vlc|\d?tx|ib|pac|xc)(?:\/m)?)?"
+        },
+        "neuberger" : {
+            "genericModelRegex" : "(?:pmc2?[\-_\s])?(open\.room|[bcd][mnprs][46]\d00s?1?)"
+        },
+        "axis" : {
+            "genericModelRegex" : "[a-z]+\d+(?:-[a-z0-9]+)*",
+            "seriesRegex" : "[a-z]+\d+"
+        },
+        "umg" : {
+            "genericModelRegex" : "(umg)[_\s]?(\d{3})"
+        },
+        "boschsecuritysystems" : {
+            "genericModelRegex" : "([4-7]\d{3}i?)[ \-_]?(hd|ir)?"
+        },
+        "mobotixcameras" : {
+            "genericModelRegex" : "([a-z]\d{2}[a-z]*)-?([a-z0-9]+)?"
+        },
+        "mfp" : {
+            "genericModelRegex" : "(aficio)?[\-\_\s]?(sp|mp|p|im|pro|m)[\-\_\s]([a-zA-Z0-9]+)"
+        },
+        "netcp1600" : {
+            "genericModelRegex" : "cp[\s\_\-](16\d{2})"
+        },
+        "ciscoipphones" : {
+            "genericModelRegex" : "(?:cp[\s\_\-]?|ip_phones?_|spa[\s\_\-]?)([0-9g]+)",
+            "seriesRegex" : "(?:cp[\s\_\-]?|ip_phones?_|spa[\s\_\-]?)([0-9]{2})"
+        },
+        "ciscosmallbusiness" : {
+            "genericModelRegex" : "cbs[235]\d{2}[a-z0-9\-]+"
+        },
+        "watchdog" : {
+            "genericModelRegex" : "watchdog[\-_\s](100|15)[\-_\s]?(uk|nps|p|un)"
+        },
+        "westermocellular" : {
+            "genericModelRegex" : "mrd?-\d{3}"
+        },
+        "westermoxdsl" : {
+            "genericModelRegex" : "(?:brd|dr)-\d{3}"
+        },
+        "westermolynx" : {
+            "genericModelRegex" : "l\d+-?(?:f\dg|s\d)?"
+        },
+        "wago" : {
+            "genericModelRegex" : "7\d{2}-\d+\/?\d*-?\d*",
+            "seriesRegex" : "7\d{2}-\d+"
+        },
+        "lantime" : {
+            "genericModelRegex" : "m\d+s?"
+        },
+        "zebra" : {
+            "genericModelRegex" : "[a-z]{2}\d+|\d+xi\d+"
+        },
+        "irzrouters" : {
+            "genericModelRegex" : "r[a-z0-9]+"
+        },
+        "hirschmann" : {
+            "genericModelRegex1" : "(rail|eagle)[\s_]?(switch|one)",
+            "genericModelRegex2" : "(bobcat|eagle[\s_]?(?:one)?|greyhound|mach|mice|rsp|rsr)[\s_]?(\d*)",
+            "hiosModelRegex" : "hi(?:sec)?os",
+        },
+        "hanwhacameras" : {
+            "genericModelRegex" : "(?:anv|ano|ane|lno|pno|pnm|pnv|pnb|pnd|sla|xnd|qno|qnv|qne|qnd|qnp|qnb|qnf|tnv|tno|tnm|tnu|tnf|tnb|xnp|xnv|xno|xnb|xnf|xnz|xnd|hcb|hcd|hcm|hco|hcp|hcv|hcz|lnd|lnv|pnf|pnp|scb|scd|sco|scv|scz|smt|snb|snd|snf|sno|snp|snv|snz|tnp)-\d?[aclmt]?\d{4}[a-z0-9\/\-]*",
+            "a_series" : "(?:arn|ane|ano|anv)-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*",
+            "l_series" : "lno-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*",
+            "p_series" : "(?:pno|pnv|pnb|pnd|prn)-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*",
+            "q2m_series" : "(?:qno|qnv|qne|qnd|qnp|qnb|qnf|qrn|xrn)-\d?[aclmt]?6[023]\d{2}[a-z0-9\/\-]*",
+            "q_series" : "(?:qno|qnv|qne|qnd|qnp|qnb|qnf|qrn|xrn)-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*",
+            "t_series" : "(?:tnv|tno|tnm|tnu|tnf|tnb|trm)-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*",
+            "x_series" : "(?:xrn|xnp|xnv|xno|xnb|xnf|xnz|xnd)-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*",
+            "pnm_series" : "(?:pnm)-\d?[aclmt]?\d{3,4}[a-z0-9\/\-]*"
+        },
+        "hanwhavideorecorders" : {
+            "genericModelRegex" : "(?:arn|hrx|prn|qrn|xrn|trm|xrn|hrd|spe|srd|lrn|srn)-\d{3,4}[a-z]*",
+            "all_series" : "(?:arn|hrx|prn|qrn|xrn|trm|xrn|hrd|spe|srd|lrn|srn)-\d{3,4}[a-z]*"
+        },
+        "welotecindustrialrouters" : {
+            "genericModelRegex" : "tk[a-zA-Z0-9\-]+"
+        },
+        "hikvision" : {
+            "genericModelRegex" : "i?ds-[a-zA-Z0-9\\(\\)\\/\\-]+"
+        },
+        "dahuasecurity": {
+            "hdvciCameraRegex" : "hac[\-_](h(?:f|fw|dw|db|dbw|dpw|eb|ew|ebw|pfw|um|lc|me)\d{4}(?:a|b|cm?|d|e[aqm]?|f|g|m|ra?|r-z|sl?|t(?:lm?q?|h-i[48]|[eq]|r?q?))[pn][\-_](?:vf|z|h|t|a|dp|poc|dip|led|cp|th|il|w|ire6|l|s|ls|pv))",
+            "networkCameraRegex" : "ipc[\-_\ ]((?:h[dfsu][pw]?|e[wb]?|m[dfw]|hdew|ebe)\d(?:\d|12|16|32)\d\d(?:b|c|d|em?|f|g|k|m|r1?|s1?|t1?m?|d[svgfk]1?)[pn][\-_](?:bv|w|aw|m|m12|f|h|a2?|pt|atc|s|as|vf|sl|st|z|i\d|z\d+|l\d|ira|ire6|mf|sfc|4g|svac|nf|n2|sdi|a2|wg|i|pc|fd|fr|me|uwb|wgs|sdag|u|dt|ht|jm|d2|il|p|sp|3d|li|pv|vm12|hm12|5h|vh|atc|pd)[\-_]s\d)",
+            "networkPanoramicCameraRegex" : "ipc[\-_\ ]((?:p[sf]d?b?w)[\-_\ ]\d\d{1,2}\d{2}.*)",
+            "networkCameraEZIPRegex" : "ipc[\-_\ ]([bdt]\d[ab]\d{2}[pn][\-_\ ](?:vf|z|l))",
+            "consumerCameraRegex" : "ipc[\-_\ ]([cakgfdbt]\d{2}[lazgfi]?[ec]?[pn]?.*)",
+            "thermalCameraRegex" : "tpc[\-_](?:df|bf|sd|ptd?|kf|ht|atebf)\d{4}.*",
+            "speedDomeCameraRegex": "sd((?:1a|2[a29]|3a|4[029]c?|5[029a]|60|65f|6c[e3]|6a[el]|8[ac]|10a)\d{3}(?:pa|[gxz][ab]|fd|t|u|la)[\-_][hg][nc][pfry].*)",
+            "explosionProofAntiCorrosionCameraRegex": "(eca|epc|sdzw).*",
+            "videoRecorderRegex": "(?:[nxd]|hc)vr-?(?:\d{3,4}|1b).*"
+        },
+        "panasonicipcameras" : {
+            "genericModelRegex" : "(?:aw-[uh]e\d{3}|bb-hcm\d{3}[a-z]|dg-np\d{3}|wj-(?:nt|gxe)\d{3}|wv-(?:nf|np|ns|nw|s[cfpt]?[nrvw]?|u|x)\d{3,5}[a-z0-9\-]*)"
+        },
+        "ovation" : {
+            "genericModelRegex" : "(?:ocr1100|occ100|ocr400|ocr3000)"
+        },
+        "sehusbdeviceservers" : {
+            "genericModelRegex" : "(?:my)?(?:utn|inu)[\w\-]+"
+        },
+        "sony" : {
+            "genericModelRegex" : "(?:snc|snt|ilme|brc|srg)-[a-z0-9\/]+"
+        },
+        "delllaserprinter" : {
+            "genericModelRegex" : "\d{4}c?d?n"
+        },
+        "diskstation" : {
+            "genericModelRegex" : "ds\d+(?:j|xs|slim)?\+?"
+        },
+        "geovision" : {
+            "genericModelRegex" : "gv-[A-Za-z0-9\-]+"
+        },
+        "jetnet" : {
+            "genericModelRegex" : "\d+\w(?:\-[0-9a-z]+)?"
+        },
+        "sprecone" : {
+            "genericModelRegex" : "_?([a-zA-Z0-9\-]+)_(?=firmware)",
+            "seriesRegex" : "sprecon-e-([a-zA-Z0-9\-]+)"
+        },
+        "microhardcellularmodem" :{
+            "genericModelRegex" : "(ipn[34]g[a-z]*|(?:dragon|bullet)-(?:3g|lte)|vip4g[a-z0-9\.\-]*|bulletplus)",
+        }
+    };
+  }
+}

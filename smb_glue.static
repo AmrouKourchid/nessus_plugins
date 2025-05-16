@@ -1,0 +1,2775 @@
+#TRUSTED 0d7122488142b7de6c7d5672e2826fe44968abffe78b1f1bc018462f57ac63cdc93b7f16248ad3deb5e44a9e649bdac860ca531663a8ac4164c2d747b2eb41a074baf1459494f7ab70672eb69c9a33775bc3a0a1be37c64ac531ed94bc5d93aef494592db4be191c34c264ead37b8c8cda852cf4e5a99d59a4bc34b0356136c101ca95bcfd800c51a181f88fdd52f6662fe99861b905e84217cf4c9c99014036be06a3e5710d6607f9cb9f76b3d760a88d94f0be9036b2e32592c11548c7635096acd09222d3f0e04450479f5850fa58c068916a2af97ff23d34a854fbbb2fbcf4daa808e8516a4559dddf19bcfeaba8581f56d1600971443078078f9246c1ac7235131d659af8baf7371e7317e74f57d5b18a2bcc9c86b7e9274c46ce4bd201ffc89d5c5c823e6c9c4d708141abea1183cd02c63d7c23bb7073f9228bf631beef4195ecc0db04eaf7bf63d914151d6273ecb44bddc555602cdc818bb84e696a547e0093e73a56665a2281f47a92bc985b87bbf1bbe384553902369afcf88ce71c0e44a68b74bcaf3cd489dd647839a1f0f073e3715e76978d7097b41c975d2377810a3a8459cdb09512b767d456629ed006d13a7ac712ee5396bfa4abd982e7b90b8d70b44baacd9b057227e1bf5ce97c49e574bc899457817a2ef0321bce033f2b2070c661076b0c79c94cf8057927e2306272c61e43cf62c33fc988910da1
+#TRUST-RSA-SHA256 64e537f63fa1bf6b556ed24f16a0ab8e6a331a32a051e93648b2cd3214f83b76374e2e768dbfafdb2399b00a3613467f1349675077db873335e4080265a63bf85777505976626e5bf6b2beb351b2950beef51e8a81855c9d26a2fe225c1f92bb044a444b1c4e090e670b9b0abbf61a8aa3f3ba5d66947050082f12a9b700d1418f2558139449033bee156cad648a0f8d93b41cb91b0e9ae9d9aab9587133cfe46c5e6649a30b2985f9a74bbe552d2afa2ce46d2cf75896a86176c6c22aca10d8638ee74988ab8089483e0ec56d030ee82f95252fa8def1ffa79052ed62656c21f0e7eea8960564ad2b7b2204523056e402acf24ed296cbd6eaec5d62c6ff55abb31f3f10f7e3c25420246bac89bf0b8aa83d725922a08bb0351fce6730d0d7b36be5683909137dd50cbb87fd2fd1950c9a082ba23d15e366f9f23b357c9d4f660e12da3abb4bd3ce44708060f5c8c2e507dd560502da5e0b9ea7cf97c9a25bf8f8b799818a52f77035194a6a78524f0e45f2f90b6250d51086aaa133e1f0057d6235677a9d887ee33af94842ff14aeb54683f62148c41fa0e38bbec19a0eb47804661e4d65f36a55d3915ec5277e22063c8ce66cd78a8125a25dbfc49c955c0818fc786d6351e144826e354188514654d5801fad5c5e4c68430e7637490834d8704a06be54405ebd39db37b8c07e9fd62508f511a52e7b212f0e9b7d77fe7405
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# smb_glue.inc
+# Revision: 1.36
+#
+
+# SMB 'transports'
+var SMB_DIRECT    = 1;  # Remote scan with direct, separate SMB connections
+var SMB_LOCAL     = 2;  # Local scan with Nessus Agent
+var SMB_SERVICE   = 3;  # Remote scan with SMB service (i.e., Connection Agent)
+var SMB_NSX       = 4;  # Local scan with NSX
+
+var SMB_UNKNOWN         = 0x80000001; # Unknown SMB transport
+var SMB_NOT_IMPLEMENTED = 0x80000002; # SMB transport not implemented
+var SMB_NOT_SUPPORTED   = 0x80000003; # Engine doesn't support local Windows checks
+                                  # i.e., Unix Local Agent
+
+var TEST_TRANSPORT = SMB_LOCAL;
+
+function _smb_transport()
+{
+  var env;
+
+  if (UNIT_TESTING) return TEST_TRANSPORT;
+  # SMB plugins are run by the Local Nessus Agent
+  if(defined_func("nasl_environment") && nasl_level() >= 6000)
+  {
+    #env   = nasl_environment(flags: ENV_APP);
+    env   = nasl_environment();
+
+    # Windows local agent
+    if(env["product"] == PRODUCT_WIN_AGENT)
+    {
+      return SMB_LOCAL;
+    }
+    # Normal Nessusd
+    else if (env["product"] == PRODUCT_NESSUSD)
+    {
+      return SMB_DIRECT;
+    }
+    # Nessusd on NSX
+    else if (env["product"] == PRODUCT_NESSUSD_NSX)
+    {
+      return SMB_NSX;
+    }
+    # Unix local agent
+    # Windows credentialed checks are not run on Unix agent?
+    if(env["product"] == PRODUCT_UNIX_AGENT)
+    {
+      dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+        'Unsupported product PRODUCT_UNIX_AGENT!');
+      return NULL; # or SMB_NOT_SUPPORTED?
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+        'Unsupported product ' + env["product"] + '!');
+      return NULL;
+    }
+  }
+
+  #
+  # Some way to identify SMB service
+  #
+
+  # Older nessusd doesn't support agent/NSX mode or SMB service
+  return SMB_DIRECT;
+}
+
+
+##
+# SMB session initialization
+#
+# @return TRUE/FALSE
+# @remark
+#   - Network based session calls open_sock_tcp()
+#   - Non-network based session does not
+##
+function smb_session_init(smb2, timeout, report_access_trouble, report_auth_failure)
+{
+  var name, port, soc, transport, res, desc;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Attempting session init');
+  transport = _smb_transport();
+  name = kb_smb_name();
+
+  if (isnull(report_access_trouble))
+    report_access_trouble = TRUE;
+
+  if (isnull(report_auth_failure))
+    report_auth_failure = TRUE;
+
+  if (isnull(smb2))
+  {
+    if (isnull(get_kb_item("SMB/use_smb2")))
+    {
+      smb2 = TRUE;
+    }
+    else
+    {
+      smb2 = get_kb_item("SMB/use_smb2");
+    }
+  }
+
+  if(transport == SMB_DIRECT)
+  {
+    port = kb_smb_transport();
+    if (!get_port_state(port)) return FALSE;
+    soc = open_sock_tcp(port);
+    if (!soc)
+    {
+      if (!report_auth_failure) return FALSE;
+
+      # If there's been a successful authentication logged on this
+      # port, then report a socket failure as an auth failure
+      res = lcx::get_issues(type:lcx::AUTH_SUCCESS, proto:lcx::PROTO_SMB, port:port, skip_plugin_metadata:TRUE);
+      if (isnull(res) || len(res) == 0) return FALSE;
+
+      desc =
+        'Failed to open a socket on port ' + port + '. This failure may have prevented\n' +
+        'a login attempt. The failure references the previously successful\n' +
+        'login account for tracking purposes.';
+        dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:desc);
+      smb_set_auth_failure(login:res[0]['user'], port:port, desc:desc, preinit:TRUE);
+      return FALSE;
+    }
+    session_init(socket:soc, port:port, hostname:name, timeout: timeout, smb2: smb2, report_access:report_access_trouble, report_auth:report_auth_failure);
+  }
+  else if (transport == SMB_LOCAL)
+  {
+    session_init(socket:NULL, hostname:name, report_access:FALSE, report_auth:FALSE);
+  }
+  else if(transport == SMB_SERVICE)
+  {
+    return FALSE; # for now
+  }
+  else if(transport == SMB_NSX)
+  {
+    return FALSE; # for now
+  }
+  else return FALSE;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Successful session init');
+  return TRUE;
+}
+
+
+#-----------------------------------------------------------#
+#     Wrappers for SMB network APIs (smb_net.inc)           #
+#-----------------------------------------------------------#
+
+##
+#
+# @return
+#   1 = success
+#   0 = share connection failed / invalid share name
+#  -1 = login failed
+# NULL if not SMB transport not implemented or not known
+##
+function NetUseAdd (login,password,domain,share,lm_hash,ntlm_hash)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetUseAdd called for share ' + share);
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetUseAdd(
+      login:login,
+      password:password,
+      domain:domain,
+      share:share,
+      lm_hash: lm_hash,
+      ntlm_hash: ntlm_hash);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    var path;
+
+    if(share)
+    {
+      # Convert share name to a local path
+      # Note: winfile_localpath() will return NULL for IPC$
+      path = winfile_localpath(share);
+      if(tolower(share) != tolower('IPC$') && isnull(path))
+        return 0;
+      session_set_share_name(share:path);
+    }
+
+    return 1;
+  }
+  # Use SMB service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   1 = Success
+#  -1 = smb_tree_disconnect() failed
+# NULL if not SMB transport not implemented or not known
+##
+function NetUseDel (close)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetUseDel called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetUseDel(close: close);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    session_set_share_name(share:NULL);
+    return 1;
+  }
+  # Use SMB service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+
+#-----------------------------------------------------------#
+#     Wrappers for SMB file APIs (smb_file.inc)             #
+#-----------------------------------------------------------#
+
+##
+# @remark You must know if you are opening a file or a directory and use
+#         FILE_ATTRIBUTE_NORMAL or FILE_ATTRIBUTE_DIRECTORY respectively.
+#         Using FILE_ATTRIBUTE_NORMAL against a directory may succeed during an
+#         SMB_DIRECT scan, but this is not permitted by the "native" CreateFile
+#         and as a result will fail on the Windows agent.
+# @return
+#   ret[0] - File handle
+#   ret[1] - SMB_DIRECT: 8-byte file size
+#            SMB_LOCAL:  file name in full path
+#   NULL on error
+##
+function CreateFile (file, desired_access, file_attributes, share_mode, create_disposition, create_options)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'CreateFile called for file ' + file);
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_CreateFile (
+              file: file,
+              desired_access: desired_access,
+              file_attributes: file_attributes,
+              share_mode:share_mode,
+              create_disposition: create_disposition,
+              create_options: create_options);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    var path, handle;
+
+    path  = session_get_share_name() + file;
+
+    # Convert [MS-CIFS] Creation Disposition Constants to CreateFile() constants
+    if(create_disposition == OPEN_EXISTING)
+    {
+      create_disposition = 3;
+    }
+    else if (create_disposition == OPEN_ALWAYS)
+    {
+      create_disposition = 4;
+    }
+    else if (create_disposition == CREATE_NEW)
+    {
+      create_disposition = 1;
+    }
+    else if (create_disposition == CREATE_ALWAYS)
+    {
+      create_disposition = 2;
+    }
+    else if (create_disposition == TRUNCATE_EXISTING)
+    {
+      create_disposition = 5;
+    }
+    # Default: OPEN_EXISTING
+    else
+    {
+      create_disposition = 3;
+    }
+
+    #
+    # CreateFile() doc:
+    # To open a directory using CreateFile, specify the
+    # FILE_FLAG_BACKUP_SEMANTICS flag as part of dwFlagsAndAttributes
+    #
+    if(file_attributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+      file_attributes = file_attributes | FILE_FLAG_BACKUP_SEMANTICS;
+    }
+    handle = winfile_create (
+              file: path,
+              desired_access: desired_access,
+              file_attributes: file_attributes,
+              share_mode:share_mode,
+              create_disposition: create_disposition);
+
+    if ( isnull(handle) )
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winfile_create()');
+      return NULL;
+    }
+    return make_list(handle, path);
+
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+#
+# @return
+#     1     = Success
+#     NULL  = Error
+##
+function CloseFile (handle)
+{
+  var ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'CloseFile called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_CloseFile(handle: handle);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    ret = close_handle(handle[0]);
+
+    # close_handle() returns TRUE/FALSE
+    if(ret == FALSE)
+    {
+      dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+        'Error closing file handle');
+      return NULL;
+    }
+    return ret;
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#     1     = Success
+#     NULL  = Error
+#
+# @remark not sure what plugins use this function
+##
+function CloseAndDeleteFile (handle)
+{
+  var ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'CloseAndDeleteFile called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_CloseAndDeleteFile(handle: handle);
+  }
+
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    if ( !isnull(handle[0]) )
+      close_handle(handle[0]);
+
+    ret = winfile_delete(handle[1]);
+    if(ret == TRUE) return ret;
+    else
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winfile_delete()');
+      return NULL;
+    }
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+#
+# @return
+#   ret[...] (see direct_GetFileVersionEx())
+#   NULL on error
+#
+##
+function GetFileVersionEx(handle, locale)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'GetFileVersionEx called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_GetFileVersionEx(handle: handle, locale:locale);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # use the same approach as a remote scan to avoid getting the wrong file version (VULN-81773)
+    return direct_GetFileVersionEx(handle: handle, locale:locale);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0]  - Owner SID
+#   ret[1]  - Group SID
+#   ret[2]  - SACL
+#   ret[3]  - DACL
+#
+#   NULL on error
+##
+function GetSecurityInfo (handle, level)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'GetSecurityInfo called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_GetSecurityInfo(handle: handle, level: level);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winfile_securityinfo(handle: handle[0], type: level, expand: FALSE);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   4-byte file size or NULL
+##
+function GetFileSize (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'GetFileSize called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_GetFileSize(handle: handle);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winfile_size(handle:handle[0]);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function GetMaxReadFileSize (handle)
+{
+  var transport, size;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'GetMaxReadFileSize called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    size =  session_get_server_max_size();
+    if(! size)
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'session_get_server_max_size()');
+      return NULL;
+    }
+    else if (size > 110)
+      return (size - 110);
+    else
+      return size;
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winfile_size(handle:handle[0]);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   data read
+#   NULL on error
+#
+##
+function ReadFile (handle, offset, length)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'ReadFile called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_ReadFile(handle: handle, offset: offset, length: length);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winfile_read(handle:handle[0], offset: offset, length:length);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   1   = Success
+# NULL  = Error
+##
+function WriteFile (handle, offset, mode, data)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'WriteFile called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_WriteFile(handle: handle, offset: offset, mode: mode, data: data);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # Note: winfile_write() doesn't take 'mode' param.
+    return winfile_write(handle:handle[0], offset:offset, data:data);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+# Find the first find in the directory based on the pattern
+#
+# @param [pattern:regex] regex for files and directories to get
+# @param [full_dir:boolean] boolean to get a full directory listing at first, rather than during the scan
+#
+# @return
+#   ret[0] = file handle
+#   ret[1] = file name
+#   ret[2] = file attributes
+#   ret[3] = file times [list]
+#
+#   NULL on error
+##
+function FindFirstFile (pattern, full_dir, raw_timestamp)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'FindFirstFile called for pattern ' + pattern);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_FindFirstFile(pattern: pattern, full_dir: full_dir, raw_timestamp:raw_timestamp);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    pattern = session_get_share_name() + pattern;
+    return winfile_findfirst(pattern: pattern);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] = file handle
+#   ret[1] = file name
+#   ret[2] = file attributes
+#   ret[3] = file times [list]
+#
+#   NULL on error
+##
+function FindNextFile (handle, raw_timestamp)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'FindNextFile called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_FindNextFile(handle: handle, raw_timestamp:raw_timestamp);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winfile_findnext(handle: handle);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+#
+# TODO: Wrapper functions for other SMB file APIs go here:
+#
+
+
+
+
+
+#-----------------------------------------------------------#
+#   Wrapper functions for SMB registry APIs (smb_reg.inc)   #
+#-----------------------------------------------------------#
+
+##
+#
+# @return
+#   ret[0] - registry handle
+#   ret[1] - registry pipe;   NULL for SMB_LOCAL
+#   ret[2] - 1 (Pipe handle); NULL for SMB_LOCAL
+#   ret[3] - hkey passed to the function
+#
+#   NULL on error
+#
+##
+function RegConnectRegistry (hkey)
+{
+  var ret, transport, type;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegConnectRegistry called for hkey ' + hkey);
+
+  if (isnull (hkey))
+    type = HKEY_LOCAL_MACHINE;
+  else
+    type = hkey;
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegConnectRegistry(hkey: hkey);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # Convert remote registry opnum to predefined hive key
+    hkey = reg_opnum_to_hkey(hkey);
+
+    ret[0] = hkey;
+    ret[1] = NULL;  # fid; in native registry calls, no named pipe is involved.
+    ret[2] = NULL;  #
+    ret[3] = type;
+    # if hkey was null, then ret = [NULL, NULL, NULL, NULL]
+    return ret;
+
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - Key handle
+#   ret[1] - FID; NULL for SMB_LOCAL
+#   ret[2] - reserved
+#
+#   NULL on error
+##
+function RegOpenKey (handle, key, mode, wow)
+{
+  var hkey, ret, retry, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegOpenKey called for key ' + key);
+  retry = 0;
+
+  if (handle[3] == HKEY_LOCAL_MACHINE && get_kb_item("SMB/WoW"))
+    retry = 1;
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegOpenKey(handle: handle, key: key, mode: mode, wow: wow);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    hkey = winreg_openkey(handle: handle[0], key: key, mode: mode);
+
+    if (retry && isnull(hkey) && isnull(wow))
+    {
+      var pgrep_match = pgrep(pattern:"^SOFTWARE\\.*", string:key, icase:TRUE);
+      # empty or null
+      if (!(isnull(pgrep_match) || strlen(pgrep_match) == 0))
+      {
+        key = ereg_replace(pattern:"^SOFTWARE\\(.*)", string:key, replace:"SOFTWARE\\Wow6432Node\\\1", icase:TRUE);
+        hkey = winreg_openkey(handle: handle[0], key: key, mode: mode);
+      }
+    }
+
+    if(isnull(hkey))
+    {
+      dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+        'Unable to open key handle for key ' + key + '!');
+      return NULL;
+    }
+
+    ret[0] = hkey;
+    ret[1] = NULL; # fid
+    ret[2] = 0;
+
+    return ret;
+
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - number of values
+#   ret[1] - number of subkeys
+#   NULL on error
+##
+function RegQueryInfoKey (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegQueryInfoKey called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegQueryInfoKey(handle: handle);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winreg_queryinfokey(handle: handle[0]);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - value type
+#   ret[1] - value data
+#   NULL on error
+##
+function RegQueryValue (handle, item)
+{
+  var transport, ret;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegQueryValue called for item ' + item);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegQueryValue(handle: handle, item: item);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # NULL or empty string mean 'default value' of the registry key, however
+    # the agent does not accept a NULL value here.
+    if (isnull(item)) item = "";
+    ret = winreg_queryvalue(handle:handle[0], item: item);
+
+    # These are 64-bit values; we don't fully support this type yet
+    if(ret[0] == REG_QWORD && typeof(ret[1]) == 'data')
+    {
+      # If the QWORD value is over 32 bits, return NULL
+      if (get_dword(blob:ret[1], pos:4) != 0)
+      {
+        dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+          'winreg_queryvalue is over 32 bits!');
+        return NULL;
+      }
+
+      # Otherwise, use get_dword to retrieve least significant 32 bits
+      ret[1] = get_dword(blob:ret[1], pos:0);
+    }
+    return ret;
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - value type
+#   ret[1] - value name
+#   NULL on error
+##
+function RegEnumValue (handle, index)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegEnumValue called for index ' + index);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegEnumValue(handle: handle, index: index);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winreg_enumvalue(handle: handle[0], index: index);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+# @return
+#   key name
+#   NULL on error
+##
+function RegEnumKey (handle, index)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegEnumKey called for index ' + index);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegEnumKey(handle: handle, index: index);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winreg_enumkey(handle: handle[0], index: index);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+# @return
+#   ret[0]  - Owner SID
+#   ret[1]  - Group SID
+#   ret[2]  - SACL
+#   ret[3]  - DACL
+#   NULL on error
+##
+function RegGetKeySecurity (handle, type)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegGetKeySecurity called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegGetKeySecurity(handle: handle, type: type);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winreg_getkeysecurity(handle: handle[0], type: type, expand: FALSE);
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function null_handle_check ()
+{
+  var cell;
+  if (isnull(_FCT_ANON_ARGS[0])) return TRUE;
+  foreach (cell in _FCT_ANON_ARGS[0])
+  {
+    if (!isnull(cell)) return FALSE;
+  }
+  return TRUE;
+}
+
+##
+#
+# @return
+#   1 on Success
+#   NULL on error
+##
+function RegCloseKey (handle)
+{
+  var ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegCloseKey called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegCloseKey(handle: handle);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    if (null_handle_check(handle))
+    {
+      dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+        'Handle is NULL over SMB_LOCAL!');
+      return NULL;
+    }
+
+    var env = nasl_environment();
+
+    if(env["product"] != PRODUCT_WIN_AGENT)
+    {
+      ret = close_handle(handle[0]);
+      if(ret == FALSE)
+      {
+        dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+          'Handle could not properly close!');     
+        return NULL;
+      }
+      return ret;
+    }
+
+    return TRUE;
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - Key handle
+#   ret[1] - FID; NULL for SMB_LOCAL
+#   ret[2] - reserved
+#
+#   NULL on error
+##
+function RegCreateKey (handle, key, mode)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegCreateKey called for key ' + key);
+    
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegCreateKey(handle:handle, key:key, mode:mode);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    if(defined_func("nasl_environment") && nasl_level() >= 6600)
+    {
+      return winreg_createkey(handle:handle[0], key:key, mode:mode);
+    }
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   1 on Success
+#   NULL on error
+##
+function RegSetValue (handle, value, type, value_data)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'RegSetValue called for value ' + value);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_RegSetValue(handle:handle, value:value, type:type, value_data:value_data);
+  }
+  # Use Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    if(defined_func("nasl_environment") && nasl_level() >= 6600)
+    {
+      return winreg_setvalue(handle:handle, item:value, type:type, value:value_data);
+    }
+  }
+  # Use SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # Use NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+#-----------------------------------------------------------#
+#   Wrapper functions for SMB service APIs (smb_svc.inc)    #
+#-----------------------------------------------------------#
+
+
+##
+#
+# @return
+#   ret[0] - handle to SCM
+#   ret[1] - fid; NULL for local scan
+#   ret[2] - 1;   NULL for local scan
+#   NULL on error
+##
+function OpenSCManager (access_mode)
+{
+  var handle, ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'OpenSCManager called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_OpenSCManager(access_mode: access_mode);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    handle = winsvc_open_manager(access_mode: access_mode);
+    if(isnull(handle))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winsvc_open_manager()');
+      return NULL;
+    }
+
+    ret[0] = handle;
+    ret[1] = NULL;
+    ret[2] = NULL;
+
+    return ret;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+# @return
+#   ret[0] - service handle
+#   ret[1] - FID; NULL for local scan
+#   ret[2] - 0; NULL for local scan
+#   NULL on error
+##
+function OpenService(handle, service, access_mode)
+{
+  var shandle, ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'OpenService called for service ' + service);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_OpenService(handle: handle, service: service, access_mode: access_mode);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    shandle = winsvc_open(handle: handle[0], service: service, access_mode: access_mode);
+    if(isnull(shandle))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winsvc_open()');
+      return NULL;
+    }
+
+    ret[0] = shandle;
+    ret[1] = NULL;
+    ret[2] = NULL;
+
+    return ret;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   - array of ENUM_SERVICE_STATUS
+#   - Use GetService to parse each elem
+#   - NULL on error
+##
+function EnumServicesStatus (handle, type, state)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'EnumServicesStatus called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_EnumServicesStatus(handle: handle, type: type, state: state);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_enum_status(handle: handle[0], type: type, state: state);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+# @return
+#   ret[0] - service type
+#   ret[1] - current state
+#   ret[2] - controls accepted
+#   ret[3] - exit code
+#   ret[4] - service specific exit code
+#   ret[5] - check point
+#   ret[6] - wait hint
+#   NULL on error
+##
+function ControlService (handle, control)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'ControlService called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_ControlService(handle: handle, control: control);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_control(handle: handle[0], control: control);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+# @return
+#   ret[0] - service handle created
+#   ret[1] - FID; NULL for local scan
+#   ret[2] -  0;  NULL for local scan
+#   NULL on error
+#
+# @remark
+#   - It appears that only wmi_malware_scan.nbin uses this function.
+#
+##
+function CreateService (handle, service_name, display_name, desired_access, service_type, start_service, error_control, path, load_order_group, service_start_name, password)
+{
+  var shandle, ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'CreateService called for service ' + service_name);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_CreateService (handle: handle,
+                                 service_name: service_name,
+                                 display_name: display_name,
+                                 desired_access: desired_access,
+                                 service_type: service_type,
+                                 start_service: start_service,
+                                 error_control: error_control,
+                                 path: path,
+                                 load_order_group: load_order_group,
+                                 service_start_name: service_start_name,
+                                 password: password);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    shandle = winsvc_create(handle: handle[0],
+                            service_name: service_name,
+                            display_name: display_name,
+                            desired_access: desired_access,
+                            service_type: service_type,
+                            start_service: start_service,
+                            error_control: error_control,
+                            path: path,
+                            load_order_group: load_order_group,
+                            service_start_name: service_start_name,
+                            password: password);
+    if(isnull(shandle))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winsvc_create()');
+      return NULL;
+    }
+
+    ret[0] = shandle;
+    ret[1] = NULL;
+    ret[2] = NULL;
+
+    return ret;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   1   -  Success
+# NULL on  error
+##
+function StartService (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'StartService called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_StartService(handle: handle);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_start(handle: handle[0]);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   STATUS_XXX
+#   NULL on error
+# @remark
+#   - It appears that only wmi_malware_scan.nbin uses this function.
+#
+##
+function DeleteService (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'DeleteService called');
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_DeleteService(handle: handle);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_delete(handle: handle[0]);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   1 - Success
+#   NULL on error
+##
+function CloseServiceHandle (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'CloseServiceHandle called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_CloseServiceHandle(handle: handle);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return close_handle(handle[0]);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - service type
+#   ret[1] - current state
+#   ret[2] - controls accepted
+#   ret[3] - exit code
+#   ret[4] - service specific exit code
+#   ret[5] - check point
+#   ret[6] - wait hint
+#   NULL on error
+#
+##
+function QueryServiceStatus (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'QueryServiceStatus called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_QueryServiceStatus(handle: handle);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_query_status(handle:handle[0]);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   displayname
+#   NULL on error
+##
+function GetServiceDisplayName (handle, service)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'GetServiceDisplayName called for service ' + service);
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_GetServiceDisplayName(handle: handle, service: service);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_get_displayname(handle:handle[0], service:service);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+#
+# @return
+#   ret[0] - Owner SID
+#   ret[1] - Group SID
+#   ret[2] - SACL
+#   ret[3] - DACL
+#   NULL on error
+#
+##
+function QueryServiceObjectSecurity (handle, secinfo)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'QueryServiceObjectSecurity called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_QueryServiceObjectSecurity(handle:handle, secinfo: secinfo);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winsvc_query_security(handle:handle[0], secinfo: secinfo);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+#-----------------------------------------------------------#
+#   Wrapper functions for SMB lsa APIs (smb_lsa.inc)        #
+#-----------------------------------------------------------#
+
+##
+#
+# @return
+#   ret[0] - policy handle
+#   ret[1] - fid; NULL for local scan
+#   ret[2] - 1;   NULL for local scan
+#   NULL on error
+##
+function LsaOpenPolicy (desired_access)
+{
+  var handle, ret, transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaOpenPolicy called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaOpenPolicy(desired_access: desired_access);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    handle = winlsa_open_policy(desired_access: desired_access);
+    if(isnull(handle))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winlsa_open_policy()');
+      return NULL;
+    }
+
+    ret[0] = handle;
+    ret[1] = NULL;
+    ret[2] = NULL;
+
+    return ret;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - hostname/domain
+#   ret[1] - raw sid
+#   NULL on error
+##
+function LsaQueryInformationPolicy (handle, level, expand)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaQueryInformationPolicy called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaQueryInformationPolicy(handle:handle, level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    if (isnull(expand))
+      expand = FALSE;
+
+    return winlsa_query_info(handle:handle[0], level:level, expand:expand);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   ret[0] - user logon restrictions
+#   ret[1] - unknown
+#   ret[2] - service ticket lifetime (sec)
+#   ret[3] - user ticket lifetime (sec)
+#   ret[4] - user ticket renewal time (sec)
+#   ret[5] - clock sync tolerance (sec)
+#   NULL on error
+##
+function LsaQueryDomainInformationPolicy (handle, level)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaQueryDomainInformationPolicy called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaQueryDomainInformationPolicy(handle:handle, level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winlsa_query_domain_info(handle:handle[0], level:level);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   array of sid_type + domain + name; sid_type = raw_dword
+#   NULL on error
+##
+function LsaLookupSid (handle, sid_array)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaLookupSid called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaLookupSid(handle:handle, sid_array: sid_array);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winlsa_lookup_sids(handle:handle[0], sid_array: sid_array);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   array of sid_type + rid; sid_type = rid = raw_dword
+#   NULL on error
+##
+function LsaLookupNames (handle, name_array)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaLookupNames called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaLookupNames(handle:handle, name_array: name_array);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winlsa_lookup_names(handle:handle[0], name_array: name_array);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+# @return
+#   array of sid
+#   NULL on error
+#
+# @remark
+#   - It's unclear which plugins use this function
+##
+function LsaEnumerateAccountsWithUserRight (handle, right)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaEnumerateAccountsWithUserRight called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaEnumerateAccountsWithUserRight(handle:handle, right:right);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return winlsa_enumerate_accounts(handle:handle[0], right:right);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+#
+# @return
+#   ret[0]  - Owner SID
+#   ret[1]  - Group SID
+#   ret[2]  - SACL
+#   ret[3]  - DACL
+#   NULL on error
+# @remark
+#   It doesn't look like there is an equivalent Windows API.
+#   In local scan, we try to query the security descriptor of
+#   a LSA policy object by reading a registry key. So this
+#   function only supports LSA policy objects in local scan.
+#   Also, caller MUST run as the SYSTEM account in order to
+#   query the registry key.
+#
+##
+function LsaQuerySecurityObject (handle, type)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaQuerySecurityObject called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaQuerySecurityObject(handle:handle, type:type);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    var hklm, hkey, key, sd, ret;
+
+    hklm = reg_opnum_to_hkey(HKEY_LOCAL_MACHINE);
+    if(isnull(hklm))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'reg_opnum_to_hkey()');
+      return NULL;
+    }
+
+    # Open the SecDesc key, which stores the SD of the LSA policy object
+    key = 'Security\\Policy\\SecDesc';
+    hkey = winreg_openkey(handle: hklm, key: key, mode:MAXIMUM_ALLOWED);
+    if(isnull(hkey))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winreg_openkey()');
+      return NULL;
+    }
+
+    # NULL or empty string mean 'default value' of the registry key, however
+    # the agent does not accept a NULL value here.
+    ret = winreg_queryvalue(handle:hkey, item: "");
+    if(isnull(ret))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winreg_queryvalue()');
+      return NULL;
+    }
+
+    # Parse the Security Descriptor blob
+    sd = parse_security_descriptor (blob: ret[1]);
+
+    return sd;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#   1 - Success
+#   NULL on error
+##
+function LsaClose (handle)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'LsaClose called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_LsaClose(handle:handle);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    return close_handle(handle[0]);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+
+#-----------------------------------------------------------#
+#   Wrapper functions for SMB net APIs (smb_net.inc)        #
+#-----------------------------------------------------------#
+
+##
+# @return
+#               [0] = platform_id (DWORD)                   #
+#               [1] = hostname (STRING)                     #
+#               [2] = major version(DWORD) - level 101-102  #
+#               [3] = minor version(DWORD) - level 101-102  #
+#               [4] = type (DWORD)         - level 101-102  #
+#               [5] = comment (STRING)     - level 101-102  #
+#               [6] = users (DWORD)        - level 102      #
+#               [7] = disc (LONG)          - level 102      #
+#               [8] = hidden (DWORD)       - level 102      #
+#               [9] = announce (DWORD)     - level 102      #
+#               [10] = anndelta (DWORD)    - level 102      #
+#               [11] = licenses (DWORD)    - level 102      #
+#               [12] = userpath (STRING)   - level 102      #
+#   NULL on error
+##
+function NetServerGetInfo (level)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetServerGetInfo called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetServerGetInfo(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_server_info(level, name)
+    return winnet_get_server_info(level:level);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+#
+# @return      : array of level info                      #
+#               [0] = platform_id (DWORD)                 #
+#               [1] = hostname (STRING)                   #
+#               [2] = domainname (STRING)                 #
+#               [3] = major (DWORD)                       #
+#               [4] = minor (DWORD)                       #
+#               [5] = lanroot (STRING) - level 101-102    #
+#               [6] = logged users (DWORD) - level 102    #
+#---------------------------------------------------------#
+function NetWkstaGetInfo (level)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetWkstaGetInfo called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetWkstaGetInfo(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_wksta_info(level, name)
+    return winnet_get_wksta_info(level:level);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+#
+# @return
+#        -  a list of:
+#            - level 0
+#                - [0] cname (STRING)
+#            - level 1
+#                - [0] cname (STRING)
+#                - [1] username (STRING)
+#                - [2] num_opens (DWORD)
+#                - [3] time (DWORD)
+#                - [4] idle_time (DWORD)
+#                - [5] user_flags (DWORD)
+#            - level 2
+#                - [0] cname (STRING)
+#                - [1] username (STRING)
+#                - [2] num_opens (DWORD)
+#                - [3] time (DWORD)
+#                - [4] idle_time (DWORD)
+#                - [5] user_flags (DWORD)
+#                - [6] cltype_name (STRING)
+#            - level 10
+#                - [0] cname (STRING)
+#                - [1] username (STRING)
+#                - [2] time (DWORD)
+#                - [3] idle_time (DWORD)
+#            - level 502
+#                - [0] cname (STRING)
+#                - [1] username (STRING)
+#                - [2] num_opens (DWORD)
+#                - [3] time (DWORD)
+#                - [4] idle_time (DWORD)
+#                - [5] user_flags (DWORD)
+#                - [6] cltype_name (STRING)
+#                - [7] transport (STRING)
+# NULL on error
+##
+function NetSessionEnum (level, computer, user)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetSessionEnum called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetSessionEnum(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_enum_sessions(level, name, computer, user)
+    return winnet_enum_sessions(level:level, computer:computer, user:user);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+#
+# @return
+# NULL on error
+##
+function NetShareEnum (level)
+{
+  var i, j, list, keys, transport, share, ret, t;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetShareEnum called');
+
+  transport = _smb_transport();
+
+  # SHARE_INFO_2 currently not implemented
+  if(level != 0 && level != 1 && level != 502)
+  {
+    dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+      'level ' + level + ' is not 0, 1, or 502!');
+    return NULL;
+  }
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetShareEnum(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_enum_shares(level, name, expand, compat)
+    if(level == 0 || level == 1)
+    {
+      return winnet_enum_shares(level:level, compat:TRUE);
+    }
+    else if (level == 502)
+    {
+       return winnet_enum_shares(level:level);
+    }
+    else
+    {
+      # Unreachable
+      dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+        'level ' + level + ' is not 0, 1, or 502!');
+      return NULL;
+    }
+
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+function NetWkstaUserEnum (level)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetWkstaUserEnum called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetWkstaUserEnum(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_enum_wksta_users(level, name, expand)
+    return winnet_enum_wksta_users(level:level,expand:TRUE);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+
+##
+#
+# @remark
+#   - The Computer Browser service needs to be running
+#   - nasl version uses levels 0 and 1
+#   - Windows native version uses levels 100 and 101
+#   - The function only accepts levels 0 and 1
+##
+function NetServerEnum (level)
+{
+  var transport, ret, srv;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetServerEnum called');
+
+  # Only support level 0 and 1
+  if(level != 0 && level != 1)
+  {
+    dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+      'level ' + level + ' is not 0 or 1!');
+    return NULL;
+  }
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetServerEnum(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # usage: winnet_enum_servers(level, domain, type, compat)
+
+    # native version uses levels 100 and 101
+    level = level + 100;
+
+    #
+    # compat mode appends an additional '\x00' to return data if
+    # the 'comment' field is empty.
+    # make_nested_list(
+    # 'KBRDC03\0\0\0\0\0\0\0\0\0\x06\x02+\x10\x84\0\0\0\0\0\0',
+    # 'RE-KRBCL3\0\0\0\0\0\0\0\x06\x01\x03\x90\x05\0\0\0\0\0\0'
+    # )
+
+    return winnet_enum_servers(level:level, type:3);
+
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+##
+# Get global groups to which a user belongs
+#
+# @remark
+#   - Seems only works if target is a DC
+#
+##
+function NetUserGetGroups (user, resolv)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetUserGetGroups called for user ' + user);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetUserGetGroups(user:user, resolv:resolv);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_user_groups(level, name, user, expand)
+    return winnet_get_user_groups(user:user);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function NetUserGetLocalGroups (user, resolv)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetUserGetLocalGroups called for user ' + user);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetUserGetLocalGroups(user:user, resolv:resolv);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_user_local_groups(level, name, user, flags, expand)
+    # Use LG_INCLUDE_INDIRECT flags, as the nasl version behaves that way
+    return winnet_get_user_local_groups(user:user, flags:0x0001);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function NetLocalGroupGetMembers (group, domain)
+{
+  var transport, ret;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetLocalGroupGetMembers called for group ' + group);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetLocalGroupGetMembers(group:group, domain:domain);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    #winnet_get_local_group_members(level, name, group, expand, compat)
+
+    # compat mode returns the same format as the nasl version
+    return winnet_get_local_group_members(group:group, compat: TRUE);
+
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function NetGroupGetUsers (group)
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetGroupGetUsers called for group ' + group);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetGroupGetUsers(group:group);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_group_users(level, name, group, compat)
+    return winnet_get_group_users(group:group, compat: TRUE);
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function NetGetSamrUsers()
+{
+  var transport;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetGetSamrUsers called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetGetSamrUsers();
+  }
+
+  # Local Nessus Agent
+  # This can't be done on the agent without support from an appropriate Nessus Engine
+  # function, which currently doesn't exist.
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport, label:'not SMB_DIRECT');
+  return NULL;
+}
+
+
+##
+#
+#
+# @remark
+#   ret[0] = last_logon       ; 0 = never logged on
+#   ret[1] = last_logoff
+#   ret[2] = pwd_last_set     ; 0 = never changed password
+#   ret[3] = acct_expires     ; 0 = account never expires
+#   ret[4] = pwd_can_change   ; not available in native version
+#   ret[5] = pwd_must_change  ; not available in native version
+#   ret[6] = acct_flags       ; UF_XXX format
+#
+# user info for nasl version:
+#  - http://msdn.microsoft.com/en-us/library/cc245622.aspx
+#
+# user info for native version:
+#  - http://msdn.microsoft.com/en-us/library/windows/desktop/aa370654(v=vs.85).aspx
+#
+# difference btw nasl and native versions:
+#   - pwd_last_set, pwd_can_change, and pwd_must_change not available in
+#     native version
+#   - acct_flags values are different
+#   - timestamps in FILETIME (nasl) vs unix time (native)
+#   - different encoding for special time values:
+#     special FILETIMEs:
+#       - 0 (seen in last_off, acct_expires)
+#       - 0x7fffffffffffffff (in pwd_must_change: never expires)
+#     special unix times:
+#       - 0  (seen in last_off)
+#       - -1 (seen in acct_expires; TIMEQ_FOREVER); converted to 0
+#
+##
+function NetUserGetInfo (user)
+{
+  var info, transport, ret;
+  var acct_expires, last_logon, last_logoff, pwd_last_set;
+  var pwd_can_change, pwd_must_change, acct_flags;
+  var high, i, low, pwd_age, tmp;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetUserGetInfo called for user ' + user);
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    ret = direct_NetUserGetInfo(user:user);
+    if(isnull(ret))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'direct_NetUserGetInfo()');
+      return NULL;
+    }
+
+    # all timestamps ini FILETIME format
+    # ret[0] = last_logon;
+    # ret[1] = last_logoff;       # all 0s
+    # ret[2] = pwd_last_set;
+    # ret[3] = acct_expires;      # all 0s means acct never expires
+    # ret[4] = pwd_can_change;
+    # ret[5] = pwd_must_change;   # ff ff ff ff ff ff ff 7f - pwd never expires
+    # ret[6] = acct_flags;        # USER_XXX flags
+
+    # Convert FILETIME to unixtime
+    for(i = 0; i <=5; i++)
+    {
+      if(strlen(ret[i]) == 8)
+      {
+        if(ret[i] == '\x00\x00\x00\x00\x00\x00\x00\x00')
+          ret[i] = 0;
+        else if (ret[i] == '\xff\xff\xff\xff\xff\xff\xff\x7f')
+          ret[i] = 0x7fffffff; # max positive unix time
+        else
+        {
+          low   = get_dword(blob:ret[i], pos: 0);
+          high  = get_dword(blob:ret[i], pos: 4);
+          ret[i] = convert_win64_time_to_unixtime(low:low, high:high);
+        }
+      }
+    }
+
+    # Map USER_XXX flags to UF_XXX flags
+    # http://msdn.microsoft.com/en-us/library/cc245737.aspx
+    tmp = ret[6];
+    acct_flags = 0;
+
+    # USER_ACCOUNT_DISABLED
+    if(tmp & 0x00000001) acct_flags = acct_flags | 0x00000002;
+
+    # USER_HOME_DIRECTORY_REQUIRED
+    if(tmp & 0x00000002) acct_flags = acct_flags | 0x00000008;
+
+    # USER_PASSWORD_NOT_REQUIRED
+    if(tmp & 0x00000004) acct_flags = acct_flags | 0x00000020;
+
+    # USER_TEMP_DUPLICATE_ACCOUNT
+    if(tmp & 0x00000008) acct_flags = acct_flags | 0x00000100;
+
+    # USER_NORMAL_ACCOUNT
+    if(tmp & 0x00000010) acct_flags = acct_flags | 0x00000200;
+
+    # USER_MNS_LOGON_ACCOUNT
+    if(tmp & 0x00000020) acct_flags = acct_flags | 0x00020000;
+
+    # USER_INTERDOMAIN_TRUST_ACCOUNT
+    if(tmp & 0x00000040) acct_flags = acct_flags | 0x00000800;
+
+    # USER_WORKSTATION_TRUST_ACCOUNT
+    if(tmp & 0x00000080) acct_flags = acct_flags | 0x00001000;
+
+    # USER_SERVER_TRUST_ACCOUNT
+    if(tmp & 0x00000100) acct_flags = acct_flags | 0x00002000;
+
+    # USER_DONT_EXPIRE_PASSWORD
+    if(tmp & 0x00000200) acct_flags = acct_flags | 0x00010000;
+
+    # USER_ACCOUNT_AUTO_LOCKED
+    if(tmp & 0x00000400) acct_flags = acct_flags | 0x00000010;
+
+    # USER_ENCRYPTED_TEXT_PASSWORD_ALLOWED
+    if(tmp & 0x00000800) acct_flags = acct_flags | 0x00000080;
+
+    # USER_SMARTCARD_REQUIRED
+    if(tmp & 0x00001000) acct_flags = acct_flags | 0x00040000;
+
+    # USER_TRUSTED_FOR_DELEGATION
+    if(tmp & 0x00002000) acct_flags = acct_flags | 0x00080000;
+
+    # USER_NOT_DELEGATED
+    if(tmp & 0x00004000) acct_flags = acct_flags | 0x00100000;
+
+    # USER_USE_DES_KEY_ONLY
+    if(tmp & 0x00008000) acct_flags = acct_flags | 0x00200000;
+
+    # USER_DONT_REQUIRE_PREAUTH
+    if(tmp & 0x00010000) acct_flags = acct_flags | 0x00400000;
+
+    # USER_PASSWORD_EXPIRED
+    if(tmp & 0x00020000) acct_flags = acct_flags | 0x00800000;
+
+    # USER_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION
+    if(tmp & 0x00040000) acct_flags = acct_flags | 0x01000000;
+
+    # USER_NO_AUTH_DATA_REQUIRED
+    if(tmp & 0x00080000) acct_flags = acct_flags | 0x02000000;
+
+    # USER_PARTIAL_SECRETS_ACCOUNT
+    if(tmp & 0x00100000) acct_flags = acct_flags | 0x04000000;
+
+    # USER_USE_AES_KEYS
+    if(tmp & 0x00200000) acct_flags = acct_flags | 0x08000000;
+
+    ret[6] = acct_flags;
+
+    return ret;
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_user_info(level, name, user, expand)
+    info =  winnet_get_user_info(user:user, level:4);
+    if(isnull(info)) return ret;
+
+    last_logon    = info[13];
+    last_logoff   = info[14];
+    acct_expires  = info[15];  # -1 = TIMEQ_FOREVER
+    acct_flags    = info[6];
+
+    # use 0 for "account never expires"; value -1 cannot be saved to KB
+    if(acct_expires == -1)
+      acct_expires = 0;
+
+    # NetUserGetInfo() doesn't return pwd_last_set
+    # Compute it using password age
+    pwd_age = info[2];
+    pwd_last_set = NULL;
+    if(! isnull(pwd_age))
+    {
+      if(pwd_age == 0)
+        pwd_last_set = 0;
+      else
+        pwd_last_set = unixtime() - pwd_age;
+    }
+
+    ret[0] = last_logon;        # 0 = never logged on
+    ret[1] = last_logoff;
+    ret[2] = pwd_last_set;      # not in USER_INFO_X; computed from pwd_age
+    ret[3] = acct_expires;
+    ret[4] = NULL;              # not in USER_INFO_X
+    ret[5] = NULL;              # not in USER_INFO_X
+    ret[6] = acct_flags;        # UF_XXX flags
+
+    return ret;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+function NetUserGetModals (level)
+{
+  var transport, ret, t;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'NetUserGeModals called');
+
+  transport = _smb_transport();
+
+  if (transport == SMB_DIRECT)
+  {
+    return direct_NetUserGetModals(level:level);
+  }
+  # Local Nessus Agent
+  else if(transport == SMB_LOCAL)
+  {
+    # winnet_get_user_modals(level, name, expand)
+    if(level == 1) level = 0;
+    ret = winnet_get_user_modals(level:level, expand:TRUE);
+    if(isnull(ret))
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'winnet_get_user_modals()');
+      return NULL;
+    }
+    if(level == 0)
+    {
+      t[0] = ret[0]; # min pass len
+      t[1] = ret[4]; # pass history len
+      t[2] = NULL;   # password complexity not available in native version
+      t[3] = ret[1]; # max pass age (DWORD)
+      t[4] = ret[2]; # min pass age (DWORD)
+      t[5] = ret[3]; # force logoff (DWORD)
+
+      # password complexity added in 6.10
+      if (max_index(ret) > 5)
+      {
+        t[2] = ret[5];
+      }
+
+      ret = t;
+    }
+
+    return ret;
+  }
+  # SMB Service
+  else if(transport == SMB_SERVICE)
+  {
+  }
+  # NSX
+  else if(transport == SMB_NSX)
+  {
+  }
+  _debug_smb_unsupported_transport(fname:FUNCTION_NAME, transport:transport);
+  return NULL;
+}
+
+#
+# Wrappers for other SMB functions used in the plugins go here:
+#
+

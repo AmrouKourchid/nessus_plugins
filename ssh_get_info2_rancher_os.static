@@ -1,0 +1,87 @@
+#TRUSTED 48e866f549badc3a06b9d9e537a06a60a129e56c7d6ba7526856d17a2f80a7f2109a2e0f14b79bf5b3d6c8efa61c6f53885c9448b8fa7cacebcc0a2ed567af38571fa1c49c5c0c9ba3d124d34eb6f75701bac8204fa262cc86e27430e10eefb46df497e6a56d3e67a5ff1ea7e1833cf14a328456cf238e6e66907f8e74230cef48ee6d20a09f71bf545b41c7bbbadf19818a4fb2ab426a10f61eeeedb053166d56b6b56673441167602945919e1de63ac04eb2747f97e306959ccb794f1ceb7e62f95be4b54e0616d6fc98eabc64a325ac406db4f55dc357a9638b7dbe0f80fbea7684dc3675d54ffb996d9854e358ebb0ad4bd464125c9f855f116d3e0751dd65df2ca5b95dbf56a666ae7377f6f7d281db71c37d644dd8d313b5d66be9ec7cd4820a18ade48077cbeb3bf40cbf099354ac733417870ff7d797a116f8907d06696d78f57566c425ae9e97dfe22df52360fdcc2ef8eacac439ea1a61ea36e530fc16101ccea1ec9dd28088d31fcb86462829010dea238190b3dc5832ac61fd3d44d7acdf6b3362b73d66b05156d052bb2d657cb50de1ca6b96d950daea753e089dcd30004a39beca85111a8c5aba96b500300e54a7e66f4263cbecf23d78f93d7b3456cd6eed4f4bc1b19097d9b861ab490dd41a3478d502b2487674aac1620d7592c7365fbc56a485e1f818a0d29b725377d4009782731e697ee799fee4a15c
+#TRUST-RSA-SHA256 585f24f69f6d46d24631aad842055d8b2e80581305f237a8e249e610f0dba7ef6c251e2d7223f0036b9e8d28c0be74afe99a01c4d4dfebd7e639c64ea888e6226a37aa015deac7d75f00529876d33091f3d821fada65c97a6d995383527b224191c31dea8be7afe2003b662c79db08c8f14d48d4cd3db0110ef762777673b87b603d1b57b9e3cb2edd2bb0562a038b38b423a3d447ba5f72d797204d157a90998e6becfb64df90da3c1fceb45154abcd805006bf772b47154ba3c74f91e656070fd87d92610bff0ba489cd60e6fe935afc4ad0829d2ee83d2619d1d7e93c552baf665b475683e3e9054a7a5f4f37c3aa02e85e371a1f83c31125ad816b04cf6337ed477fe04a572f726c6da8d4d00f9665e2709fd1e3a7a5a2351ddbf46251fc773fcb17d36fd736c943dd8797a1d73a3821b19a44597b92f9cac014c24b09acfab00a2e384f21d1630e647a413324a9f492dc0cbc67de74e90d43bdbb8d4c768db3d32c2afc8895ad70a7cfc29b3127f0df9a79ef5d2df20cb63332e8ce3d7164765e4b524fec83066178752561c01b7e540843cd529732fbc7eee6b9c9b1402dbb924358f6f9ca1f912e13e0e5d5f7f5fd272acab5e72968d70ae7ba146e758170b7d46d89ed3a348cf68a09721070b70a7a2f6625790c2d3ec57b25f4162b3a87759ecb23af0d9655a9cc69070e850b198a064816bd8428d17604c20c8519
+
+# RancherOS Linux helper functions
+#
+# Revision 1.0
+
+function handle_rancher_os(session, use_shell_handler, &channel, file, cmd_res)
+{
+  local_var args, arg, props, release, version, coreos_type;
+  var fn = "handle_rancher_os: ";
+
+  args = {};
+  args["session"]           = session;
+  args["use_shell_handler"] = use_shell_handler;
+  args["file"]              = file;
+  args["cmd_res"]           = cmd_res;
+
+  foreach arg (keys(args))
+  {
+    if (isnull(args[arg]))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'" + arg + "' argument is null");
+      return FALSE;
+    }
+  }
+
+  if (empty(args["file"]) || empty(args["cmd_res"]))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'file' or 'cmd_res' argument is empty");
+    return FALSE;
+  }
+
+  set_kb_item(name:"Host"+file, value:cmd_res);
+
+  props = parse_properties(str:cmd_res, sep:"=");
+
+  if (file == "/etc/os-release")
+  {
+    # PRETTY_NAME="RancherOS v1.5.4"
+    release = props["PRETTY_NAME"];
+    if (empty_or_null(release))
+      # NAME="RancherOS"
+      release = props["NAME"];
+
+    # v1.5.4
+    version = props["VERSION"];
+    if (empty_or_null(version))
+      version = props["VERSION_ID"];
+  }
+  else if (file == "/etc/lsb-release")
+  {
+    # DISTRIB_DESCRIPTION="RancherOS v1.5.4"
+    release = props["DISTRIB_DESCRIPTION"];
+    # DISTRIB_RELEASE=v1.5.4
+    version = props["DISTRIB_RELEASE"];
+    if (empty_or_null(release))
+      # DISTRIB_ID=RancherOS
+      release = props["DISTRIB_ID"];
+  }
+
+  if (empty_or_null(release))
+    return FALSE;
+
+  release = str_replace(string:release, find:'"', replace:'');
+  release = str_replace(string:release, find:"'", replace:'');
+
+  if (release !~ "^RancherOS")
+    return FALSE;
+
+  if (!empty_or_null(version) && release !~ "[0-9]+\.[0-9.]+$")
+    release = release + " " + version;
+
+  report += '\nThe remote RancherOS system is :\n' +
+    release + '\n';
+
+  set_kb_item(name:"Host/RancherOS", value:TRUE);
+  set_kb_item(name:"Host/RancherOS/release", value:release);
+  if (!isnull(version))
+    set_kb_item(name:"Host/RancherOS/version", value:version);
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_rancher_os.static:', value: 82);
+  report += '\nOS Security Patch Assessment is available for RancherOS.';
+
+  return TRUE;
+}

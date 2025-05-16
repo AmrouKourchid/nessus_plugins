@@ -1,0 +1,53 @@
+#TRUSTED 72781ed12de484f77a328f8d49fda5f60e8e666c88262a0eb6eefde83aa9bb95b834d19ce12ce39e32c394f0e6e9682a4c9858a8507492510c8c249195aebdbc063655b4e76534cdb9fb565b0d8b646241b2d7030a0dd040c96d22670d78f39d1df07c64c9b558e34b52040e40348fc7e275e6b03e96e7710521f617ffa33345e65c80a6ab2ccdf2d1f2b71980469bbf2dc55bae38948428bee7c03c2c4ec409139c3132d1f9ad0c45f514dedaf163fd7994682902b48c9dde963eb8cc3c1a05dcdb59a9c2e87c188ef8f8c238f32f34794b5a548b5177453207dca76a68eb5283a189c1161db0ad6a4eb133ce1de89d3966c567a73e7faad440195c0c4969ec18fa9461a1182a0ef41d5aad3ffaf9e41f8781c4ca22b9ea24c96f6919ae2b92926a05bdb3e7a692ea6fdf665c5403482c84ee7d00a47c4dd2f3954aae984ebf03b3c11bc1bcdc98dc15be140d268431e86c90dbf81b9865c3cfe6e9c6e11db38d17500bf7e38fd031c955f4b18faab6d0cebf56bf8664fa263067e282ce118b421bed7276f158e4d4964acf91db215d662dc3f5508b10299c9b496c1f2af39c425a412346661ba0cf8056aa13aca955d8f22927d0400cbdd1009bcced835271fb457d93230ab8123c49e4eae2b89187c8fed6cf4094ee95ae9b54eb3485d3f738c812e30a0ce7473bfde87a61fbcdd88d425997e7c80b0ffd2f090ad53e6f22
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision:1.00
+
+function get_cisco_mac_addrs(systype, session, use_shell_handler, &channel)
+{
+  if(isnull(systype))
+    systype = _FCT_ANON_ARGS[0];
+
+  local_var ciscomac = "([a-f0-9A-F]{4}\.[a-f0-9A-F]{4}\.[a-f0-9A-F]{4})";
+  # Most common command and pattern
+  local_var infcmd   = "show interface";
+  local_var regex    = "^[ \t]*Hardware.*address is "+ciscomac;
+  # Some temps for processing
+  local_var line     = NULL;
+  local_var cmd_output   = NULL;
+  local_var macs     = make_array();
+  local_var mlist    = "";
+  local_var matches  = NULL;
+  # Variations based on systype
+  if(systype == "NX-OS")
+  {
+    infcmd = "show interface";
+    regex  = "^[ \t]*Hardware.*address: "+ciscomac;
+  }
+  else if(systype =~ "^(ASA|FWSM)$")
+  {
+    infcmd = "show interface";
+    regex  = "[ \t]*MAC address "+ciscomac;
+  }
+
+  cmd_output = run_command(cmd:infcmd, session:session, use_shell_handler:use_shell_handler, channel:channel);
+  if(empty_or_null(cmd_output)) return NULL;
+  if("ERROR: % Invalid input detected at '^' marker." >< cmd_output) return NULL;
+  cmd_output = split(cmd_output, sep:'\n', keep:FALSE);
+  foreach line (cmd_output)
+  {
+    matches = pregmatch(string:line, pattern:regex);
+    if(!isnull(matches) && max_index(matches) > 1)
+      macs[matches[1]] = TRUE;
+  }
+
+  foreach line (keys(macs))
+    mlist += line+',';
+  mlist = ereg_replace(string:mlist, pattern:",$", replace:"");
+  replace_kb_item(name:"Host/raw_macs", value:mlist);
+}

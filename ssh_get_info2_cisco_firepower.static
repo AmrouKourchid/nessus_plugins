@@ -1,0 +1,621 @@
+#TRUSTED 82a0af60615d16bbc8a511137b14abc7493e69f5044a590fe24717b7ce04adb16afba5cb0139a3938d0e7072a9f6eaeadcb4b0b075db11117d8f27fbd717a7fa53b840d0172a525f2e59e28b773ce80b1c5f90da4fdfda560d6a23dfc66f33d280c11ac4f2b24605ebfe67d2c04059cba5269630f76c3b1c9de9f2dbf95e8a51342b41653a6fde7ffe16da197ce4f7a4fe1995be79f0e53ac4fcc2a5bf267c6bd8125899de43d9b804ad66d8b3cfc255107c8016970c4078e17240e88a0f92bb081b535d3a2dbf0fca9f6a9b8ee03648f5245f2fdae2de8c65e1f608866fbd8c529748e84ac6aab9e00e16caacdbd0c3f2f7197b951b4bd701109efefc4cf6d7cbeb85f87f44b8d337c7b7d4d7649fb25e95610e39af5535e92651d6228950103102aa3f4dadaef61e17c84843acb2787c890b7a84520acbc14c69e13ba4e4fea8225cc9da1b5e6f3ec5856e6ff0f1e3f793fa08173594700f66a5685f47524b29bee5efda6a7eaa599b38df799cfca8422f2980c7f6b46065aa29bf9df84bd49a370e6cd1f92ce652263f77e6a3f7a745be76f012f4f637a24dac15fd362e17f53a5b724b4cd89ca7e32b2c90d196dd39a45b17ec683f1a44826bf34fd7825587753363ade87580bb93427fcc31e4fee2b1d321b8a1b1ce137db76c0e2ae50c114e6b94282880f975678760091322ca0d0abad59d50e3c65a45d69e6c74aa62
+#TRUST-RSA-SHA256 35f14e69445b7e7aa3d1e88a98059940a7f35fb177e6ce8544d65ef85f3ba0740d68db98d2096217fe12200fef79d028cfc61963c65673fcd96a94c16a868ca7a650f103e588d7bc871c9c63fc9a1eb1e7a86ddbaa084c3877d2d5f407ad86365f396a92eedb7284ef3349aa2fa68b978c627ea08e7baec1e9f9de1557689b7ce6de8016dc823a577824878cd4484a950f5b73b6ad3fd4e2b9155e11a0c128d3276fc02a73a3c20a8e43c3e021346c70e640898bd48df18980fe932b7871522ab2d58cbfe971854b741e22dc9f10838a97d4adac292caeb237b84f6e23f6e9bdbd0525413e0f5be37b45aac5e634cead3af1933eb51fa70600f70cc6035eeb694a40df090020ac0c3fd5ccc88c897ff89d7e5b1667f81bc20050c058267d1b2b6e58a17cfdba3a9d63dfab5500f35f46140d925af806d0b914378a7a84fba2e10eb875b31533ebed61eb4e7fd4350007ed5c91d92e125c9bdefe5b17f85454a39fa3bfa24915eff5fe1b1acfbca7a5d2950677dad0aa428ae3a8f4aed3c2e0146ef7c36ce58f3b569e7134a973d15c21548497833fe02b9732df02c6623ad0ce597489cfc36342029639ede9c8726c7092a76e03bbdd625857d92d818ddf9c70b8e6f5c4d131ca9e349afd8b500e9a1f3a457ac614a85cb935fbc8c706678df7a0f7611dbbc9eaf772af14b7733016d7723c1021ac478b81462fc9030300db49
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision 1.0
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+
+##
+# Check the post-login buffer to determine if the device is a Cisco Firepower device
+# 
+# @return TRUE if the device is a Cisco Firepower device, FALSE otherwise
+#
+# @remark It searches for the string "Cisco Fire Linux OS" in the post-login buffer
+##
+function is_cisco_firepower()
+{
+  if("Cisco Fire Linux OS" >< host_info_key_val['post_login_buffer'])
+  {
+    dbg::detailed_log(lvl:1, src:'is_cisco_firepower()', msg:'Post login buffer contains "Cisco Fire Linux OS".');
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+
+##
+# Determine if the device is NOT a Cisco Firepower FTD device
+# 
+# @return TRUE if the device is NOT a Cisco Firepower FTD device, FALSE otherwise
+##
+function cisco_firepower_ftd_pre_check_fail()
+{
+  # have we already checked that the host is not cisco_firepower?
+  if(host_info_key_val['host_not_cisco_firepower_ftd'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ firepower_ftd_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Firepower if one of the following devices
+  if (is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# Determine if the device is NOT a Cisco Firepower Module device/shell
+# 
+# @return TRUE if the device is NOT a Cisco Firepower Module device/shell, FALSE otherwise
+##
+function cisco_firepower_module_pre_check_fail()
+{
+  # have we already checked that the host is not cisco_firepower?
+  if(host_info_key_val['host_not_cisco_firepower_module'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ firepower_module_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Firepower if one of the following devices
+  if (is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# Determine if the device is NOT a Cisco Firepower Chassis device
+# 
+# @return TRUE if the device is NOT a Cisco Firepower Chassis device, FALSE otherwise
+##
+function cisco_firepower_chassis_pre_check_fail()
+{
+  # have we already checked that the host is not cisco_firepower?
+  if(host_info_key_val['host_not_cisco_firepower_chassis'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ firepower_chassis_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Firepower if one of the following devices
+  if (is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# Helper function to store the fingerprinting KB items for the given OS
+#
+# @param [os:string] Name of the OS to store in the KB
+##
+function save_firepower_fingerprint(os)
+{
+  replace_kb_item(name:"Host/OS/showver", value:os);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"firewall");
+}
+
+##
+# Report the OS Handler error with a reason, and sets the support level to ERROR
+#
+# @param [session:object] The session object currently used for the SSH connection
+# @param [reason:string] The reason explaining the error to be reported
+# @param [cmd_error:bool] Control to report the last cmd_error encountered in the session,
+#                         set to FALSE to not report the error (optional, defaults to TRUE)
+##
+function cisco_firepower_error(&session, reason, cmd_error)
+{
+  var err_msg;
+
+  if (isnull(reason))
+    return NULL;
+
+  if (isnull(cmd_error))
+    cmd_error = TRUE;
+
+  # set support level ERROR, report error to lcx, add error to report, return
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+  err_msg = '\nOS Security Patch Assessment is not available because of the following error :\n\n';
+  failure_kb_msg = reason;
+
+  if (strlen(session.cmd_error) && cmd_error)
+    failure_kb_msg += " : " + session.cmd_error;
+  else if (strlen(last_error) && cmd_error)
+    failure_kb_msg += " : " + last_error;
+  else
+    failure_kb_msg += ".";
+
+  failure_kb_type = lcx::ISSUES_ERROR;
+  err_msg += failure_kb_msg;
+  report += err_msg;
+}
+
+##
+# Main callback for Cisco Firepower devices.
+#
+# @param [session:object] The session object currently used for the SSH connection
+# @param [use_shell_handler:bool] Sets whether the shell handler should be used or not (NOT USED)
+# @param [channel:object] Current SSH channel used to send commands (if NULL a new one will be opened)
+# @param [cmd_res:string] Output of the command 'show version'
+#
+# @return NULL if an error occured, TRUE otherwise
+#
+# @remark This function will open and use the "sshlib::firepower_shell_manager" shell handler
+#         in all circumstances, to verify what shell is used on the device. It will call
+#         the correct sub-OS Handler depending on the shell detected
+##
+function handle_cisco_firepower(session, use_shell_handler, &channel, cmd_res)
+{
+  var res, sh;
+  var kb_id = sshlib::SSH_LIB_KB_PREFIX + session.get_kb_connection_id();
+  var default_shell = get_kb_item(kb_id + '/Firepower/default_shell');
+
+  report += '\nLocal checks have been enabled for Cisco Firepower.\n';
+
+  # Whether we were using exec checks or the basic shell handler
+  # We need to use the Firepower shell manager now
+  if (!channel)
+    channel = new("sshlib::Channel");
+  sh = new("sshlib::firepower_shell_manager");
+  channel.set_shell_handler(shell_handler:sh);
+
+  session.clear_cmd_error();
+  if (!sshlib::session_replace_shell(session:session, channel:channel))
+  {
+    cisco_firepower_error(session: session, reason: "Unable to establish session");
+    return NULL;
+  }
+
+  # Determine the default shell only if hasn't already been determined
+  # (it shouldn't have been determined yet, but we exercise caution)
+  if (empty_or_null(default_shell))
+  {
+    if (!sh.determine_firepower_shell(channel: channel))
+    {
+      cisco_firepower_error(session: session, reason: "Unable to determine the device's default shell");
+      return NULL;
+    }
+    default_shell = get_kb_item(kb_id + '/Firepower/default_shell');
+    cmd_res = get_kb_item(kb_id + '/Firepower/default_shell/showver');
+  }
+
+  # Use the right OS handler depending on which shell is in use
+  switch (default_shell)
+  {
+    case sshlib::FP_SH_CHASSIS:
+      res = handle_cisco_firepower_chassis(
+        session: session,
+        shell_handler: sh,
+        channel: channel,
+        cmd_res: cmd_res);
+      break;
+    case sshlib::FP_SH_MODULE:
+      res = handle_cisco_firepower_module(
+        session: session,
+        shell_handler: sh,
+        channel: channel,
+        cmd_res: cmd_res);
+      break;
+    case sshlib::FP_SH_FTD:
+      res = handle_cisco_firepower_ftd(
+        session: session,
+        shell_handler: sh,
+        channel: channel,
+        cmd_res: cmd_res);
+      break;
+    default:
+      # We should never arrive to this point
+      var reason = 'The device seems to be a type of Cisco Firepower device.' +
+                   '\nHowever, it was not possible to obtain a supported shell';
+      cisco_firepower_error(session:session, reason:reason, cmd_error:FALSE);
+  }
+
+  if (res)
+  {
+    replace_kb_item(name:sshlib::SSH_LIB_KB_PREFIX + "cmd_method", value:"shell_handler");
+    replace_kb_item(name:sshlib::SSH_LIB_KB_PREFIX + "shell_handler", value:"sshlib::firepower_shell_manager");
+    return res;
+  }
+  return NULL;
+}
+
+
+##
+# Sub-OS Handler for Cisco Firepower devices with the FTD CLI as default shell
+#
+# @param [session:object] The session object currently used for the SSH connection
+# @param [shell_handler:object] The shell handler object to use for commands
+# @param [channel:object] Current SSH channel used to send commands
+# @param [cmd_res:string] Output of the command 'show version'
+#
+# @return NULL if an error occured, TRUE otherwise
+##
+function handle_cisco_firepower_ftd(session, &shell_handler, &channel, cmd_res)
+{
+  var buf, match, reason;
+  var os_name = "Cisco Firepower FTD";
+
+  match = pregmatch(pattern:"Model\s*:\s*(.*Version.*)", string:cmd_res);
+
+  if (empty_or_null(match) || empty_or_null(match[1]))
+  {
+    save_firepower_fingerprint(os:os_name);
+
+    reason = 'The device seems to be a type of Cisco Firepower device.' +
+             '\nHowever, it was not possible to determine its version' +
+             '\nfrom the output of "show version"';
+    cisco_firepower_error(session:session, reason:reason, cmd_error:FALSE);
+    return NULL;
+  }
+
+  os_name = match[1];
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+  replace_kb_item(name:"Host/Cisco/show_ver", value:cmd_res);
+  replace_kb_item(name:"Host/Cisco/show_version", value:cmd_res);
+  replace_kb_item(name:'Host/Cisco/Firepower', value:os_name);
+  replace_kb_item(name:'Host/Cisco/Firepower/is_ftd_cli', value:1);
+  replace_kb_item(name:'Host/Cisco/device_type', value:'firewall');
+
+  save_firepower_fingerprint(os:os_name);
+
+  report += '\nThe output of "show version" is :\n' + os_name + '\n';
+
+  # For handle_cisco_firepower() unit tests
+  if (get_kb_item("Host/Cisco/UNIT_TEST/standard"))
+    return TRUE;
+
+  # run test command
+  session.clear_cmd_error();
+  shell_handler.run_command(command:'\x03',
+                            session:session,
+                            cmd_shell:sshlib::FP_SH_FTD,
+                            channel:channel);
+
+  if (session.cmd_error)
+  {
+    cisco_firepower_error(session: session, reason: "Unable to successfully execute command");
+    return NULL;
+  }
+
+  replace_kb_item(name:"Host/Cisco/Chassis_CLI/Chassis_module_count", value: 1);
+
+  if (!shell_handler.get_sh_expert(channel:channel, module:1))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to connect to expert mode');
+  }
+  else
+    report += firepower::gather_expert_data(id:1, channel:channel, session:session, sh:shell_handler);
+
+  report += '\nOS Security Patch Assessment is available for Cisco Firepower.\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_firepower.static', value: 353);
+  replace_kb_item(name:"Host/Cisco/FTD_CLI", value:1);
+
+  return TRUE;
+}
+
+##
+# Sub-OS Handler for Cisco Firepower devices with the Module shell/BootCLI as default shell
+#
+# @param [session:object] The session object currently used for the SSH connection
+# @param [shell_handler:object] The shell handler object to use for commands
+# @param [channel:object] Current SSH channel used to send commands
+# @param [cmd_res:string] Output of the command 'show version'
+#
+# @return NULL if an error occured, TRUE otherwise
+##
+function handle_cisco_firepower_module(session, &shell_handler, &channel, cmd_res)
+{
+  var buf, match, reason;
+  var os_name = "Cisco FX-OS";
+
+  match = pregmatch(pattern:"Firepower\sExtensible\sOperating\sSystem\sPlatform\s(\d\.\d+\(\d\.\d+\))", string:cmd_res);
+  
+  if (empty_or_null(match) || empty_or_null(match[1]))
+  {
+    save_firepower_fingerprint(os:os_name);
+
+    reason = 'The device seems to be a type of Cisco Firepower device.' +
+             '\nHowever, it was not possible to determine its version' +
+             '\nfrom the output of "show version"';
+    cisco_firepower_error(session:session, reason:reason, cmd_error:FALSE);
+    return NULL;
+  }
+
+  os_name += " " + match[1];
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+  replace_kb_item(name:"Host/Cisco/show_ver", value:cmd_res);
+  replace_kb_item(name:"Host/Cisco/show_version", value:cmd_res);
+  replace_kb_item(name:'Host/Cisco/Firepower', value:os_name);
+  replace_kb_item(name:'Host/Cisco/Firepower/is_ftd_cli', value:0);
+  replace_kb_item(name:'Host/Cisco/device_type', value:'firewall');
+  replace_kb_item(name:"Host/Cisco/enum_ftd", value:'TRUE');
+
+  save_firepower_fingerprint(os:os_name);
+
+  report += '\nThe output of "show version" is :\n' + os_name + '\n';
+
+  # For handle_cisco_firepower() unit tests
+  if (get_kb_item("Host/Cisco/UNIT_TEST/standard"))
+    return TRUE;
+
+  # run test command
+  session.clear_cmd_error();
+  shell_handler.run_command(command:'?',
+                            session:session,
+                            cmd_shell:sshlib::FP_SH_MODULE,
+                            channel:channel);
+
+  if (session.cmd_error)
+  {
+    cisco_firepower_error(session: session, reason: "Unable to successfully execute command");
+    return NULL;
+  }
+
+  replace_kb_item(name:"Host/Cisco/Chassis_CLI/Chassis_module_count", value: 1);
+
+  report +=
+    '\nOS Security Patch Assessment is available for Cisco Firepower.\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_firepower.static', value: 424);
+  
+  return TRUE;
+}
+
+##
+# Sub-OS Handler for Cisco Firepower devices with the Chassis shell as default shell
+#
+# @param [session:object] The session object currently used for the SSH connection
+# @param [shell_handler:object] The shell handler object to use for commands
+# @param [channel:object] Current SSH channel used to send commands
+# @param [cmd_res:string] Output of the command 'show version'
+#
+# @return NULL if an error occured, TRUE otherwise
+##
+function handle_cisco_firepower_chassis(session, &shell_handler, &channel, cmd_res)
+{
+  var buf, match_ver, match_startup_ver, chassis_ver, startup_ver, reason;
+  var os_name = "Cisco FX-OS";
+
+  match_ver = pregmatch(pattern:'Version\\:\\s*(.*)\n', string:cmd_res);
+  match_startup_ver = pregmatch(pattern:'Startup-Vers\\:\\s*(.*)$', string:cmd_res);
+  
+  if (empty_or_null(match_ver) || empty_or_null(match_ver[1]) ||
+      empty_or_null(match_startup_ver) || empty_or_null(match_startup_ver[1]))
+  {
+    save_firepower_fingerprint(os:os_name);
+
+    reason = 'The device seems to be a type of Cisco Firepower device.' +
+             '\nHowever, it was not possible to determine its version' +
+             '\nfrom the output of "show version"';
+    cisco_firepower_error(session:session, reason:reason, cmd_error:FALSE);
+    return NULL;
+  }
+
+  chassis_ver = match_ver[1];
+  startup_ver = match_startup_ver[1];
+  os_name += " " + chassis_ver;
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+  replace_kb_item(name:"Host/Cisco/show_ver", value:cmd_res);
+  replace_kb_item(name:"Host/Cisco/show_version", value:cmd_res);
+  replace_kb_item(name:'Host/Cisco/Firepower', value:os_name);
+  replace_kb_item(name:'Host/Cisco/Firepower/is_ftd_cli', value:0);
+  replace_kb_item(name:'Host/Cisco/device_type', value:'firewall');
+  replace_kb_item(name:'Host/Cisco/Firepower/Chassis_version', value: chassis_ver);
+  replace_kb_item(name:'Host/Cisco/Firepower/Chassis_startup_version', value: startup_ver);
+
+  save_firepower_fingerprint(os:os_name);
+
+  report += '\nThe output of "show version" is :\n' + os_name + '\n';
+
+  # For handle_cisco_firepower() unit tests
+  if (get_kb_item("Host/Cisco/UNIT_TEST/standard"))
+    return TRUE;
+
+  # determine number of modules
+  var cmd, slotdata;
+  cmd = "show server inventory | no-more";
+  slotdata = shell_handler.run_command(session:session,
+                                       command:cmd,
+                                       channel:channel,
+                                       cmd_shell:sshlib::FP_SH_CHASSIS);
+
+  if (session.cmd_error)
+  {
+    cisco_firepower_error(session: session, reason: "Unable to successfully execute command");
+    return NULL;
+  }
+
+  if (empty_or_null(slotdata))
+  {
+    cisco_firepower_error(session:session, reason:'Nessus failed to determine number of hardware modules', cmd_error:FALSE);
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Enumerating module count');
+  var slotlines = split(slotdata);
+  var count = 0;
+  var line;
+  foreach line (slotlines)
+  {
+    # ignore 'header' lines
+    if (("Server" >< line && "Equipped" >< line) || "-------" >< line)
+      continue;
+    dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Found module: ' + line);
+    count++;
+  }
+
+  dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Module count: ' + count);
+
+  if (count == 0)
+  {
+    cisco_firepower_error(session:session, reason:'The hardware module count was found to be 0', cmd_error:FALSE);
+    return NULL;
+  }
+
+  var max_privs = 0;
+  var cmd_output = shell_handler.run_command(command:'show curpriv',
+                                             session:session,
+                                             channel:channel,
+                                             cmd_shell:sshlib::FP_SH_CHASSIS);
+
+  if(cmd_output && "Current privilege level :" >< cmd_output)
+  {
+    var priv = pregmatch(pattern:'Current privilege level : ([0-9]*)', string:cmd_output);
+    if(!empty_or_null(priv) && !empty_or_null(priv[1]))
+    {
+      priv = int(priv[1]);
+      if(priv == 15)
+        max_privs = 1;
+    }
+  }
+
+  if(!isnull(session))
+    replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+  session.close_connection();
+
+  replace_kb_item(name:"Host/Cisco/Chassis_CLI/Chassis_module_count", value: count);
+
+  report +=
+    '\nOS Security Patch Assessment is available for Cisco Firepower.\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_firepower.static', value: 549);
+  
+  return TRUE;
+}
+
+##
+# Callback storing shell and "show version" information when the device is NOT
+# a Cisco Firepower device running the FTD CLI
+#
+# @param [session:object] The session object currently used for the SSH connection (NOT USED)
+# @param [use_shell_handler:bool] Whether a shell handler was used or not
+# @param [channel:object] Current SSH channel used to send commands (NOT USED)
+# @param [cmd_res:string] Output of the command 'show version'
+##
+function handle_not_cisco_firepower_ftd(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_firepower_ftd'] = TRUE;
+  }
+}
+
+##
+# Callback storing shell and "show version" information when the device is NOT
+# a Cisco Firepower device running the Module shell/BootCLI
+#
+# @param [session:object] The session object currently used for the SSH connection (NOT USED)
+# @param [use_shell_handler:bool] Whether a shell handler was used or not
+# @param [channel:object] Current SSH channel used to send commands (NOT USED)
+# @param [cmd_res:string] Output of the command 'show version'
+##
+function handle_not_cisco_firepower_module(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_firepower_module'] = TRUE;
+  }
+}
+
+##
+# Callback storing shell and "show version" information when the device is NOT
+# a Cisco Firepower device running the Chassis shell
+#
+# @param [session:object] The session object currently used for the SSH connection (NOT USED)
+# @param [use_shell_handler:bool] Whether a shell handler was used or not
+# @param [channel:object] Current SSH channel used to send commands (NOT USED)
+# @param [cmd_res:string] Output of the command 'show version'
+##
+function handle_not_cisco_firepower_chassis(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_firepower_chassis'] = TRUE;
+  }
+}

@@ -1,0 +1,188 @@
+#TRUSTED 312b7b63cd75fc09d5ddf38f48114326138fef26375336df69246dc71a8bfad5d542923dd66f115a5e41ee5458b3928d77f36a9b6dacb5f6fb33f4d72182c32668944ac1d359bb35fe477011facdc8e2310636b832b8b2b668cba1bf531410dce24a479d63129484dfb0143d69564fd244e0fb87cd25841aa1edd2a27af69073bb1e5bdd02542f20ce871491c8ece4ad87d60c433c068e22e763587ddeab171081c1bcbcd81da909fd0f118c9ba19a99431256979dcf1bb8f016ff1ee1c334dc3e8a05597064ce02d2a9939305dcc8a2752e43cb811192b0ebcb8e986142ad15f900be7d2dff217a2ba54df916ccdfcd832148c976a81e33dc884ba2a7998fa5148f700210ce9c26e5f3984a02a4c4b22e5aa96b4e27f131def07569f4a2dd007a158f6fdfc2dc3a32e39be7fb907c61e7975521cf66920c5d60e384ba4f8f8a7abcf0fc24c95b52b4b5f87d6b69952a2bdd0196a3911e245ab8a2f2fbe99145b7c81397ec98876865159b086e6b22d8cf81a45c1b749bcb378875808875cc7a292530187e43d8a02ec2b3e250aa035a062358b680c76faad4711f7f96b4fa6946215d10ee62664ad4d640f2832493d031f47bd27a346b83ade2cb49bdcd046c8f560360ebae009aa0c5f77a27392c5cc3f991bb08a3bc1a8cc5f2246e40396e14883f9f31f13c5171bbbec0aaee6a0c5a7cd93ff9c370c3a86b6ef3c1812653
+#TRUST-RSA-SHA256 37aacb2129bdebb334273757639a2e0cc1e048f0840b5e0014c3c7f65d7dbea2fae42982565e5232d4cae384911a394aaf697423c53162a6e721b4fd7841e70ff6a19d7cfd3574b625d1be2ea4b7263bdffdbe39c18fbc905eebc000376dcff9fa872aa541ae83282e2996302d6f96432131b5eaa536254ab213979cb4401e464e555961931d480e58df42a1e95409a314b93a4e6ccddcb28ebc4b4d16e5b62c7da2793a678add9a581e2905ec9db40085cd8f24583229b89f55f411d80d80f8d9ae3805b7d0d415daf6ab5a8da72155709f5f0f7fc6c7d264a8bd26906d8cc181a9583bd3cc275f2a82536bb10eaf0473067dc027feb28668f4a10e5c8835172fce8c4ce78321ffc033922aa09da19e00aaf07e032e3f9dbfa01380ff689881a4c8d35beeb028ec500e72b45848b32ce517365dcfcd60f34238fa5171992af4ab183f65c855d71773db46d9dd67eb22d0df611fc4719d26356bbc414dba95a1ce269c16fcea425dcafd5482ce8fc3c826cf6fc9ac15fa17f20244c5ce3124b62f6f469932d47405a374e553ce091486205aeaf2e827842decafaecbf160166b52a2069b244cc21be2e596e1e4f676d1cb84909da0c8c7fe156f44ecc596dd3e3f32baf84faedb961496ac420f43c849754edb11aa53ddc9ac3ef81b3887a5d96d9b0cb018e8d7fe2d5062bac940aca10a33e481fc6e3fe972400a2ccb2ed766
+##
+# (C) Tenable, Inc.
+##
+function fortios_pre_check_fail()
+{
+  # we've already checked that the host is not FortiOS previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_fortios'])
+    return TRUE;
+
+  if(host_info_key_val['getsystemstatus_unrecognized'] &&
+     host_info_key_val['getsystemstatus_unrecognized'] !~ 'Forti')
+    return TRUE;
+
+  # Not FortiOS if one of the following devices
+  if (is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+function handle_fortios(session, use_shell_handler, &channel, cmd_res)
+{
+  var err_msg, match, platform, model, version, os, pattern, cmd_prompt;
+
+  replace_kb_item(name:"Host/Fortigate/cmd_res", value:cmd_res);
+  cmd_prompt = get_one_kb_item("SSH/"+ session.get_kb_connection_id() + "/cmd_prompt");
+  if (preg(pattern:"Press '[Aa]' to accept", string:cmd_res, multiline:TRUE) || preg(pattern:"Press '[Aa]' to accept", string:cmd_prompt))
+  {
+    dbg::log(src:'handle_fortios()', msg:'FortiOS disclaimer detected. Disclaimers may not be set to auto-accept.');
+    err_msg =
+'OS Security Patch Assessment is not available because a FortiOS disclaimer prompt has been detected in the response to an
+SSH connection, but the setting for permitting this Tenable product to accept the disclaimer has not been enabled or did
+not function correctly. You must manually enable this setting in your scan policy, which indicates your permission and
+consent for this Tenable product to connect to this system and accept the disclaimer.';
+    failure_kb_msg = "Disclaimer acceptance not authorized";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    report += err_msg;
+    return TRUE;
+  }
+  if ("Forti" >!< cmd_res)
+  {
+    err_msg =
+'The results of the get system status command do not indicate the presence of a device running FortiOS. A disclaimer
+might be in the way, in which case you will need to enable accepting the disclaimer in your Tenable product scan policy.';
+    failure_kb_msg = "FortiOS strings not found in get system status";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  report += '\nLocal checks have been enabled for this host.';
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+
+  # We use 'Fortigate' as the KB key for compatibility reasons with
+  # the compliance plugins. However, this should be covering all
+  # devices that run FortiOS, not just Fortigate.
+  replace_kb_item(name:"Host/Fortigate/get_system_status", value:cmd_res);
+
+  # Get Platform data if available.
+  platform = NULL;
+  if ("Platform Full Name" >< cmd_res)
+  {
+    pattern = "Platform Full Name\s*:\s*(Forti\w+-[\d\w]+)";
+    match = pregmatch(string:cmd_res, pattern:pattern);
+    if (!empty_or_null(match) && !empty_or_null(match[1])) platform = match[1];
+  }
+  else if ("International Version" >< cmd_res)
+  {
+    # It may be FortiWeb
+    pattern = "International Version\s*:\s*(FortiWeb-[\d\w]+)";
+    match = pregmatch(string:cmd_res, pattern:pattern);
+    if (!empty_or_null(match) && !empty_or_null(match[1])) platform = match[1];
+  }
+
+  # Parse version/model info.
+  pattern = "Version\s*?:\s*(Forti\w+(-[\d\w]+)+)?\s+v?((?:\d+\.)*\d+(?:\(\w+)?(?:-)?(?:\w+)?\)?[, ]+(?:build)?\d+(\(\w+\))?[, ]?(?:\d+)?(?:\.\d+)?(?:\.\d+)?(?:\s+\([\d\w]+ Patch \d+\))?)";
+  match = pregmatch(string:cmd_res, pattern:pattern);
+  if (empty_or_null(match))
+  {
+    err_msg = 'The results of the get system status command could not be parsed to retrieve version information.';
+    failure_kb_msg = "FortiOS get system status could not be parsed";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  # Populate model/platform.
+  if (!empty_or_null(platform)) model = platform;
+  else if (!empty_or_null(match[1])) model = match[1];
+  else model = "Unknown Fortinet Device";
+
+  # Populate version.
+  if (!empty_or_null(match[3])) version = match[3];
+  else version = "Unknown Version";
+
+  if (version && model)
+  {
+    replace_kb_item(name:"Host/Fortigate/version", value:version);
+    replace_kb_item(name:"Host/Fortigate/model", value:model);
+    report += '\nThe remote FortiOS system is:\nVersion: ' + version + '\n  Model: ' + model + '\n';
+
+    # Set OS KB's.
+    os = "FortiOS " + version + " on " + model;
+    replace_kb_item(name:"Host/Fortigate/system_status_source", value: "SSH via info 2");
+    replace_kb_item(name:"Host/OS/showver", value:os);
+    replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+    replace_kb_item(name:"Host/OS/showver/Type", value:"firewall");
+
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_fortios.static', value: 126);
+
+    return found_fortios(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  if (session.cmd_error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+    failure_kb_msg = "FortiOS session error";
+  }
+  else
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because we could not parse
+the system show status command.';
+    failure_kb_msg = "FortiOS get system status parse error";
+  }
+  failure_kb_type = lcx::ISSUES_ERROR;
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+  report += err_msg;
+  return TRUE;
+}
+
+function found_fortios(session, use_shell_handler, &channel)
+{
+  # Get performance data.
+  cmd_kb(channel:channel,
+         'Host/Fortigate/get_system_performance_status',
+         'get system performance status',
+         session,
+         use_shell_handler);
+  cmd_kb(channel:channel,
+         'Host/Fortigate/show_system_global',
+         'show system global',
+         session,
+         use_shell_handler);
+  # Get network interfaces
+  cmd_kb(channel:channel,
+        'Host/Fortigate/show_system_interface',
+        'show system interface | grep ""',
+        session,
+        use_shell_handler);
+
+  return TRUE;
+}
+
+function handle_not_fortios(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/get_system_status", value:cmd_res);
+  }
+  # store more details for other handlers to use
+  host_info_key_val['getsystemstatus_unrecognized'] = cmd_res;
+  host_info_key_val['host_not_fortios'] = TRUE;
+}

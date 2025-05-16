@@ -1,0 +1,57 @@
+#TRUSTED 94f58bcb0d9e6777f94b19546c1ccb1acba00b4d9fe638dac0119f21bd45266748f434d3b4086f02dac44cb289d1ba32df202559b6ae7a85d9766cb3189d5b8f28d9c26d23ce4cb39846f171c6d8bbd962516578e2df73316d4a4c43621fe5597e304264903f1d044a9c28682c0d913b69dce0880cc0dab218de5c19da60700d3668814bd46feee89631e863ab1699487b4db90a10812a59ceff66d9c59db27f060ce610e66695267be5fc37cd2c0695901c5e387432c67b73fa7468750f2c86d7b802f6106e40ad65a7d4ea3b67375f57ca3a36e00b2806fa598c0760ac1d04cdf9e63bd3ca49a12d7198345364eb9a041510731fc918d6071ae85eb1f3b49ee31befb84780e5f43cce9f9c76d420a8f9752bb6fb3846460a0d873e16dc916dfbb7b3aba1d175a333e4d0af18a612341e5661ca1c826a350a009c2f672f345b7604905365f1dfa947137acf202e0468c5010a50a6e7cbd5dac9dc6b158445f4f3c2d4a0962cdee5af3b1f43280e372e5ee1a0071bc98fab5b32e82bc44f81d3fb3e8cda269662a34c1d3eda24c5f3789b39448d2eb78d560e1e2c0832e77744bf045ed5800aff7ce9064a3d7fd68d3ae2f17f45e6789700909538849efc5afba82e9ebf3fdc544fda633008834f66b4550db377ca70c4a3608d7946720ea63e7ac6e7f10a6a5e02021f9f6dba3a515b40203467225db10fdbf70e50469d4f2d
+#TRUST-RSA-SHA256 83131c1b2aaba8b94f054a3d9f57471a06bf9a4cfb11958e3b8fb333569c966f0bf39a103fc2530ae5296ebf3df4a298cea6bf929bf41fe70eea0fd91196f8bc8b000b43967c208bd7854b087d208dee7f83c5f9f470224f59720a385750e5b70d0b32467114c109b54c9c4ab0b4730c4669879fe49cedf8e8a7e4189169005dc5de9d2486fa01791e8d1bb3ef5d3b9d855785a11ab1930ace1326ef4683c30b28126d180e9d37d653ba6783000886cc393b5fcd0078775c892c9cf8226ef9bbb06a62a584485e5b3d9480cd85611cce15cf9af3c79dd6075acc011b871f6ed5ef7bd9fdf5e9db015ad7313201e3f8a62e5a560f2817c70fcc6cb9d0ee114178452f9240b119e3e557a96d5bb6f7891b95149324179c938af5d3bd161b0d0ce5ed6e4777b3deb7403a4e90374d91183b034a04d4c62d5e28969212b7f7148f99325cef2c4e8ed2daf6d1905872603f5817b66eb1169cf36daf4d38bf3ef3bd8bcf120b3a6c1a928c463df1de5463a33027c3e81376a11dc57527e5b27944f035d624b0dd69ca78a5077007f6833de97171899c257b93f6a81a266dc997135629628afdf2ea61f930fb5ed92ffa094d4d36e22f4703c21a8d65813243605ff428c7da1ba51216a52c00226f4cb862aa2b967643cc68998e038ec80bf6dff7ad19c0a06084d3312622fb504dee21f15752947496fe1871ec19ce8e1b8d1733ad4c
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+#
+# Juniper Space helper functions
+###
+
+function handle_juniper_space(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name:"Host/etc/redhat-release", value: cmd_res);
+  var match = pregmatch(pattern:"^Space release ((?:[0-9.]+)(?:\D|$)(?:[0-9.]+))\s+\(((?:dev.)?\d+)\)", string:cmd_res);
+  if (!isnull(match))
+  {
+    if(!isnull(match[1]))
+    {
+      replace_kb_item(name:"Host/Junos_Space/release", value:"Junos Space " + match[1]);
+      replace_kb_item(name:"Host/Junos_Space/version", value:match[1]);
+    }
+
+    if(!isnull(match[2]))
+      replace_kb_item(name:"Host/Junos_Space/build", value:match[2]);
+
+    report += '\nThe remote Juniper Space OS system is :\n' + match[1] + " build " + match[2];
+  }
+  else
+  {
+    report += '\nThe remote system is Juniper Space, but the version could not be determined' +
+              '\nOS Security Patch Assessment is not available\n';
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"Junos_Space");
+
+  var cpu = host_info_key_val['cpu'];
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    replace_kb_item(name:"Host/Junos_Space/rpm-list", value:rpm_buf);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_juniper_space.static', value: 52);
+    return TRUE;
+  }
+
+  return NULL;
+}

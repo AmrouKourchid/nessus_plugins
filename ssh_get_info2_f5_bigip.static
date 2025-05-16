@@ -1,0 +1,141 @@
+#TRUSTED 31a82ef61c57908bcc7e6722f58f7b4564056ef508d81be5e2fbb2fe406c0b5899b06d20b69224a1408f25764c0448dddb9b5c860ee39e72bf9bdc7685c42d15445c73090a1b37b69840a43e039ac008bd066cae4d1703139430c785d811ef9020af78b5d943d35225c7ab7a0f08e34cb5824897a7e29af1c4de18bf23da6f992f1f251f913a352a504bcc121ad7f213eabba89b4deb7a6670370ed9dfe4bfcacf2fc3dd4be5f2a1443ee406aef5e15416fbdc9fb108ac4154ea456f40817691f7ed79db96e9a3f57d9357e1fe9a81424ff8845d2e65dcc896de1e7260ff179f9e3910ce8555195602b337f8e15eefa7a111f3ae4c22ef3dc08ec441bdb9a5458e75ee3004ac702b37bcb99cec26aa2e29133c6799946f101f9e994653fd39e97e5fa55200aa7d2f43e187946f8b3591dbaad5be1cc224b61261c05d2fb4ebc5669c9bfb60fdcc2eccfcfbcd697c36dbe2c85a18c20843eb07d97454242e1153c9ccd507e684b57eb3a47c053ab666079e603981b02c22049b392ffb1b023a197e54dc22cc611465bc6f9053bbf0d37f801d2afa179ef02e1bd3811a1029dca28b4215faed8451f77647d84aa6f89e676a67c2b8c107aef2c52674359dc4d652ff660ea8c5632cdc272be1fec20c259b03210644bd8fc00863d7ff385e5537d9ba01eb924f56311d2be1b087589133e78a1fa159203e355b77bff8c24b149d79
+#TRUST-RSA-SHA256 01e4d8a0338140f92645263ca9b2a5ab275c4a5228ddd45cad10f695db73dc376600ff76f58206fda48df58eba258150cd9783b4a33b0ea0c80d8e187267d1ccd69eabc16f12382d3a81b0c2806bdf8c7384156475993335680774714a0c78e15afe519bd33b53b1fec7ba4b81009b8f29ec0b576b08fb557248ed82e0496b2d64962c4523b7d1d6d74d5ed75057e1e12bd3c4aecde9d484d634a809b48dae587b7f13097fea63379f36ba33bb45c8aa0f8ed74def206213725cfc523d0679e8190d69c472671366e39894259a0c9eb6558dbd27a8ba282fe09a5d70407521a1f769892a9509b909eea5aab6269803b794d58ac1512d1acaad961d643c5d2d6d1a4065e4da0ef75bf498cd98c2a7bb6a3f40907b08ab4af0be2d35086a2c44e422bdd97aac12dbfa360d35b179d4b9c0bb6a6a74b419e915938c3a6223bfb25ee6c549711fbbbe9ed637346fadc63b23fe1359da29e2de7fca3c34b1f15df4b6842c62ab5edb3ff14382e68fcb788d089e6592245404ff43b06d1337c7590f2d4d2f44992e580b20cd71e6d97c420394ae359323e950d69b430ae9a5940935eaa94c4d7ca0c278e89924c88b80e51398512e9c8f17c84bd9da149ca9ec3e5fa79c5fcd9e337f4733df729cb23f6a584558f6f15c69a526df4c5129afaab5f5287e01b68a19864b80476eaf3d5812e7f091491f8b86eba98885a3d99d2ee70ebe
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.19
+
+#
+# f5_pre_check_fail
+# check if this is a ios device based on information collected
+#
+function bigip_pre_check_fail()
+{
+  # have we already checked that the host is not ios?
+  if(host_info_key_val['host_not_bigip_tmsh'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showsysversion_unrecognized']) &&
+     host_info_key_val['showsysversion_unrecognized'] !~ bigip_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not linux/unix if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "bigip..." in show version
+#
+function handle_bigip(session, use_shell_handler, &channel, cmd_res)
+{
+  var out, cmd_no_spaces, cmd, commands, cmd_prompt, ver;
+
+  report += '\nLocal checks have been enabled for F5 Networks BIG-IP.' +
+            '\n';
+
+  ver = pregmatch(string:cmd_res, pattern:"[Vv]ersion[ \t]*([0-9.]+)($|[^0-9.])");
+  if(isnull(ver) || isnull(ver[1]))
+  {
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    failure_kb_msg =
+      'It was not possible to determine the type of F5 appliance; OS security\n' +
+      'patch assessment is not available as a result.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    return FALSE;
+  }
+  else
+    ver = ver[1];
+
+
+  # Treat 'BIG-IP' and 'BIG-IQ' as different products
+  var product;
+  if ("BIG-IP" >< cmd_res)
+    product = "BIG-IP";
+  else if ("BIG-IQ" >< cmd_res)
+    product = "BIG-IQ";
+
+  replace_kb_item(name:"Host/OS/showver", value:'F5 Networks ' + product + ' ' + ver);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+
+  # BIG-IP is a load balancer.  BIG-IQ is a manager of load balancers.
+  #  not certain if the following is perfectly accurate for BIG-IQ
+  replace_kb_item(name:"Host/OS/showver/Type", value:'load-balancer');
+
+  replace_kb_item(name:"Host/" + product + "/version", value:ver);
+  replace_kb_item(name:"Host/" + product + "/raw_showver", value:cmd_res);
+
+  out = run_command(
+          cmd               : 'list /sys provision',
+          session           : session,
+          channel           : channel,
+          use_shell_handler : use_shell_handler
+        );
+
+  if(isnull(out))
+  {
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    failure_kb_msg =
+      'It was not possible to determine the installed modules on the ' + product + '\n' +
+      'device; OS Security Patch Assessment is not available as a result.';
+    failure_kb_type = lcx::ISSUES_ERROR;
+    report += '\n' + failure_kb_msg + '\n';
+    return FALSE;
+  }
+  replace_kb_item(name:"Host/"+product+"/raw_modules", value:out);
+
+  out = run_command(
+    cmd               : 'bash -c "rpm -qa"',
+    session           : session,
+    channel           : channel,
+    use_shell_handler : use_shell_handler
+  );
+  if(!empty_or_null(out))
+    replace_kb_item(name:"Host/"+product+"/rpm_packages", value:out);
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_f5_bigip.static', value: 122);
+  report += '\nOS Security Patch Assessment is available for F5 Networks ' + product + '.\n';
+}
+
+#
+# callback for systems without "BIG-IP..." in show version
+#
+function handle_not_bigip(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['host_not_bigip_tmsh'] = TRUE;
+    host_info_key_val['showsysversion_unrecognized'] = cmd_res;
+  }
+}

@@ -1,0 +1,499 @@
+#TRUSTED 0f060ac2fa525780de008e05d80c05173e8f7db446bdfe01f31b11cc73dd9c979b56c51be295a455b9c2c00ba1f814daefc58249dd1cb1029bafec4f985a202a77457b9dbb3a084dc9e9dbd6123642884044896c5a8b3dd7261128c74e22315e819ea9e6f68f5b4550da2a9e4914fdaaf3085ae4ec9421f28aa4f77e05108975bba6300ae8fe3f3394aa81e623c4698d7d552d0b08ca46df93538bf9c9126ffbfc7284cce55c93496e11541ed6226b943609eef0fe4cf7674db9c335b59a75bfe302711ce9539597d2ec992020e6824e25e01c9dab327100153982e7fbffeaf557abf7f38ababaa9d66fe6d3eeaeb9c9e7e45fe239a8b6adb106afdd9e7c457059ca485690098f0cbf37b967ed0d881e4bab4a577d71bfa9dc3084d563d15edf74fdd8bc54a118ecefb6ed5d5b322b015a05e5a808675a4da6e36d3b81070523e5cfd04c335b5d804ac0f20aa697a9648ecc8d6501314edc17663c7d2266264333894c4b46b577328b7209cee3d51860a11e57eef95393c94f08ccf2b5d1730530921914212d716f6796c23a54acb7e46d53afe8eb89f5da52abeb7d60e96da422e9982afe86b1f2cf24fac600dc87780654fa53be0f822183debef719044af090ef37c5ba920074b46e0bbba23c26bc43aa2203162801621b192498956d2ecfbc6913e8f416485ede16bb005c9399f604f8cf4d7c02f15207e678c7a15d6126
+#TRUST-RSA-SHA256 12539366da922a12b11949e5c90d6f65de3dfdf3eaf8a1fc4a37e7106c4fa6d401ba0b24ed72ff958fc5c62e6be272d099ef30cc3ec7a9409c4dc7022a1831b9295c25ac8f0887ba8e4e8e73a3a77e31f89f4ad1653b28c2866f4f36a49ddefd0640db9b099952511c6f1d2a067f89a84421ae9f6584b8146e51cb7db042604995b24d10d01ab3cfaf6fb5a69c811e4c02a64c1f600595742de43c3e148707671efd82b944f7cdad51bb18251af164480f2a02528fbfe351a55230b9b673abf9ecfff22c95df9c58ba3ddcde1b03c2ad83e10bc9187cbe0294f327c499f183c6ceba41b36fbeb41ecedf2f9cc642c6ff0b534c6f069dfa5eebca4995e0b001188571e4c0bf3032eac750d9b6553163f70605d559fe6577016e958bb0431629e480f4da8bec127da7d920f09b7f8353addee1834d78157afcd5a6a6239d25a108355853620acae93297620adf3b4f0fe0c2ed9822f0a755877036acd67f68e27386a214895e1693866a11961f790c6f9afd5d48d14d37cc87627aa075fb596c38073ea8000c55149ec03891dc48d3352513a81fa38588e8249f69e5ad3241e94ac0dbeb55fd281fd454be6a1af2f2e9086f2de4aea8e8c2bb1caf81a5bb6f3ea1ac6167e266fc89f318d7abfc97fdc791e2f9f1ce05a71cfd6801e652afc91e6c6f8ae0aefa3fba723ac8f76ee5f251ed5dcc9035dda96394ec2d421c04a0f858
+
+###
+# Debian and Ubuntu helper functions
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.15
+###
+
+
+##
+# Runs standard Debian/Ubuntu assessment commands
+#
+# @param   [session:object] session object associated with connection
+# @param   [use_shell_handler:boolean] shell handler information for commands to be run
+# @param   [channel:object] address of channel object associated with connection
+# @param   [cmd_res:string] the result of running "cat /etc/debian_version"
+# @param   [release_info:string] the result of running "cat /etc/os-release"
+# @remark  sshlib::set_support_label may be set based on command output
+# @return  [boolean] FALSE if debian-version does not match known pattern, else
+#          TRUE if debian/ubuntu but there was a command problem, else
+#          return value of found_debian_os (likely TRUE)
+##
+function handle_debian_os(session, use_shell_handler, &channel, cmd_res, release_info)
+{
+  var debian_release, dpkg_buf, dpkg_command, lsb_buf, ubuntu_release;
+  var ubuntu_release_split, ubuntu_description, ubuntu_description_split;
+  var uname, uname_check, interrupted_errors, dpkg_command_display;
+  var kali_release, kali_release_split, kali_description, kali_description_split, kali_buf;
+  var uos_release, uos_release_split, uos_description, uos_description_split;
+  var product = 'Debian Linux';
+
+  interrupted_errors = 0;
+  replace_kb_item(name:"Host/etc/debian-version", value: cmd_res);
+
+  if(!pgrep(string:cmd_res, pattern:'^([0-9.]+|testing/unstable|(buster|jessie|lenny|squeeze|stretch|wheezy|bullseye|bookworm|trixie|forky)/sid|kali-rolling|Kali Linux Rolling)[ \t\r\n]*$'))
+  {
+      failure_kb_msg = "Debian version does not match known patterns";
+      failure_kb_type = lcx::ISSUES_INFO;
+      return FALSE;
+  }
+  report += '\nThe remote Debian system is :\n' + cmd_res;
+  debian_release = chomp(cmd_res);
+
+  # Check kernel type.
+  #   example #1: "Linux log104 3.2.0-133-generic #179-Ubuntu etc."
+  #   example #2: "Linux debhost 6.7.9-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.7.9-1 etc."
+  # Store the kernel type is possible, example "generic"
+  uname = get_kb_item('Host/uname');
+  if(uname)
+  {
+    uname_check = pregmatch(pattern:"((\d+(?:\.\d+)+)(?:-[0-9a-zA-Z]+)?)-([\-0-9a-zA-Z]+)", string:uname);
+    if(!isnull(uname_check) && !isnull(uname_check[1]) && strlen(uname_check[1]))
+      replace_kb_item(name: "Host/Debian/kernel-version", value: uname_check[1]);
+    if(!isnull(uname_check) && !isnull(uname_check[2]) && strlen(uname_check[2]))
+      replace_kb_item(name: "Host/Debian/kernel-base-version", value: uname_check[2]);
+    if(!isnull(uname_check) && !isnull(uname_check[3]) && strlen(uname_check[3]))
+      replace_kb_item(name: "Host/Debian/kernel-type", value: uname_check[3]);
+  }
+
+  # Ubuntu check
+  lsb_buf = run_command(cmd:"cat /etc/lsb-release",
+                            session:session,
+                            use_shell_handler:use_shell_handler,
+                            channel:channel);
+
+  if(lsb_buf && strlen(lsb_buf))
+  {
+    if("DISTRIB_ID=Ubuntu" >< lsb_buf)
+    {
+      replace_kb_item(name: "Host/Ubuntu", value: TRUE);
+      report += '\nThis is a Ubuntu system\n';
+      debian_release = NULL;
+      ubuntu_release = pgrep(string: lsb_buf, pattern: "DISTRIB_RELEASE=");
+      if(ubuntu_release && strlen(ubuntu_release))
+        ubuntu_release_split = split(ubuntu_release, sep: '=');
+      if(ubuntu_release && ubuntu_release_split && max_index(ubuntu_release_split) > 0)
+      {
+        replace_kb_item(name:"Host/Ubuntu/release", value: ubuntu_release_split[1]);
+        replace_kb_item(name:"Host/distro", value:UBUNTU_DISTRO);
+      }
+      if ('DISTRIB_DESCRIPTION=' >< lsb_buf)
+      {
+        ubuntu_description = pgrep(string:lsb_buf, pattern:'DISTRIB_DESCRIPTION=');
+        if(ubuntu_description && strlen(ubuntu_description))
+          ubuntu_description_split = split(ubuntu_description, sep:'=');
+        if(ubuntu_description && ubuntu_description_split && max_index(ubuntu_description_split) > 0)
+        {
+          # preg_replace broken
+          ubuntu_description_split[1] = ereg_replace(string:ubuntu_description_split[1], pattern:'"', replace:'');
+          replace_kb_item(name:'Host/Ubuntu/distrib_description', value:ubuntu_description_split[1]);
+        }
+      }
+
+      product = 'Ubuntu Linux';
+    }
+    else if("DISTRIB_ID=uos" >< lsb_buf)
+    {
+      replace_kb_item(name:"Host/UOS",value: TRUE);
+      report += '\nThis host is running the Unity Operating System\n';
+      ubuntu_release = debian_release = NULL;
+      uos_release = pgrep(string:lsb_buf, pattern:"DISTRIB_RELEASE=");
+      if(!empty_or_null(uos_release))
+      {
+        uos_release_split = split(uos_release, sep: '=');
+        if(uos_release_split && max_index(uos_release_split) > 0)
+        {
+          replace_kb_item(name:"Host/UOS/release", value: chomp(uos_release_split[1]));
+          replace_kb_item(name:"Host/distro", value:"uos");
+        }
+      }
+
+      if('DISTRIB_DESCRIPTION=' >< lsb_buf)
+      {
+        uos_description = pgrep(string:lsb_buf, pattern:'DISTRIB_DESCRIPTION=');
+        if(!empty_or_null(uos_description))
+        {
+          uos_description_split = split(uos_description, sep:'=');
+          if(uos_description_split && max_index(uos_description_split) > 0)
+          {
+            uos_description_split[1] = str_replace(string:uos_description_split[1], find:'"', replace:'');
+            replace_kb_item(name:'Host/UOS/distrib_description', value:chomp(uos_description_split[1]));
+          }
+        }
+      }
+
+      product = 'Unity Operating System';
+    }
+  }
+
+  # Kali Linux check
+  kali_buf = run_command(cmd:"cat /usr/lib/os-release",
+                            session:session,
+                            use_shell_handler:use_shell_handler,
+                            channel:channel);
+
+  if (kali_buf && strlen(kali_buf) && "ID=kali" >< kali_buf)
+  {
+    set_kb_item(name: "Host/Kali", value: TRUE);
+    report += '\nThis is a Kali Linux system\n';
+    debian_release = NULL;
+    kali_release = pgrep(string: kali_buf, pattern: "VERSION=");
+    if (kali_release && strlen(kali_release)) kali_release_split = split(kali_release, sep: '=');
+    if (kali_release && kali_release_split && max_index(kali_release_split) > 0)
+    {
+      kali_release_split[1] = ereg_replace(string:kali_release_split[1], pattern:'"', replace:'');
+      replace_kb_item(name: "Host/Kali/release", value: kali_release_split[1]);
+    }
+    if ('PRETTY_NAME=' >< kali_buf)
+    {
+      kali_description = pgrep(string:kali_buf, pattern:'PRETTY_NAME=');
+      if (kali_description && strlen(kali_description)) kali_description_split = split(kali_description, sep:'=');
+      if (kali_description && kali_description_split && max_index(kali_description_split) > 0)
+      {
+        kali_description_split[1] = ereg_replace(string:kali_description_split[1], pattern:'"', replace:'');
+        set_kb_item(name:'Host/Kali/distrib_description', value:kali_description_split[1]);
+      }
+    }
+
+    product = 'Kali Linux';
+  }
+
+  if(debian_release)
+  {
+    replace_kb_item(name:"Host/Debian/release", value:debian_release);
+    replace_kb_item(name:"Host/distro", value:DEBIAN_DISTRO);
+  }
+
+  # Gather dpkg info
+  dpkg_command = 'dpkg-query -W -f \'${db:Status-Abbrev}  ${Package}  ${Version}  ${architecture}  ${binary:summary}\n\'';
+  dpkg_buf = run_command(
+      cmd:dpkg_command,
+      session:session,
+      use_shell_handler:use_shell_handler,
+      channel:channel);
+
+  # Test for proper headers, usually "ii "
+  if(dpkg_buf !~ "^[u,i,r,p,h][n,i,c,u,f,h,W,t](R| )")
+  {
+    if( debian_release =~ "^[0-3]\." )
+      dpkg_command = 'COLUMNS=160 dpkg -l';
+    else
+      dpkg_command = 'COLUMNS=400 dpkg -l|cat';
+    dpkg_buf = run_command(
+        cmd:dpkg_command,
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+    dpkg_command_display = dpkg_command;
+  }
+  else
+    dpkg_command_display = "dpkg-query -W -f '${db:Status-Abbrev}  ${Package}  ${Version}  ${architecture}  ${binary:summary}\n'";
+
+  if(check_cmd_interrupted_local_checks(session:session, command:dpkg_command_display))
+    interrupted_errors++;
+
+  var found = FALSE;
+
+  if(dpkg_buf && !interrupted_errors)
+  {
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_debian.static', value: 174);
+    report += '\nOS Security Patch Assessment is available for this host.';
+    replace_kb_item(name:"Host/Debian/dpkg-l", value:dpkg_buf);
+    found = found_debian_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  register_debian_based_os(product: product, release_info: release_info);
+
+  if(found)
+    return TRUE;
+
+  var err_msg;
+  if (session.cmd_error)
+  {
+    err_msg =
+      'OS Security Patch Assessment is not available because of the following
+      error :' + session.cmd_error;
+  }
+
+  if (!dpkg_buf)
+  {
+    if(!err_msg) err_msg =
+      'OS Security Patch Assessment is not available because the command \'dpkg
+      -l\' failed to produce any results for some reason.';
+    failure_kb_msg = "'dpkg' did not return any result";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  if (interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because\n' +
+              'the following commands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing OS Security Patch Assessment:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  return TRUE;
+}
+
+##
+# Function for running individual necessary commands based on successful Debian/Ubuntu detection
+#
+# @param   [session:object] session object associated with connection
+# @param   [use_shell_handler:boolean] shell handler information for commands to be run
+# @param   [channel:object] address of channel object associated with connection
+# @return  [boolean] TRUE
+##
+function found_debian_os(session, use_shell_handler, &channel)
+{
+  var status_json, status_split, status_section;
+  if (get_kb_item("Host/Ubuntu"))
+  {
+    # Check for ESM support
+    status_json = run_command(cmd:"cat /var/lib/ubuntu-advantage/status.json",
+          session:session,
+          use_shell_handler:use_shell_handler,
+          channel:channel);
+    if (!empty_or_null(status_json))
+    {
+      replace_kb_item(name:"Host/Ubuntu/UA-status", value:status_json);
+      status_split = split(status_json, sep: '}');
+      foreach status_section (status_split)
+      {
+        if (preg(string:status_section, pattern:'"name" *: *"esm-infra"', multiline:TRUE))
+        {
+          # esm-infra section found
+          if (preg(string:status_section, pattern:'"status" *: *"enabled"', multiline:TRUE) &&
+              preg(string:status_section, pattern:'"available" *: *"yes"', multiline:TRUE) &&
+              preg(string:status_section, pattern:'"entitled" *: *"yes"', multiline:TRUE))
+          {
+            replace_kb_item(name:"Host/Ubuntu/ESM", value:TRUE);
+          }
+          break;
+        }
+      }
+    }
+  }
+  return TRUE;
+}
+
+function register_debian_based_os(product, release_info)
+{
+  var os_data;
+
+  if(product == 'Ubuntu Linux')
+    os_data = parse_ubuntu_release_info(release_info: release_info);
+  else if(product == 'Debian Linux')
+    os_data = parse_debian_release_info(release_info: release_info);
+  else if(product == 'Kali Linux')
+    os_data = parse_kali_release_info(release_info: release_info);
+  else if(product == 'Unity Operating System')
+    os_data = parse_unity_release_info(release_info: release_info);
+
+  return register_os(
+    type: 'local',
+    method: 'SSH',
+    confidence: 100,
+
+    vendor: os_data.vendor,
+    product: os_data.product,
+
+    release: os_data.release,
+    version: os_data.version,
+    os_name: os_data.os_name,
+    os_edition: os_data.os_edition,
+    extended_support: os_data.extended_support,
+    display_version: os_data.display_version,
+    cpe: os_data.cpe
+  );
+}
+
+function parse_debian_release_info(&release_info)
+{
+  var os_data = {
+    vendor: 'Debian',
+    product: 'Debian Linux',
+    os_name: NULL,
+    release: NULL,
+    version: NULL,
+    display_version: NULL,
+    os_edition: NULL,
+    extended_support: NULL,
+    cpe: NULL
+  };
+
+  var match = pregmatch(pattern: 'PRETTY_NAME="([^"]+)".*', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.display_version = match[1];
+    os_data.os_name = match[1];
+  }
+
+  match = pregmatch(pattern: 'VERSION="(((\\d+)(?:\\.\\d+)*)[^"]+)"', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.display_version = match[1];
+    os_data.version = match[2];
+    os_data.release = match[3];
+  }
+
+  ## older versions of debian (6 and below) do not have /etc/os-release
+  ## this will use /etc/debian_version instead spawned from CS-66614
+  if (empty_or_null(match))
+  {
+    var release_info2 = get_kb_item('Host/Debian/release');
+
+    match = pregmatch(pattern: "^(\d+)", string: release_info2);
+    if (!empty_or_null(match[1]))
+    {
+      os_data.display_version = match[1];
+      os_data.version = match[1];
+      os_data.release = match[1];
+
+      if (empty_or_null(os_data.os_name) && !empty_or_null(os_data.product))
+        os_data.os_name = os_data.product + ' ' + os_data.version;
+    }
+
+  }
+
+  return os_data;
+}
+
+function parse_ubuntu_release_info(&release_info)
+{
+  var os_data = {
+    vendor: 'Canonical',
+    product: 'Ubuntu Linux',
+    os_name: 'Canonical Ubuntu Linux ',
+    release: NULL,
+    version: NULL,
+    display_version: NULL,
+    os_edition: NULL,
+    extended_support: NULL,
+    cpe: NULL
+  };
+
+  var match = pregmatch(pattern: 'VERSION="(((\\d+)(?:\\.\\d+)*)[^"]+)"', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.display_version = match[1];
+    os_data.os_name += match[1];
+
+    if ('LTS' >< match[1])
+      os_data.os_edition = 'LTS';
+
+    os_data.version = match[2];
+    os_data.release = match[3];
+  }
+
+  # ESM supercedes LTS so overwrite the LTS edition if the host uses ESM
+  if (get_kb_item('Host/Ubuntu/ESM'))
+  {
+    os_data.os_edition = 'ESM';
+    os_data.extended_support = 'ESM';
+  }
+
+  return os_data;
+}
+
+function parse_unity_release_info(&release_info)
+{
+  var os_data = {
+    vendor: 'Union Tech',
+    product: 'Unity Operating System',
+    os_name: NULL,
+    release: NULL,
+    version: NULL,
+    display_version: NULL,
+    os_edition: NULL,
+    extended_support: NULL,
+    cpe: 'x-cpe:/o:union_tech:unity_operating_system'
+  };
+
+  var match = pregmatch(pattern: 'PRETTY_NAME="([^"]+)".*', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.display_version = match[1];
+    os_data.os_name = match[1];
+  }
+
+  match = pregmatch(pattern: 'VERSION="(((\\d+)(?:\\.\\d+)*)[^"]*)"', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.display_version = match[1];
+    os_data.version = match[2];
+    os_data.release = match[3];
+  }
+
+  if (empty_or_null(match))
+  {
+    var release_info2 = get_kb_item('Host/UOS/release');
+
+    match = pregmatch(pattern: "^\D*(\d+)$", string: release_info2);
+    if (!empty_or_null(match[1]))
+    {
+      os_data.display_version = match[1];
+      os_data.version = match[1];
+      os_data.release = match[1];
+
+      if (empty_or_null(os_data.os_name) && !empty_or_null(os_data.product))
+        os_data.os_name = os_data.product + ' ' + os_data.version;
+    }
+
+  }
+
+  return os_data;
+}
+
+function parse_kali_release_info(&release_info)
+{
+  var os_data = {
+    vendor: 'Offensive Security',
+    product: 'Kali Linux',
+    os_name: NULL,
+    release: NULL,
+    version: NULL,
+    display_version: NULL,
+    os_edition: NULL,
+    extended_support: NULL,
+    cpe: 'x-cpe:/o:offensive_security:kali_linux'
+  };
+
+  var match = pregmatch(pattern: 'PRETTY_NAME="([^"]+)".*', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.os_name = match[1];
+  }
+
+  match = pregmatch(pattern: 'VERSION="((\\d+)(?:\\.\\d+)*)[^"]*"', string: release_info);
+  if(!empty_or_null(match))
+  {
+    os_data.display_version = match[1];
+    os_data.version = match[1];
+    os_data.release = match[2];
+
+    match = pregmatch(pattern: 'VERSION_CODENAME=([a-z\\-]+)', string: release_info);
+    if(!empty_or_null(match))
+    {
+      os_data.display_version += ' (' + match[1] + ')';
+    }
+  }
+
+  return os_data;
+}
+

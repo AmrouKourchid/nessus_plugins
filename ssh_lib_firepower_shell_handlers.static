@@ -1,0 +1,187 @@
+#TRUSTED 65e0b2bc3801b26860c2d42c44648a104d15fbf56fcaf2174b93b29947a3e7910d3e117d8202376aa5c8e745bb008ee82d6c7f8e2d212a1aa9a55144cb49e9f7632d8658f698a4faf80d5c6be5b05c2066b12765f93cecc8172fb85476d35fad7e24730fc19a6be9ff8fed1a2515bdc506feeca09492f5513bf255ec23e1f4524211dc1f5630c11d7ffe7f4cf243f81b145123f44a2b8650ccc77916a0e439990d16925a151cfdd97e5b463fd78f9a143c9f231b75d7676d6f7463fd9704b1bf593e96e915348b039578283ec6dbb1a1bd2f5eac93ecaac17916510968f2355e1b016a629e1239b9cde76a9d23237c027dba132688bb1d5c104ace4c90a711434c32c3a32bb4c7fe2e810a8be26e39c363381867b48291e6bd770ac06fa66173b4eaa0385045e0ff48ecc65994da29550e7caa51871e56c0d01ed8ad91d5ed843fd2ad982c6229091f20dacff15a5611af8e1181a7ca37db82bb0c704d407678305664f09af546b619952e830b2958503609967f8ea9b82e3e4fa918b0a8208cdf79580169fbf3bd46ebc7ec788ee975b06a150682199f9e26cc1a62d0db89372f3009fc45b6a287b638d356abc99d24d727cc1ec4df3cf31bcb27b436e48e203c7c2bea1f96117844ca8fb03b7dddf08b044d2445fb9b82406916c5589c505f1f07fddff7c47450e5c0e9856018b743090cd2a9d877b9f62d010756d29238d8
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# @NOGPL@
+#
+# Revision:1.2
+#
+###
+
+namespace sshlib
+{
+  object firepower_fxos_shell_handler : sshlib::firepower_shell_manager
+  {
+    var objname = 'firepower_fxos_shell_handler::';
+
+    ##
+    # run given command
+    #
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # Issue CTRL+C to clear any lingering, invalid commands
+      super.run_command(
+        channel:channel,
+        command:'\x03',
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_CHASSIS
+      );
+
+      # Issue the command
+      return super.run_command(
+        channel:channel,
+        command:command,
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_CHASSIS
+      );
+    }
+  }
+
+  object firepower_bootcli_shell_handler : sshlib::firepower_shell_manager
+  {
+    var objname = 'firepower_bootcli_shell_handler::';
+
+    ##
+    # run given command
+    #
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # Issue the command
+      return super.run_command(
+        channel:channel,
+        command:command,
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_MODULE
+      );
+    }
+  }
+
+  object firepower_ftd_shell_handler : sshlib::firepower_shell_manager
+  {
+    var objname = 'firepower_ftd_shell_handler::';
+
+    ##
+    # run given command
+    #
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # Issue CTRL+C to clear any lingering, invalid commands
+      var test = super.run_command(
+        channel:channel,
+        command:'\x03',
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_FTD
+      );
+
+      return super.run_command(
+        channel:channel,
+        command:command,
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_FTD
+      );
+    }
+  }
+  object firepower_expert_shell_handler : sshlib::firepower_shell_manager
+  {
+    var objname = 'firepower_expert_shell_handler::';
+
+    ##
+    # run given command
+    #
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # Issue CTRL+C to clear any lingering, invalid commands
+      var test = super.run_command(
+        channel:channel,
+        command:'\x03',
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_EXPERT
+      );
+
+      return super.run_command(
+        channel:channel,
+        command:command,
+        force_priv_escl:force_priv_escl,
+        cmd_timeout_min:cmd_timeout_min,
+        inactivity_timeout_min:inactivity_timeout_min,
+        cmd_shell:FP_SH_EXPERT
+      );
+    }
+  }
+}

@@ -1,0 +1,575 @@
+#TRUSTED 6552b227ca341a669e005b02bdcdbcff95e2ed6129d795ea931360a25eff8418d751c77d73378caff6912d4aca71794fb527f7ac819aaddaf07c57e3e153ca11d41adda4ad0ff8b14a7bf7aaccd5bd524c5d8b36076b6f9212c98d70db87e222c0cab061a5c7ec48a93256349c945a0af0bb575e67f8179f0e5478cb8593298f4f08a19d87e0becd9432f32a691329a7b29a26aaffb7c7a427065ad9c5bd38fdcff198ddff98187f6dff88ad2ce6eae4aa91f8df140a612bea1bb2997101f813a1603b66769e8621d20fe82f29bcef42469a69688206009ffca02eef5b84baee7b17039689c77e3f6964fdd984a216ff1b95887957bc17d45c44d1ea5da8b7c1dd8b6cc3736246374dec6bc4e74b92cae2e1737aa10d7fb997672db77b4c2c4de2fca08cbe4667826d9f2d2af34cfc25217f5b7f4d56ffe6e7b3d5ebb37ea88f5c9efcb9a1cf8185896dcf1555bfe552f533126c2448131f0a3c1a3a4375ec40b7d45911c88d50974d3c09a7fc43a69b6f835cc8facf29b753c9a344def1802e65e47eb0310f88952126e1e4257e559fdc22df508ede6d1ba2c76d1855e472704cbb707b684a7749e2de4bcacb67e5e25e0c195b7b030636dee557ca1c915132afdc6f98ab7eed1f1563594a8ce2ef99a826eb6de2dd70c2b7c10c26831d89f6cde984e1606f3d3de7410b156ecbf6abd7c3f6a75e23fc4d52085f3915caac96
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+# This shell manager template is a wrapper around the basic shell handler.
+# It provides basic shell state management functionality.
+#
+# This file is intended to provide a basic and generic template of
+# shell management that can be extended to a new object to implement
+# some type of shell management, e.g. escalation, switching shells, etc.
+#
+# Do NOT add product-specific customizations to this file. Create a new
+# file, extend the object, and make your customizations in the new object.
+#
+# @remark !!! THIS OBJECT IS EXPERIMENTAL AND HAS BEEN ADDED TO THE FEED FOR A SPECIFIC USE CASE BY AUDITS !!!
+# This is not ready to be integrated into sshlib for general use. This should not be modified without consulting Audits.
+# See RES-29239, RES-32851, RES-32852
+###
+
+namespace sshlib
+{
+  global_var _BASIC_MGR_INITIAL_INACTIVITY_TIMEOUT = 15;
+
+  ##
+  # Basic shell manager template to handle shell state changes while
+  # wrapping basic_shell_handler to run commands.
+  #
+  # This object is intended to provide a basic and generic template of
+  # shell management that can be extended to a new object to implement
+  # some type of shell management, e.g. escalation, switching shells, etc.
+  #
+  # Do NOT add product-specific customizations to this object. Create a new
+  # object, extend the object, and make your customizations in the new object.
+  #
+  # As this implementation is generic, it requires several functions
+  # to be overridden and custom state variables to be defined
+  ##
+  object shell_manager_base : sshlib::basic_shell_handler
+  {
+    ##
+    # Name of object to be used for debugging
+    ##
+    var my_objname = 'shell_manager_base::';
+
+    ##
+    # KB token to be used for storing data related to this manager,
+    # such as command prompts for each shell state.
+    # Extending objects should set this to a unique value by setting
+    # their own var e.g. my_obj_kb and then in their constructor:
+    # super.obj_kb = this.my_obj_kb
+    ##
+    var obj_kb = '/shell_manager_base/';
+
+    ##
+    # Default state names
+    ##
+    var ST_FRESH_SHELL           = 1001;
+    var ST_RUNNING_STATE_CHG_CMD = 1002;
+    var ST_ERROR                 = 1003;
+
+    ##
+    # Lookup array used for validating state and debugging
+    # To define additional valid states in extending object, add
+    # them to this array by referencing super.STATE_NAMES
+    ##
+    var STATE_NAMES = make_array(
+      ST_FRESH_SHELL,           "fresh shell",
+      ST_RUNNING_STATE_CHG_CMD, "running command to change state",
+      ST_ERROR,                 "error"
+    );
+
+    ##
+    # List of states that can be used to run commands
+    # States are defined in ssh_lib_shell_manager_util.inc
+    # Add states to this array by referencing super.CMD_STATES
+    ##
+    var CMD_STATES = [
+    #  ST_FIRST_STATE,
+    #  ST_SECOND_STATE
+    ];
+
+    ##
+    # State that shell is currently in
+    ##
+    var shell_state;
+
+    ##
+    # Default state for fresh shell
+    ##
+    var default_state;
+
+    ##
+    # Array of known command prompts, keyed by state
+    ##
+    var cmd_prompts = {};
+
+    ##
+    # Reason state is ST_ERROR
+    ##
+    var error;
+
+    ##
+    # Shell handler initialization caller
+    # @category SSH
+    ##
+    function basic_shell_manager()
+    {
+      # Set variables in parent object
+      super.objname = my_objname;
+      this.init();
+    }
+
+    ##
+    # Initializes settings to defaults or using an optional settings array
+    #
+    # @param [settings:array] Settings array (optional)
+    # @return NULL
+    # @category SSH
+    #
+    # @remark Override this function to add initialization of custom
+    # settings variables based on the settings array. Ensure the
+    # overriding function also calls this function:
+    # super.init(settings:_FCT_ANON_ARGS[0]);
+    #
+    # this.init() can be used by a caller to define custom values for
+    # object variables using a settings array.
+    #
+    # this.init() is also used by session.replace_shell() to copy
+    # settings from an errored shell to a fresh shell, so any settings
+    # that should be preserved from shell to shell should be stored in
+    # the settings array as they are set, and initialized from a passed
+    # settings array in this function.
+    ##
+    public function init(settings)
+    {
+      # Call basic shell handler init function, but remove cmd_prompt
+      # from settings in case last state was not the default state
+      settings.cmd_prompt = NULL;
+      super.init(settings:settings);
+
+      # Initialize settings and initialize shell state to fresh shell
+      this.settings = _FCT_ANON_ARGS[0];
+      if (this.shell_state != ST_FRESH_SHELL)
+        this.set_shell_state(ST_FRESH_SHELL);
+
+      super.initial_inactivity_period = _BASIC_MGR_INITIAL_INACTIVITY_TIMEOUT;
+
+
+      return TRUE;
+    }
+
+    ##
+    # Sets shell state
+    # @anonparam [string] Object var for shell state
+    # @return NULL
+    # @remark Override this function if other action needs to be taken
+    # on a state change. The new function should call:
+    # super.set_shell_state(_FCT_ANON_ARGS[0]);
+    ##
+    protected function set_shell_state()
+    {
+      var fn = objname + FUNCTION_NAME;
+      var state = _FCT_ANON_ARGS[0];
+      if (isnull(this.STATE_NAMES[state]))
+      {
+        # Don't call this.set_error(), it calls this function and could generate a loop
+        var msg = 'Not setting state to invalid state: ' + state;
+        this.error = msg;
+        dbg::detailed_log(lvl:1, src:fn, msg:msg);
+        state = ST_ERROR;
+        super.set_last_cmd_error(TRUE);
+      }
+      dbg::detailed_log(lvl:3, src:fn, msg:'Setting shell state to "' + STATE_NAMES[state] + '" (' + state + ')');
+      this.shell_state = state;
+    }
+
+    ##
+    # Sets state to ST_ERROR, logs error message, and sets this.error
+    # @anonparam [string] Error message
+    # @param [fn:string]  Function name
+    # @return NULL
+    # @category SSH
+    ##
+    protected function set_error(fn)
+    {
+      if (!fn) fn = this.objname + FUNCTION_NAME;
+      this.error = _FCT_ANON_ARGS[0];
+      dbg::detailed_log(lvl:1, src:fn, msg:'Setting error : ' + this.error);
+      this.set_shell_state(ST_ERROR);
+      super.set_last_cmd_error(TRUE);
+      return NULL;
+    }
+
+    ##
+    # Set a command prompt in the KB and cmd_prompts array
+    # @param [state:string]      Object var for shell state
+    # @param [cmd_prompt:string] Command prompt to set for state
+    # @return NULL
+    # @category SSH
+    ##
+    protected function set_state_cmd_prompt(state, cmd_prompt)
+    {
+      this.cmd_prompts[state] = cmd_prompt;
+      replace_kb_blob(name:get_cmd_prompt_kb(state), value:cmd_prompt);
+      return NULL;
+    }
+
+    ##
+    # Sets the default state locally and in the KB
+    # @anonparam [int] Object var for default state after fresh shell
+    # @return NULL
+    ##
+    protected function set_default_state()
+    {
+      this.default_state = _FCT_ANON_ARGS[0];
+      replace_kb_item(name:this.kb_id + this.obj_kb + 'default_state', value:this.default_state);
+    }
+
+    ##
+    # Check whether the channel is usable for shell commands. If not,
+    # call this.set_error() to set the error message, set the shell
+    # state to error, and set last_cmd_error
+    # @param [channel:channel object] Channel object to check
+    # @return TRUE if channel is usable, else FALSE
+    # @category SSH
+    ##
+    protected function channel_usable(&channel)
+    {
+      if (channel_usable_for_shell_command(channel:channel))
+        return TRUE;
+
+      this.set_error(fn:FUNCTION_NAME, 'Channel unusable for shell command.');
+      return FALSE;
+    }
+
+    ###
+    # Getter / lookup functions
+    ###
+
+    ##
+    # Get KB string for state cmd_prompt
+    # @anonparam [int] Global for shell state
+    # @return [string] KB key to check for that state's command prompt
+    ##
+    protected function get_cmd_prompt_kb()
+    {
+      if (isnull(_FCT_ANON_ARGS[0])) return NULL;
+      return this.kb_id + this.obj_kb + 'cmd_prompts/' + _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Initialize cmd_prompts from KB
+    # @return NULL
+    # @category SSH
+    ##
+    protected function reload_cmd_prompts_from_kb()
+    {
+      foreach var state (this.CMD_STATES)
+      {
+        this.cmd_prompts[state] = get_kb_blob(get_cmd_prompt_kb(state));
+      }
+      return NULL;
+    }
+
+    ##
+    # Get a command prompt from the KB, set in cmd_prompts array, and return
+    # @anonparam [string] Object var for shell state
+    # @return [string] Command prompt for state
+    # @category SSH
+    ##
+    protected function get_state_cmd_prompt()
+    {
+      if (this.cmd_prompts[_FCT_ANON_ARGS[0]])
+        return this.cmd_prompts[_FCT_ANON_ARGS[0]];
+      this.cmd_prompts[_FCT_ANON_ARGS[0]] = get_kb_blob(this.get_cmd_prompt_kb(_FCT_ANON_ARGS[0]));
+      return this.cmd_prompts[_FCT_ANON_ARGS[0]];
+    }
+
+    ##
+    # Returns the default state, locally or from the KB
+    # @return [int] Object var for default state after fresh shell
+    ##
+    protected function get_default_state()
+    {
+      if (!isnull(this.default_state)) return this.default_state;
+      this.default_state = get_kb_item(this.kb_id + this.obj_kb + 'default_state');
+      return this.default_state;
+    }
+
+
+    ###
+    # Functions for fingerprinting bad sets of settings
+    ###
+
+    ##
+    # Get settings fingerprint, without cmd_prompt as it can change
+    # based on shell state
+    # Can be used to mark a set of settings as bad
+    # @return [string] Hex string fingerprint for settings
+    ##
+    protected function settings_fingerprint()
+    {
+      # Use settings as fingerprint for escl parameters, but reset
+      # cmd_prompt as it can change based on shell state
+      var _settings = this.settings;
+      _settings.cmd_prompt = NULL;
+      return hexstr(MD5(serialize(_settings)));
+    }
+
+    ##
+    # Set in KB that these settings have failed
+    # @anonparam [string] Reason for failure (failed validation,
+    #                     shell change using settings failed, etc)
+    # @return NULL
+    ##
+    protected function set_settings_failure()
+    {
+      var err = _FCT_ANON_ARGS[0];
+      if (isnull(err)) err = 'Unknown error.';
+      dbg::detailed_log(lvl:1, src:objname + FUNCTION_NAME, msg:'Marking this set of manager settings as bad in the KB for the following reason: ' + err);
+      var tmp_bad_settings_kb =
+        'tmp' + this.obj_kb + 'bad_settings/' + this.settings_fingerprint();
+      replace_kb_item(name:tmp_bad_settings_kb, value:err);
+    }
+
+    ##
+    # Check to see if escalation has previously failed
+    # @return Previous failure message or NULL if no previous failure found
+    ##
+    protected function previous_settings_failure()
+    {
+      var tmp_bad_settings_kb =
+        'tmp' + this.obj_kb + 'bad_settings/' + this.settings_fingerprint();
+      return get_kb_item(tmp_bad_settings_kb);
+    }
+
+
+    ###
+    # Interactive functions
+    ###
+
+    ##
+    # Switches the shell from one state to another state
+    #
+    # @param channel channel for ssh session
+    # @param destination  The state to change to
+    # @param command The command to use to change the state
+    # @param callback The callback function to use (optional, default @basic_shell_handler_at_prompt3_or_timeout)
+    #
+    # @return TRUE if successful, FALSE otherwise
+    ##
+    public function change_shell_state(&channel, destination, command, callback)
+    {
+      var session = channel.session;
+      var msg = NULL;
+      var default_callback = FALSE;
+
+      if (this.shell_state == destination)
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Shell is already in state "' + this.STATE_NAMES[destination] + '".');
+        return TRUE;
+      }
+
+      if (this.shell_state == ST_ERROR)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Shell is in error state. Previous error: ' + this.error);
+        return FALSE;
+      }
+
+      if (isnull(command))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'No command provided.');
+        return FALSE;
+      }
+
+      if (!this.channel_usable(channel:channel)) return FALSE;
+
+      if (isnull(callback))
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Using default callback.');
+        default_callback = TRUE;
+        callback = @basic_shell_handler_at_prompt3_or_timeout;
+      }
+
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME,
+        msg:'Changing state from "' + this.STATE_NAMES[this.shell_state] + '" to "' + this.STATE_NAMES[destination] + '".');
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'command: ' + command);
+
+      # Null out and set the cmd prompt if known
+      var orig_cmd_prompt = this.cmd_prompt;
+      var orig_state = this.shell_state;
+      this.set_cmd_prompt(this.get_state_cmd_prompt(destination));
+      var check_len = 3;
+      if (this.cmd_prompt)
+      {
+        if (strlen(this.cmd_prompt) < 3) check_len = strlen(this.cmd_prompt);
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Expecting command prompt',
+          msg_details:{"Data":{"lvl":3, "value":this.cmd_prompt}});
+      }
+
+      # run command to change shell state
+      this.set_shell_state(ST_RUNNING_STATE_CHG_CMD);
+      channel.clear_data_buf();
+      channel.window_send_data(data:command + '\n');
+      this.set_timeout_check(this.initial_inactivity_period);
+      this.reset_buffer_update_time();
+      channel.session.sshrecv_until(
+        end_states     : make_list("SOC_CLOSED"),
+        check_callback : callback,
+        channel        : channel,
+        timeout        : this.recv_timeout);
+
+      # If using the default callback and did not time out, then the
+      # state was gained with the expected command prompt
+      if (default_callback && !this.timed_out)
+      {
+        this.set_shell_state(destination);
+      }
+      # Custom callbacks will change the state on their own; if they
+      # didn't, then the attempt to change state failed. If the
+      # original command prompt is known, send CTRL+C to try to get
+      # back to it and return shell to a usable state
+      else if (this.shell_state != destination)
+      {
+        session.set_cmd_error('Failed to obtain shell state "' + this.STATE_NAMES[destination] + '". ');
+        # Try to get back to source cmd_prompt
+        if (orig_cmd_prompt)
+        {
+          if (!this.channel_usable(channel:channel)) return FALSE;
+
+          dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Trying to get back to original command prompt.');
+          this.set_cmd_prompt(orig_cmd_prompt);
+          check_len = 3;
+          if (strlen(this.cmd_prompt) < 3) check_len = strlen(this.cmd_prompt);
+          dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Expecting command prompt: ' + this.cmd_prompt);
+          dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Getting command prompt');
+          # Send CTRL+C
+          channel.window_send_data(data:'\x03');
+          this.set_timeout_check(this.initial_inactivity_period);
+          this.reset_buffer_update_time();
+          channel.session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @basic_shell_handler_at_prompt2_or_timeout,
+            channel        : channel,
+            timeout        : this.recv_timeout);
+
+          # If we got back to the original command prompt, don't set
+          # last_cmd_error
+          if (!this.timed_out)
+          {
+            this.set_shell_state(orig_state);
+            return FALSE;
+          }
+
+          session.set_cmd_error('Timed out waiting for expected command prompt: ' + this.cmd_prompt);
+        }
+        this.set_last_cmd_error(TRUE);
+        return FALSE;
+      }
+      # Try to receive the command prompt if we haven't already
+      else if (
+        isnull(this.cmd_prompt) ||
+        !this.at_cmd_prompt(buf:channel.data_buf, check_len:check_len)
+      )
+      {
+        if (!this.channel_usable(channel:channel)) return FALSE;
+
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Getting command prompt');
+        this.set_timeout_check(this.initial_inactivity_period);
+        this.reset_buffer_update_time();
+        channel.session.sshrecv_until(
+          end_states     : make_list("SOC_CLOSED"),
+          check_callback : @basic_shell_handler_at_prompt2_or_timeout,
+          channel        : channel,
+          timeout        : this.recv_timeout);
+
+        if (this.cmd_prompt && this.timed_out)
+        {
+          session.set_cmd_error('Timed out waiting for expected command prompt: ' + this.cmd_prompt);
+          this.set_last_cmd_error(TRUE);
+          return FALSE;
+        }
+        if (!this.cmd_prompt)
+        {
+          var lines = split(channel.data_buf, sep:'\n', keep:FALSE);
+          this.set_cmd_prompt(lines[max_index(lines)-1]);
+          this.set_state_cmd_prompt(state:destination, cmd_prompt:this.cmd_prompt);
+
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Found command prompt: ' + this.cmd_prompt);
+        }
+      }
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Successfully obtained shell state "' + this.STATE_NAMES[destination] + '"');
+
+      this.set_timed_out(FALSE);
+      this.set_last_cmd_error(FALSE);
+      channel.clear_data_buf();
+
+      return TRUE;
+    }
+
+
+    ##
+    # Basic initialization using parameters passed to run_command()
+    #
+    # @param session SSH session in case channel needs to be replaced
+    #                If not passed and channel is closed, channel will
+    #                not have a reference to session for replacement
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return FALSE if an error was encountered, else TRUE
+    # @category SSH
+    ##
+    public function run_command_init(session, &channel, cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+      if (!session) session = channel.session;
+      super.obj_ch_id = '[channel ' + channel.local_channel + ']: ';
+
+      dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Checking shell conditions to ensure shell is ready to run a command.');
+
+      if (this.shell_state == ST_ERROR)
+      {
+        session.set_cmd_error(this.obj_ch_id + 'Shell is in error state. Previous error: ' + this.error);
+        return FALSE;
+      }
+
+      # Check channel and replace if necessary; replace_shell() will
+      # set applicable error if it fails
+      if (!channel_usable_for_shell_command(channel:channel))
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:this.obj_ch_id + 'Channel is unusable, attempting to replace shell.');
+        if (!session_replace_shell(session:session, channel:channel))
+          return FALSE;
+      }
+
+      # Set KB connection ID
+      if (session)
+        super.kb_id = SSH_LIB_KB_PREFIX + session.get_kb_connection_id();
+
+      # Initialize variables
+      super.set_timeouts(inactivity_timeout_min:inactivity_timeout_min,
+          cmd_timeout_min:cmd_timeout_min);
+
+      this.reload_cmd_prompts_from_kb();
+
+      # Handle a fresh shell, and set up default state if known
+      if (this.fresh_shell)
+      {
+        if (!super.handle_fresh_shell(channel:channel))
+          return FALSE;
+
+        this.get_default_state();
+        if (!isnull(this.default_state))
+        {
+          this.set_shell_state(this.default_state);
+          super.set_cmd_prompt(this.get_state_cmd_prompt(this.shell_state));
+        }
+      }
+      dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Shell is ready to run a command.');
+      return TRUE;
+    }
+  }
+}

@@ -1,0 +1,332 @@
+#TRUSTED 96f3146525355896f362ecabe0288a8e9304f2f4d49b3faee9886874174128a35fdac9df641edf8f90dd214902a3bcd6bb739223d976683ff98dbfdb88ba7b26fe98c729305a6743f5f28eb9f3fe904895d7e5b47c4305ee22029a9e9d11725794a5ada755e1cae487c551ab4966ff5f8c0f1afb54a321281c88104795b2e018e277a5e7211992a867590342a0e04e72f04852b89e75a4050a02376bcd599795cbf09e36d6be6137c016ce72d4126ab5a78524dd08bcf9a0b088cb8274e5ff1c401cb5acadbe007ba51f161b8fe949f276de1e4b43cc850dacda798d5a04a227104bd8923071cd0566e8d9f1b18f89159f07cb798d418496cc853fec94bfc9378e7bdfe8e4e24573a6784c61f6a943d63afce9ec8c95ddd4bf02f345984631888be2c71f0ff326f324268fa3f19072b63c74fc1e784a7698f3bc85b2424ef94a881d56bfff5ca81eead10a90af3784816a555a14d53fa5a78349c020f9a8a823ba9616c6ebd1ab809744982de9913882649de86c79953aa007d9750394616b07151c741631871ce5ec7c4b282dcf37b4d5376e84424b05fa22fc3b35e4c48c23a7aba94644a53f6f7342d5108f79ec5bdc9313a4ff61af69a14750c89f68ca66dd322b749178b823aa1bcc39760cad075872f88b78a38a6bb0961414333c14a9670d5a9716698ad95d8503721ea761daac285f77fc7b6bd48d00cd8a73bef898
+#TRUST-RSA-SHA256 810e976498ed8eb4264eb48cbcda1af245669396c4d5b0af403b432a4b20448b43f215a8691ac6fc766e3f2a72683f8436999b62bfe8419c0fa1a7e4913c421ce7f75bde334e5185e883e834cc6a406c0099fc7f39741d28d03ee1d84d031ac72c264789e3a80d26939a13b615360dcf263d94996b76d85f60cf9997fcb26e7a1b4d11da3af76ca1f1218f5700fab69aeef401ac6171d3b4e3aff07ee9250459784eaea16c543333ffdee967c1181ff2d4f750b0777225238fb9fc9341e88367dfcb8f8db15b806c96a7f67a66ad92d76dd52efa0ed9cc0f049edace11abe9539cbfe3593ad38c8452bb8fd5b81289df3c88898384c9de23fdac2c62f7645549127eaff8ec8c63bbd620cf0a76243c87c8f00fd6a60760a7fbe15a08814e0aaf9e34976b6e0d4476ca6b7b6e20dfff7df75a8b9cfe192787423cfd4fbe78e4d0d7e77ec0707c2bf9957b69597fe109e913c5b936ea2f11aa1ab49bcfe06644d6150fab137dadebc4e37c3a40c4e2641daa04c2fd778f4a797e7c966018441b5ebc4987f3d4d69041b53497bf83457dcf47247d713d00a3fdc62c183982895db483eb755b9505b4dbe1fc389d5160e61264a3bb286431ce82274cf84401d1da74cc3ea8e4ec1549c4ca97be91ade4c7967970c467e2177e39b77b9ea3fbd53e8146813d876aeca5eca401495fc694404b844715e92623bbe2a71877f39c470d6e
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+#
+# @NOGPL@
+#
+# ssh_get_info2.static
+# Revision: 1.5
+#
+
+# global key/value array callbacks can use to share information
+global_var host_info_key_val = make_array();
+
+##
+# Check if session.cmd_interrupted is TRUE and
+# add cmd to the global var.
+# Return true if command was interrupted due to timeout
+#
+# @category SSH
+##
+function check_cmd_interrupted_local_checks(session, command)
+{
+  if(!session.cmd_interrupted)
+    return FALSE;
+
+  cmd_interrupted_names_local_checks += ' - ' + command + '\n';
+  return TRUE;
+}
+
+function run_command(cmd, session, use_shell_handler, &channel, force_priv_escl,
+  cmd_timeout_min, inactivity_timeout_min)
+{
+  if(use_hostlevel)
+  {
+    return info_send_cmd(cmd:cmd);
+  }
+  else
+  {
+    if(cmd_timeout_min)
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Running command ' + cmd + ' with ' + cmd_timeout_min + '-seconds cmd_timeout.'
+      );
+    if(inactivity_timeout_min)
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Running command ' + cmd + ' with ' + inactivity_timeout_min + '-seconds inactivity_timeout.'
+      );
+
+    return session.run_command(
+      use_shell_handler: use_shell_handler,
+      channel:channel,
+      command:cmd,
+      force_priv_escl:force_priv_escl,
+      cmd_timeout_min:cmd_timeout_min,
+      inactivity_timeout_min:inactivity_timeout_min
+    );
+  }
+}
+
+function try_hostlevel(cmd_list)
+{
+  var cmd_set, res, tmp_cb;
+  foreach cmd_set(cmd_list)
+  {
+    tmp_cb = cmd_set['pre_check_fail_cb'];
+    if(tmp_cb()) continue;
+
+    res = info_send_cmd(cmd:cmd_set['test_cmd']);
+    if(res =~ cmd_set['test_cmd_regex'])
+    {
+      tmp_cb = cmd_set['cmd_success_cb'];
+      if(!isnull(tmp_cb))
+        tmp_cb(cmd_res:res);
+      return make_list(TRUE);
+    }
+    else
+    {
+      tmp_cb = cmd_set['cmd_fail_cb'];
+      if(!isnull(tmp_cb))
+        tmp_cb(cmd_res:res);
+    }
+  }
+  return make_list(FALSE, "unable to identify host.");
+}
+
+function try_local_login()
+{
+  if (islocalhost() && defined_func("fread") && defined_func("pread"))
+  {
+    info_t = INFO_LOCAL;
+    set_kb_item(name: 'HostLevelChecks/proto', value:'local');
+    report_xml_tag(tag:"local-checks-proto", value:"local");
+    return TRUE;
+  }
+  return FALSE;
+}
+
+#function try_rlogin()
+#{
+#  if(!get_kb_item("HostLevelChecks/try_rlogin")) return FALSE;
+
+#  var test_login = get_kb_item("Secret/ClearTextAuth/login");
+#  if(!strlen(test_login)) return FALSE;
+
+#  var pass    = get_kb_item("Secret/ClearTextAuth/pass");
+#  var port513 = get_kb_item("Services/rlogin");
+
+#  if (! port513) port513 = 513;
+
+#  sock_g = rlogin(port: port513, login: test_login, pass: pass);
+
+#  if (sock_g)
+#  {
+#    info_t = INFO_RLOGIN;
+#    set_kb_item(name: 'HostLevelChecks/proto', value: 'rlogin');
+#    set_kb_item(name:"HostLevelChecks/login", value:test_login);
+
+#    report_xml_tag(tag:"local-checks-proto", value:"rlogin");
+#    report_xml_tag(tag:"rlogin-login-used", value:test_login);
+
+#    port_g = port513;
+#    login = test_login;
+#    return TRUE;
+#  }
+
+#  lcx::log_issue(type:lcx::ISSUES_SVC, proto:lcx::PROTO_RLOGIN, msg:
+#    'It was not possible to log into the remote host via rlogin ' +
+#    '(invalid credentials).', port:port513);
+#  return FALSE;
+#}
+
+function try_rsh_login()
+{
+  if(!get_kb_item("HostLevelChecks/try_rsh")) return FALSE;
+
+  var test_login = get_kb_item("Secret/ClearTextAuth/login");
+  if(!strlen(test_login)) return FALSE;
+
+  var port514 = get_kb_item("Services/rsh");
+
+  if (!port514) port514 = 514;
+
+  var r = send_rsh(port: port514, cmd: 'id', login:test_login);
+
+  if ("uid=" >< r)
+  {
+    info_t = INFO_RSH;
+    set_kb_item(name: 'HostLevelChecks/proto', value:'rsh');
+    set_kb_item(name:"HostLevelChecks/login", value:test_login);
+    report_xml_tag(tag:"local-checks-proto", value:"rsh");
+    report_xml_tag(tag:"rsh-login-used", value:test_login);
+    port_g = port514;
+    login = test_login;
+    return TRUE;
+  }
+
+  lcx::log_issue(type:lcx::ISSUES_SVC, proto:lcx::PROTO_RSH, msg:
+    'It was not possible to log into the remote host via rsh ' +
+    '(invalid credentials).', port:port514);
+  return FALSE;
+}
+
+function try_rexec_login()
+{
+  var r;
+  if(!get_kb_item("HostLevelChecks/try_rexec")) return FALSE;
+
+  var test_login = get_kb_item("Secret/ClearTextAuth/login");
+  if(!strlen(test_login)) return FALSE;
+
+  var test_pass = get_kb_item("Secret/ClearTextAuth/pass");
+
+  var port512 = get_kb_item("Services/rexec");
+  if (!port512) port512 = 512;
+  r = send_rexec(port: port512, cmd: 'id', login:test_login, pass:test_pass);
+
+  if ("uid=" >< r)
+  {
+    info_t = INFO_REXEC;
+    set_kb_item(name: 'HostLevelChecks/proto', value: 'rexec');
+    set_kb_item(name:"HostLevelChecks/login", value:test_login);
+    report_xml_tag(tag:"local-checks-proto", value:"rexec");
+    report_xml_tag(tag:"rexec-login-used", value:test_login);
+    port_g = port512;
+    login = test_login;
+    pass = test_pass;
+    return TRUE;
+  }
+
+  lcx::log_issue(type:lcx::ISSUES_SVC, proto:lcx::PROTO_REXEC, msg:
+    'It was not possible to log into the remote host via rexec ' +
+    '(invalid credentials).', port:port512);
+  return FALSE;
+}
+
+function try_telnet_login()
+{
+  if(!get_kb_item("HostLevelChecks/try_telnet")) return FALSE;
+
+  var test_login  = get_kb_item("Secret/ClearTextAuth/login");
+  var test_pass   = get_kb_item("Secret/ClearTextAuth/pass");
+  if(!strlen(test_login) || !strlen(test_pass)) return FALSE;
+
+  var port23 = get_kb_item("Services/telnet");
+
+  if (! port23) port23 = 23;
+    sock_g = telnet_open_cnx(port: port23, login: test_login, pass: test_pass);
+  if (sock_g)
+  {
+    info_t = INFO_TELNET;
+    set_kb_item(name: 'HostLevelChecks/proto', value: 'telnet');
+    set_kb_item(name:"HostLevelChecks/login", value:test_login);
+    report_xml_tag(tag:"local-checks-proto", value:"telnet");
+    report_xml_tag(tag:"telnet-login-used", value:test_login);
+    port_g = port23;
+    login = test_login;
+    pass = test_pass;
+    return TRUE;
+  }
+
+  lcx::log_issue(type:lcx::ISSUES_SVC, proto:lcx::PROTO_TELNET, msg:
+    'It was not possible to log into the remote host via telnet ' +
+    '(invalid credentials).', port:port23);
+  return FALSE;
+}
+
+function timeofday_diff(start, end)
+{
+  var x,y;
+  start = split(start, sep:'.', keep:FALSE);
+  end = split(end, sep:'.', keep:FALSE);
+  x = int(end[0]) - int(start[0]);
+  y = int(end[1]) - int(start[1]);
+
+  if(y < 0)
+  {
+    y += 1000000;
+    x --;
+  }
+
+  return x + "." + y;
+}
+
+function check_for_alternate_data_sources()
+{
+  local_var timediff;
+  # VMware
+  # If we already collected patch info from the SOAP API,
+  # we don't need to do checking through SSH/etc. Mark localchecks and exit.
+  if (
+    get_kb_item("Host/VMware/esxcli_software_vibs") ||
+    get_kb_item("Host/VMware/esxupdate")
+  )
+  {
+    report = '\nLocal security checks have been enabled for this host through SOAP API\nchecks.';
+    # Remove any failure message from the SOAP checks
+    lcx::clear_issues(type:lcx::ISSUES_ERROR);
+    timediff = timeofday_diff(start:start_time, end:gettimeofday());
+    report += '\nRuntime : ' + timediff + ' seconds\n';
+    return TRUE;
+  }
+
+  # Handle Junos devices for which commands failed to run
+  if(get_kb_item("Host/OS/ratelimited_junos_error"))
+  {
+    report = '\nRemote host has been identified as a Juniper Junos device' +
+             '\nthrough the SSH rate limiting check.\n\n';
+    report += "However, some commands failed to run so local checks are not enabled." + '\n';
+    return TRUE;
+  }
+
+  if(get_kb_item("Host/OS/ratelimited_junos"))
+  {
+    report = '\nLocal security checks have been enabled for this Juniper Junos' +
+             '\ndevice through the SSH rate limiting check.\n';
+    return TRUE;
+  }
+
+  if(get_kb_item("Host/OS/ratelimited_JuniperSSR"))
+  {
+    if (get_kb_item('Host/JuniperSSR/error'))
+    {
+      report = '\nRemote host has been identified as a Juniper SSR device';
+      report += '\nthrough the SSH rate limiting check.\n\n';
+      report += 'However, some commands failed to run so OS Security Patch Assessment is NOT available.\n';
+      return TRUE;
+    }
+    report = '\nLocal security checks have been enabled for this Juniper SSR';
+    report += '\ndevice through the SSH rate limiting check.\n';
+    return TRUE;
+  }
+
+  if(get_kb_item("Host/OS/ratelimited_sonicwall"))
+  {
+    report = '\nRemote host has been identified as a SonicWall or other' +
+             '\nnetworking device that may be SSH connection limited.\n\n';
+    report += "Although local, credentialed checks for SonicOS are not available," + '\n';
+    report += "Nessus has managed to run commands in support of OS fingerprinting." + '\n\n';
+    return TRUE;
+  }
+
+  if(get_kb_item("Host/OS/ratelimited_omniswitch"))
+  {
+    report = '\nRemote host has been identified as an Alcatel-Lucent OmniSwitch ' +
+             '\nthat may be SSH connection limited.\n\n';
+    report += "Although local, credentialed checks for OmniSwitch are not available," + '\n';
+    report += "Nessus has managed to run commands in support of OS fingerprinting." + '\n\n';
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+function store_shell_info()
+{
+  var tmp;
+  if (!host_info_key_val['post_login_buffer'])
+  {
+    tmp = get_kb_blob(sshlib::SSH_LIB_KB_PREFIX +
+      host_info_key_val['kb_connection_id'] + '/post_login_buffer');
+    if (tmp) host_info_key_val['post_login_buffer'] = tmp;
+  }
+}

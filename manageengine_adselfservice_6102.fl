@@ -1,0 +1,18 @@
+test app is not detected on a given http port
+kb installed_sw/ManageEngine ADSelfService Plus=1
+get_http_port() returns 8888
+check output expects not detected on port 8888
+
+test vulnerable build
+kb installed_sw/ManageEngine ADSelfService Plus=1
+get_http_port() returns 8888
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/ProductVersion=6.1
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/version=6101
+check output expects Fixed version
+
+test fixed build
+kb installed_sw/ManageEngine ADSelfService Plus=1
+get_http_port() returns 8888
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/ProductVersion=6.1
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/version=6102
+check output expects not affected

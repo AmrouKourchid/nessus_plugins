@@ -1,0 +1,57 @@
+#TRUSTED 716ede655331d88dbb171bce0acf40158542faf23f42987cf6a19fb7cd01892f96901dd35c1492d8b360580321a1696ecf23a83c0e723f510b393c3537a8a4abce75a56047c7edb130428a86e849776a29efbf2ff83c09e7611d462128570fdab6147e99642b8fe33261d440ea19e72e1ab247b0fbb17075a271f752de08247235cc800ef2ca1cd4a6c82013314582c5f933b6d816e0eb76785e704c53c673be9f85d267952422a6f416331108d7dc350fb956a788886e41ce5a423ab334ae6426957ecf1c0a77f9cec6ddb9d8e4a8b920b42990e4cb143f669d496b41fb40e3b0b9779d89d2bcfb42f0de74edf43c4a938c236c8746c342b2398b57972fcee559ab6f616dd310eda996f04ce3ec307b2df151ffa10d1ed7b8e61fbab55f8393f3f6d9121fe726f79dc935056317749ed2e80d7d8ff7909cdce78f754c77f8bf63e2699cf6bf721cae4fb0f5775bacb78b5187747191bcba1ab770338ca8280c3a42305efcc41369934e7045572d7ceb9df71f7ea304c8417b2b3b122d3e8e15672d950eef2d6e7107b51baf321b5ad4ed1e34e8cf5176e07a24a6bf0b9f26a668edb050b38a97788f6f5ddd4c48b26288b118d98c1f706dff2b98c5ce972330f5974e778ec813be4e3930aac6fc0c0032cc1019ffba799a3affc6482504ac275f154196f6ebbd7f3d33b53a0fb51771ed6c57d432769d9e6890596127765d1f
+#TRUST-RSA-SHA256 71c9a0824cefed6053e77c778d5440563aa29344ccf3e871581b6a46f54d887976b799fa84bcef749b1be6842d1a008e3bc718796dd0644bfa97cd7fd04ecaf3e594639d6ec8c6dd11c69d4b31cc57e4d04ef1f9501035efb2842951379f96a7b97edd8895de5cc17263103fc3dc103b543e3726d100826cfa0ba2c5e658fe55f813c55948515e09231ccbb21ce8b2e602b6624dd8928372dea292bd6ffa286003fc72e705a3466266bf9e5adcf6be57fcf12072067397862cbbd187fb0cab31142569414b6ef70052c12e343bb5e46a941fc03278df88f35020989b2af713d63fd9adb3c01c90a13798675df662051c170ef00563058f3619a8c231f524b0773fcefc3b6cb319ff452cd06938b9aa04461ee2779bb025c4051f263c471d2e2c3dd74f704e0db42d9067a62223b759d6d5a074c070ae3c47427b0221224501d1cc0fbca2bcc526911e303ecf0ca031553b42090f15f6da0a567a43b63c830dd53377368ac454c4bdd75507d424101612e953cb085b0f32764b085de7055d003bb865c3e31cf014acdf6f319d859b8f40fedbc9ba7ec9f7a0c11d258742bdece51c8f0fbe290fb1985bdc76bea58a19b601f09194445ddcc7785a146ea5d51e0c565f29a9570a0e345d41f60cb48d4f275237da40399c0d1f81f04b7698f72ffb0cb546a8d1be11d2ae6bf7e16e01c1580642246eee96a4737f1150d01a84b9bf
+##
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+#
+# @NOGPL@
+#
+# structured_data_system_asset_info.static
+#
+# Revision: 1.3
+#
+##
+
+##
+# THIS FILE WAS AUTOMATICALLY GENERATED, DO NOT MODIFY BY HAND!
+# See https://github.eng.tenable.com/Research/structured-data-object-generator for documentation
+##
+
+object structured_data_system_asset_info : structured_data_base {
+  function structured_data_system_asset_info() : super({
+    fqdn: {
+      type: 'string',
+    },
+    manufacturer: {
+      type: 'string',
+    },
+    model: {
+      type: 'string',
+    },
+    name: {
+      type: 'string',
+    },
+    netBiosName: {
+      type: 'string',
+    },
+    systemType: {
+      type: 'string',
+    },
+    serialNumber: {
+      type: 'string',
+    },
+    tenableIdentifiers: {
+      type: 'object',
+      properties: {
+        tenableId: {
+          type: 'string',
+        }
+      }
+    }
+  }, 'system-asset-info'){}
+}
+

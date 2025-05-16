@@ -1,0 +1,415 @@
+#TRUSTED 8828f4e1a9e7b30a10a3ca6b8b0159797a5c4e456b7c28b25af8fd4d6ab74dfa9a44482f4cc22c3f02d2590ea826d3d76efed65a56e8dca5ad1cc05c8537faff5e554cdd428e58cd136d036a1d170623c66171c55555b5494c2c988224745719a3033decd2c9024b2497e320cdea457c1b063fffca0f85cfd0135c4aef86253319084ba00c65c9e7d254076fa22901da8db8deef02896a3dadb89a5d604e8c1e3e67476d9f0f1df468381d08c2ee0adc3702586ab52ef8c91ae212a07dfca9725460ab2816681ebe46ca4e61b3404db34a9e1b577c524421bc6aaf1efaa6a8bbd5026708e8f54091f6a21760d8dc6a8cd5d79b148e8127b6f57091b5b831fdd52fa57b4ee9fd80ab3b3b1db26dbcb52aa856ff3602917e55807ffb505a7426f3418fb83fd3e7d0e62068b774499e388a259737964c76139a9ad4c8abcfb3f7862fdb52c7a4e770c832d6dd0f12d812f934896e1d79ab8cff0a7bdd9aaf046cfe86017dfe692447c8a363b2e0155e612d04664f2510dd8dc8723a4cfae53823c31c67e761e324c33a929d0f06bcae386161bb605e4b432cca523d95002dbb0645b95381bd68d297296bf9122d1dc37919a7a1e321c2ceb6c85fea0ae6b575368612b4ed3dbf602dc38dfa20359eb88d3217acb132945ec8edfd79aacd5b803b88e0bb1e8fcaa40899b175abfe18890beee81bbd2e1d9a99b3a086fd875d1035a5
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.01
+
+global_var experimental_scripts, report_verbosity, debug_level, thorough_tests, report_paranoia, supplied_logins_only;
+global_var all_addr_private, all_addr_public, __gs_opt;
+
+experimental_scripts = 0;
+report_verbosity = 1;
+debug_level = 0;
+thorough_tests = 0;
+report_paranoia = 1;
+all_addr_private = 0;
+all_addr_public = 0;
+supplied_logins_only = 0;
+
+global_var SECURITY_HOLE    = 'Hole';
+global_var SECURITY_WARNING = 'Warning';
+global_var SECURITY_NOTE    = 'Note';
+
+if (  get_kb_item("global_settings/supplied_logins_only") ) 
+{
+ supplied_logins_only = 1;
+}
+
+__gs_opt = get_kb_item("global_settings/network_type");
+if (__gs_opt)
+{
+  if ("LAN" >< __gs_opt) all_addr_private = 1;
+  else if ("Internet" >< __gs_opt) all_addr_public = 1;
+}
+
+__gs_opt = get_kb_item("global_settings/report_verbosity");
+if (__gs_opt)
+{
+  if ("Normal" >< __gs_opt) report_verbosity = 1;
+  else if ("Quiet" >< __gs_opt) report_verbosity = 0;
+  else if ("Verbose" >< __gs_opt) report_verbosity = 2;
+}
+
+__gs_opt = get_kb_item("global_settings/report_paranoia");
+if (__gs_opt)
+{
+  if ("Avoid false alarms" >< __gs_opt) report_paranoia = 0;
+  else if ("Normal" >< __gs_opt) report_paranoia = 1;
+  else if ("Paranoid" >< __gs_opt) report_paranoia = 2;
+}
+
+__gs_opt = get_kb_item("global_settings/debug_level");
+debug_level = int(__gs_opt);
+if (debug_level < 0) debug_level = 0;
+
+__gs_opt = get_kb_item("global_settings/experimental_scripts");
+if ( __gs_opt )
+{
+   if ( "no" >< __gs_opt ) experimental_scripts = 0;
+   else if ("yes" >< __gs_opt) experimental_scripts = 1;
+}
+
+__gs_opt = get_kb_item("global_settings/thorough_tests");
+if ( __gs_opt )
+{
+ if ( "no" >< __gs_opt) thorough_tests = 0;
+ else if ("yes" >< __gs_opt) thorough_tests = 1;
+}
+
+##
+# Returns the Nessus product version
+#
+# @return The Nessus product version.
+# @remark Starting with Nessus 8.11 the NESSUS_VERSION engine variable
+#         got out of sync with the product version.  This function
+#         extracts the product version from a different source.
+##
+function nessus_version()
+{
+  var appenv;
+
+  #Start with the original engine variable for backward compatibility and
+  #to guarantee that we have a version to return.
+  var version = NESSUS_VERSION;
+
+  if(defined_func("nasl_environment"))
+    appenv = nasl_environment(flags: ENV_APP);
+
+  if(!isnull(appenv))
+  {
+    if(!isnull(appenv['product_version']))
+      version = appenv['product_version'];
+    else if(!isnull(appenv['version']))
+      version = appenv['version'];
+  }
+
+  return version;
+}
+
+# June 10, 2022 - gpsc Obsoleted by new debug.inc features
+# This was historically used by developers only
+# a0 to a9 parameters are useless. They were added to suppress a warning
+# with old NASL2 interpreters
+function debug_print(level, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+{
+ var dummy = _FCT_ANON_ARGS;
+ return NULL;
+}
+
+# Only use this function to print a fatal error, e.g. a violation of an API
+function err_print(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+{
+ local_var	msg, i, l;
+
+ msg = SCRIPT_NAME + '(' + get_host_ip() + '): ';
+ foreach i (_FCT_ANON_ARGS) { msg = msg + i; }
+ l = strlen(msg);
+ if (l == 0) return NULL;
+ if (msg[l-1] != '\n') msg += '\n';
+ display("ERR: ", msg);
+
+ return NULL;
+}
+
+##
+# Taken from http_misc_func.inc
+#
+# @param resp       Text from our response to include in the report
+# @param max_lines  Max number of lines to include of output. Default to 10
+##
+function beginning_of_response2(resp, max_lines)
+{
+  local_var     txt, i, line;
+
+  if (isnull(resp))
+    return err_print('beginning_of_response2: missing parameter resp.');
+
+  if (max_lines <= 0) max_lines = 10;
+  i = 0;
+  foreach line(split(resp, keep: 0))
+  {
+    line = chomp(line);
+    line = ereg_replace(string: line, pattern: '^[ \t]+', replace: '');
+    txt += line + '\n';
+    if (++ i  >= max_lines) return txt + '[...]\n';
+  }
+  return txt;
+}
+
+##
+# security_report will appear in Nessus 5
+#
+# @param port       port number of the web server
+# @param proto      sets the reporting protocol, defaults to tcp
+# @param severity   report severity (note, warning, hole)
+# @param extra      report text to display
+# @param cmd        Command executed.  Used in the report output.  If TRUE
+#                   use code/command execution report
+# @param file       File to use in report. If TRUE, use reporting for lfi/rfi
+# @param request    array list of request(s) used in report output
+# @param output     Output to use in report for file_read or cmd_exec
+#                   Is an optional param when generic is TRUE
+# @param line_limit Number of output lines to display in report. 10 by default
+# @param rep_extra  Any extra text to include in the report output (optional)
+# @param attach_type Attachment type used with security_report_with_attachments
+#                    defaults to 'text/plain' in none provided.
+# @param generic    Used for reporting of general SQLi / XSS vulns
+#                   When generic is TRUE, output can be optional
+# @param sqli       If TRUE, sets SQLInjection KB item
+# @param xss        If TRUE, sets XSS KB item
+# @param xsrf       If TRUE, sets XSRF KB item
+##
+function security_report_v4(port, proto, severity, extra, cmd, file, request, output, line_limit, rep_extra, attach_type, generic, sqli, xss, xsrf)
+{
+  local_var attach_level, snip, s, report, rep_footer, rep_header;
+  local_var num_req, attachments, i;
+
+  if (isnull(severity))
+    return err_print('security_report_v4: missing parameter severity.');
+  if (isnull(port))
+    return err_print('security_report_v4: missing parameter port.');
+
+  if ( (!isnull(cmd)) || (!isnull(file)) )
+  {
+    if (isnull(request))
+      return err_print('security_report_v4: missing parameter request.');
+    if (isnull(output))
+      return err_print('security_report_v4: missing parameter output.');
+  }
+
+  # if output contains /etc/passwd values ensure PII is redacted
+  if(!isnull(output)) output = data_protection::redact_etc_passwd(output:output);
+  if(!isnull(extra)) extra = data_protection::redact_etc_passwd(output:extra);
+  if(!isnull(rep_extra)) rep_extra = data_protection::redact_etc_passwd(output:rep_extra);
+
+  # if output contains uid values ensure PII is redacted
+  if(!isnull(output)) output = data_protection::sanitize_uid(output:output);
+  if(!isnull(extra)) extra = data_protection::sanitize_uid(output:extra);
+  if(!isnull(rep_extra)) rep_extra = data_protection::sanitize_uid(output:rep_extra);
+
+  # validate the protocol
+  if(isnull(proto) || !strlen(string(proto)))
+    proto = 'tcp';
+  else if(tolower(proto) !~ "^(tcp|udp|icmp|egp)$")
+    proto = 'tcp';
+  else
+    proto = tolower(proto);
+
+  # These are set unconditionally
+  if (xss)
+    replace_kb_item(name:"www/"+port+"/XSS", value:TRUE);
+  if (xsrf)
+    replace_kb_item(name:"www/"+port+"/XSRF", value:TRUE);
+  if (sqli)
+    replace_kb_item(name:"www/"+port+"/SQLInjection", value:TRUE);
+
+  attach_level = 2;  # Default value
+  if (severity == SECURITY_NOTE) attach_level = 0;
+  if (severity == SECURITY_WARNING) attach_level = 2;
+  if (severity == SECURITY_HOLE) attach_level = 3;
+
+  if (isnull(line_limit))
+    line_limit = 10;
+
+  if (isnull(attach_type))
+    attach_type = 'text/plain';
+
+  snip = crap(data:"-", length:30)+' snip '+ crap(data:"-", length:30);
+  rep_footer = crap(data:"-", length:66);
+
+  if (!isnull(cmd))
+  {
+    num_req = max_index(request);
+    if (num_req > 1) s = "s";
+    else s = "";
+
+    report =
+      '\nNessus was able to execute the command "' + cmd + '" using the' +
+      '\nfollowing request' + s + ' :' +
+      '\n' + 
+      '\n';
+
+    for (i=0; i < (num_req); i++)
+    {
+      if (num_req > 1)
+      {
+        rep_header = crap(data:"-", length:30)+' Request #' + (i + 1) +
+        crap(data:"-", length:30) + '\n';
+      }
+      else rep_header = '';
+      report += rep_header + request[i] + '\n';
+    }
+
+    if (rep_extra)
+      report += '\n' + rep_extra + '\n';
+
+    report +=
+      '\n\n' + 'This produced the following truncated output (limited to ' +
+      line_limit + ' lines) :' +
+      '\n' + snip +
+      '\n' + beginning_of_response2(resp:output, max_lines:line_limit) +
+      '\n' + snip +
+      '\n';
+
+    report = data_protection::sanitize_user_paths(report_text: report);
+
+    if (severity == SECURITY_HOLE)
+      security_hole(port:port, proto:proto, extra:report);
+    else if (severity == SECURITY_WARNING)
+      security_warning(port:port, proto:proto, extra:report);
+    else
+      security_note(port:port, proto:proto, extra:report);
+  }
+
+  else if (!isnull(file))
+  {
+    output = data_protection::sanitize_user_paths(report_text: output);
+    num_req = max_index(request);
+    if (num_req > 1) s = "s";
+    else s = "";
+
+    report =
+      '\nNessus was able to exploit the issue to retrieve the contents of ' +
+      '\n' + "'" + file + "'" + ' using the following request' + s + ' :' +
+      '\n' +
+      '\n';
+
+    for (i=0; i < (num_req); i++)
+    {
+      if (num_req > 1)
+      {
+        rep_header = crap(data:"-", length:30)+' Request #' + (i + 1) +
+        crap(data:"-", length:30) + '\n';
+      }
+      else rep_header = '';
+      report += rep_header + request[i] + '\n';
+    }
+
+    if (rep_extra)
+      report += '\n' + rep_extra + '\n';
+
+    if (
+      !isnull(get_preference("sc_version")) &&
+      !get_kb_item("global_settings/enable_plugin_debugging")
+    )
+    {
+      report +=
+        '\n' + 'This produced the following truncated output (limited to ' +
+        line_limit + ' lines) :' +
+        '\n' + snip +
+        '\n' + beginning_of_response2(resp:output, max_lines:line_limit) +
+        '\n' + snip +
+        '\n';
+
+      if (severity == SECURITY_HOLE)
+        security_hole(port:port, proto:proto, extra:report);
+      else if (severity == SECURITY_WARNING)
+        security_warning(port:port, proto:proto, extra:report);
+      else
+        security_note(port:port, proto:proto, extra:report);
+    }
+    else
+    {
+      # Sanitize file names
+      if ("/" >< file) file = ereg_replace(
+        pattern:"^.+/([^/]+)$", replace:"\1", string:file);
+      if ("\" >< file) file = ereg_replace(
+        pattern:"^.+\\([^\\]+)$", replace:"\1", string:file);
+
+      report +=
+        '\n' + 'Attached is a copy of the response' + '\n';
+      attachments = make_list();
+      attachments[0] = make_array();
+      attachments[0]["type"] = attach_type;
+      attachments[0]["name"] = file;
+      attachments[0]["value"] = output;
+      security_report_with_attachments(
+        port  : port,
+        level : attach_level,
+        extra : report,
+        attachments : attachments
+      );
+    }
+  }
+
+  else if (generic)
+  {
+    num_req = max_index(request);
+    if (num_req > 1) s = "s";
+    else s = "";
+
+    report =
+      '\nNessus was able to exploit the issue using the following request'
+      + s + ' :\n\n';
+
+    for (i=0; i < (num_req); i++)
+    {
+      if (num_req > 1)
+      {
+        rep_header = crap(data:"-", length:30)+' Request #' + (i + 1) +
+        crap(data:"-", length:30) + '\n';
+      }
+      else rep_header = '';
+      report += rep_header + request[i] + '\n';
+    }
+
+    if (rep_extra)
+      report += '\n' + rep_extra + '\n';
+
+    # Allow output to be optional for Generic cases.
+    if (!isnull(output))
+    {
+      report +=
+        '\n\n' + 'This produced the following truncated output (limited to ' +
+        line_limit + ' lines) :' +
+        '\n' + snip +
+        '\n' + beginning_of_response2(resp:output, max_lines:line_limit) +
+        '\n' + snip +
+        '\n';
+    }
+
+    report = data_protection::sanitize_user_paths(report_text: report);
+
+    if (severity == SECURITY_HOLE)
+      security_hole(port:port, proto:proto, extra:report);
+    else if (severity == SECURITY_WARNING)
+      security_warning(port:port, proto:proto, extra:report);
+    else
+      security_note(port:port, proto:proto, extra:report);
+  }
+
+  else if (report_verbosity < 1 || isnull(extra))
+  {
+    if (severity == SECURITY_HOLE)
+      security_hole(port:port, proto:proto);
+    else if (severity == SECURITY_WARNING)
+      security_warning(port:port, proto:proto);
+    else
+      security_note(port:port, proto:proto);
+  }
+  else
+  {
+    extra = data_protection::sanitize_user_paths(report_text: extra);
+    if (severity == SECURITY_HOLE)
+      security_hole(port:port, proto:proto, extra:extra);
+    else if (severity == SECURITY_WARNING)
+      security_warning(port:port, proto:proto, extra:extra);
+    else
+      security_note(port:port, proto:proto, extra:extra);
+  }
+}
+
+global_var GLOBAL_SETTINGS_INC = 1;

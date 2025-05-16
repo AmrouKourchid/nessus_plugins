@@ -1,0 +1,195 @@
+#TRUSTED 7a664f4dcb4970b55e7ae84ccbfcd812c72518acb97618a0b23bf42b889855b35218848c4cfceb43fa6ae5b14f0dcced99bd78d3c977941c243a64120db5bff56bec597dc24eb7f8240adf1bc7aebcd084fb4507e6f5a926d0dcf306d840d931d875dbf22c804de731e2d5a510e9e15d673470609a16968ab666f6b0feca3bc6e255dcfb62ef1cdd5077c8eac9f6fa3b6ff0c0e139b2ebb6f82b7cc7036248e2acff87e881a1f7e156b651235821cf8a149c80998866c0e7159b8f87373718c336e08338388ebdcd1c89260bd80c90bf8d37b240a6143a811c6315c0545200cd418c4326080e0a7177613eebd9500e70c9be1aa92f5d583e01af7ac3605f54c61c67da8e1d7043420d99a452e03facee28b1b186b4fc51cddb644a9027fe24fc0de4db97ba3ebe1f770e6ff4a632c6deac00f86d54fa8420a5fd2d6d38ceee8f65509e7d450414015defe743ef0c19d65ddb84e69beb41e600a38a06a903fd328c322eeeb6089e94cb00d019cc4693210713d2371ce0c25a50da170914f0e43fa439d498faf2179c71db275025a7b000fefa98c0ad11a9e64f49ab05a3142a21d3829ac5f74423703f80e0fabb8716501d2266d7f09494ee6d48e4d40c30dae305d214b09b57fefc82479cd5ef21675eb311b4e28840916c59b3c18bdcc5ece9f5c8d161470e2e445259eeb6b744fed2d368461dddd9a696d1cb091e13996855
+#TRUST-RSA-SHA256 5d7e5b6e7d48a7c88288ba487f11f90542fcf9e67b2786c68a43d4a4ccfb6a1776870b88de0b9973d90c30d6b8b2b93015d3a3e0d4fec2089255ad4a3b492f186c2a77fb9ec960cd5bf5f3d9464c27eea00795f738d79b11855b4f4c78de338748495e85550a6835841505166f7d49331a81e5d888fcc8bb4b3ff2e2281bebb649f4d605a10aec25f72b83c6fe0711c2849b91ae7e55ed5203e26a87129250016580296701f5ccd117c5d3341135bf72a3ebf0b70de9fe1c661ab4eb106c0a222cede0bca1c7915ac0f82c7969e1f154f3eb5d5a1196e2ca68be4892280aaec259edaa5fe6f009f0e0dfb86245e5ec33c6f9b7c5f079f6bd99875c152ed1c2204e88430f4beca467654de056e68c02005f613e930620c940ba2e79d7fd9d0966c7f4986395a6c7e513dac974eca10b5cd4af3e7eb522a9b66a95ed848f5a4083f8b2bc3a5f5b381f6525935f9f8cccf7e4c6eef8792abd95bc5a1e361a31decc3b83992cacf974b6b58ed44a1559d17b7eeb4ce27c7965e35592b33e27c701e2e4abab61908c8c1aa67193fbf0e801fc44222160a5a61fc93cc40141ca4068cd48da83728d6058332b476611a0a90ff70cc71a5ecd5984c70aeeb9dc1d07b560c6b9fc1fa0b367d35b20a983c4b6cb43a9e0200048ccadd44db390d648f73542e6a6c109d93355dc66787685d1c7f31f5b1fa72f864ddb05c5bca9f77bab9d02
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.4
+
+##
+# Function for running individual necessary commands based on successful Kylin Desktop
+#
+# @param   session              session object associated with connection
+# @param   use_shell_handler    shell handler information for commands to be run
+# @param   channel              address of channel object associated with connection
+# @param   cmd_res              string value of result of distribution check
+# @return  TRUE
+##
+function handle_kylinos_desktop(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var kylin_osrelease, kylin_release_project, kylin_releaseid, dpkg_buf, dpkg_command;
+  local_var uname, uname_check, interrupted_errors, dpkg_command_display;
+
+  kylin_releaseid = "";
+  replace_kb_item(name:"Host/etc/kylin-build",value:cmd_res);
+  # cmd_res:
+  # Kylin-Desktop V10-SP1-hwe\nBuild 20210820\n
+  # Kylin has suites or editions of v10sp1 (0820-2, hwe, kv, la64, pv, sw64)
+  # http://archive.kylinos.cn/kylin/KYLIN-ALL/dists/
+
+  kylin_release_project = pregmatch(pattern:"^Kylin-Desktop V(\d+)(?:-SP(\d+))?", string:cmd_res, icase:TRUE);
+
+  if ( !kylin_release_project )
+  {
+      failure_kb_msg = "KylinOS type or version does not match known patterns";
+      failure_kb_type = lcx::ISSUES_INFO;
+      return FALSE;
+  }
+  replace_kb_item(name:"Host/KylinOS", value:TRUE);
+  replace_kb_item(name:"Host/KylinOS/type", value: "desktop");
+
+  if ( !empty_or_null(kylin_release_project) && !empty_or_null(kylin_release_project[1]))
+  {
+      replace_kb_item(name:"Host/KylinOS/release", value:kylin_release_project[1]);
+      kylin_releaseid += 'V'+kylin_release_project[1];
+      if (!empty_or_null(kylin_release_project[2]))
+      {
+        replace_kb_item(name:"Host/KylinOS/sp", value:kylin_release_project[2]);
+        kylin_releaseid += 'SP'+kylin_release_project[2];
+      }
+  }
+  report += '\nThe remote Kylin Desktop system is :\n' + kylin_releaseid;
+  replace_kb_item(name:"Host/KylinOS/releaseidentifier",value:"KylinDesktop"+kylin_releaseid);
+
+  # Check kernel type, example "Linux log104 3.2.0-133-generic #179-Ubuntu etc."
+  # Store the kernel type if possible, example "generic"
+  uname = get_kb_item('Host/uname');
+  if (uname)
+  {
+    uname_check = pregmatch(pattern:"\d+(?:\.\d+)+-\d+-([\-0-9a-zA-Z]+)", string:uname);
+    if (!isnull(uname_check) && !isnull(uname_check[1]) && strlen(uname_check[1]))
+    {
+      replace_kb_item(name: "Host/KylinOS/kernel-type", value: uname_check[1]);
+    }
+  }
+
+  # Gather dpkg info
+  dpkg_command = 'dpkg-query -W -f \'${db:Status-Abbrev}  ${Package}  ${Version}  ${architecture}  ${binary:summary}\n\'';
+  dpkg_buf = run_command(
+      cmd:dpkg_command,
+      session:session,
+      use_shell_handler:use_shell_handler,
+      channel:channel);
+  dpkg_command_display = "dpkg-query -W -f '${db:Status-Abbrev}  ${Package}  ${Version}  ${architecture}  ${binary:summary}\n'";
+
+  # Test for proper headers, usually "ii "
+  if ( !empty_or_null(dpkg_buf) && (dpkg_buf !~ "^[u,i,r,p,h][n,i,c,u,f,h,W,t](R| )") )
+  {
+    failure_kb_msg = "'dpkg-query' produced unexpected results";
+  }
+
+  if (check_cmd_interrupted_local_checks(session:session, command:dpkg_command_display))
+    interrupted_errors++;
+
+  if (dpkg_buf && !interrupted_errors && empty_or_null(failure_kb_msg))
+  {
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_kylin_os.static', value: 90);
+    report += '\nOS Security Patch Assessment is available for this host.';
+    replace_kb_item(name:"Host/KylinOS/dpkg-l", value:dpkg_buf);
+    return TRUE;
+  }
+
+  var err_msg;
+  if (session.cmd_error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+  }
+
+  if (!dpkg_buf || !empty_or_null(failure_kb_msg))
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because the command \'dpkg
+-query\' failed to produce any results for some reason.';
+    if (empty_or_null(failure_kb_msg)) failure_kb_msg = "'dpkg-query' did not return any results";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  if (interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because\n' +
+              'the following commands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing OS Security Patch Assessment:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  return TRUE;
+}
+
+##
+# Function for running individual necessary commands based on successful KylinOS Advanced Server
+#
+# @param   session              session object associated with connection
+# @param   use_shell_handler    shell handler information for commands to be run
+# @param   channel              address of channel object associated with connection
+# @param   cmd_res              string value of result of distribution check
+# @return  TRUE
+##
+function handle_kylinos_as(session, use_shell_handler, &channel, cmd_res)
+{
+  var kylin_releaseid, kylin_match;
+  var uname, uname_check;
+
+  kylin_releaseid = "";
+  #Kylin Linux Advanced Server
+  #release V10 (SP2) /(Sword)-x86_64-Build09/20210524
+  replace_kb_item(name:"Host/etc/productinfo", value:cmd_res);
+
+  kylin_match = pregmatch(pattern:"^Kylin Linux (?:Advanced )?Server\s*release V([0-9]+)(?: \(SP([0-9]+)\))?",
+                          string:cmd_res,
+                          icase:TRUE);
+
+  if ( !kylin_match )
+  {
+      failure_kb_msg = "KylinOS type or version does not match known patterns";
+      failure_kb_type = lcx::ISSUES_INFO;
+      return FALSE;
+  }
+  replace_kb_item(name:"Host/KylinOS", value:TRUE);
+  replace_kb_item(name:"Host/KylinOS/type", value: "server");
+
+  if ( !empty_or_null(kylin_match) && !empty_or_null(kylin_match[1]))
+  {
+    replace_kb_item(name:"Host/KylinOS/release", value:kylin_match[1]);
+    kylin_releaseid += 'V'+kylin_match[1];
+
+    if (!empty_or_null(kylin_match[2]))
+    {
+      replace_kb_item(name:"Host/KylinOS/sp", value:kylin_match[2]);
+      kylin_releaseid += 'SP'+kylin_match[2];
+    }
+  }
+  report += '\nThe remote Kylin Server system is :\n' + kylin_releaseid;
+  replace_kb_item(name:"Host/KylinOS/releaseidentifier",value:"KylinServer"+kylin_releaseid);
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                internal_label:"KylinOS");
+
+  var cpu = host_info_key_val['cpu'];
+
+  if (rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_kylin_os.static', value: 189);
+    return TRUE;
+  }
+
+  return TRUE;
+}
+

@@ -1,0 +1,246 @@
+#TRUSTED 0d14d6a07a312489e4124efedb168af80b8703b7eff57ce02563748b4fc448c14f3168ff6644efb1b74b8dc35eb6ded0f2d8f19efe72426f78e5caea99e89d71d86e44381fbeac0ddfd319974099a82ad854bea7e604daf70ffc6771835523e792c91f2e79f3f253210bb88c6770e1f4e7803e8570cf2111e829afa27b1f5a50e1c46ddde34ec89695e92556503db3259f582abd3f4d856fda5255bd2fa6a6ed02df10e2a188922c40985b0cb48de89dd6dcf0eac9f4c5de12009b23bfa432849e51bafefd1c080a0184312a80ac468bd327ac2e5fc4f022125a497758ad0364557ad0e902e9c8b1a09f18e39cef3922e3cc31544b478b76e4b6fdfcfee507b3469e43a7f6f62bbfdec31babc984713574ba08cfc83881f55c3e3dc052f0ab4e38fd51d8d2de6090c931742529b2740e31fb0eab02df2c3afe87ecdada25eb002c4d632629a41a0b056f64263223ee33410e68bcd71adfedb93acb338c6be47eea3661690859c5d563880becd5a944283a1bebde9ec5778f696a5fd5e2d0e6b4e603b185084f1555d473a200484e887177e0fc55abff4e24d54e25c8b3d0d11dc83f0c0b8ed99038b8e11e8e943386fec09467f03874c8a4985c035466adfd2c01599faadab906a390131dbeb3c03922b6b355bccc53c8dce2cbbe66e84f9251e1bdd58af66bb5758dad48ffa521c3b276d06afa3e38d32fd7b009a1c8a538a8
+
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.3
+#
+###
+
+namespace sshlib
+{
+  ### RECV_UNTIL CALLBACKS ###
+
+  ##
+  # callback function that checks for startup message, command prompt, or timeout
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if timeout reached
+  # @category SSH
+  ##
+  function citrix_adm_cb_at_prompt3_or_timeout(&session, &channel)
+  {
+    var sh = channel.shell_handler;
+    if(!sh) return channel_closed_return_true(channel:channel);
+    return sh.cb_at_prompt3_or_timeout(channel:channel);
+  }
+
+  ##
+  # Shell handler for Citrix ADM based on the basic shell handler
+  #
+  # @remark ADM needs a custom shell handler because it contains
+  # an inital shell (mascli) and an elevated shell. ADM times out
+  # and shuts down after a minute of inactivity
+  ##
+  object citrix_adm_shell_handler : sshlib::basic_shell_handler
+  {
+    var objname = 'citrix_adm_shell_handler::';
+    var obj_kb  = '/citrix_adm_shell_handler';
+
+    var initial_prompt = '> ';
+    var welcome_banner = 'Welcome to the Platform Command Line Interface';
+
+    var found_startup_msg;
+    var found_banner;
+
+    ##
+    # Set up timeouts for different stages of handling a fresh shell
+    # Timeout types for each stage:
+    #   inactivity : Maximum time to receive during inactivity
+    #   hard_limit : Maximum time to receive regardless of activity
+    #   recv       : Maximum time per recv() call (time between callback checks)
+    var timeouts = {inactivity:60, hard_limit:NULL,  recv:10};
+
+    ##
+    # Constructor
+    ##
+    function citrix_adm_shell_handler()
+    {
+      super.set_objname(this.objname);
+    }
+
+    ##
+    # Check for startup message, command prompt, or timeout
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE
+    # @category SSH
+    ##
+    public function cb_at_prompt3_or_timeout(&channel)
+    {
+      if(this.at_cmd_prompt(buf:channel.data_buf, check_len:3)) return TRUE;
+      return this.check_inactivity_timeout(channel:channel);
+    }
+
+    ##
+    # Handle a fresh shell, getting the post-login buffer and command
+    # prompt and setting in KB if needed
+    #
+    # @param [session:session object] Session object
+    # @param [channel:channel object] Channel object with fresh shell
+    # @return TRUE if successful, else FALSE
+    # @category SSH
+    ##
+    public function handle_fresh_citrix_adm_shell(&session, &channel)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # run_command() should have already validated this, but just in case
+      if (!session) return NULL;
+
+      dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Getting prompt on fresh shell.');
+
+      # Check to see if command prompt has been cached from previous
+      # login and is usable for initial command prompt detection
+      # rather than waiting for timeout
+      var _cmd_prompt = get_kb_blob(this.kb_id + this.obj_kb + '/cmd_prompt');
+      var _post_login_buffer = get_kb_blob(this.kb_id + this.obj_kb + '/post_login_buffer');
+
+      var check_prompt = FALSE;
+      if(strlen(_cmd_prompt) >= 1)
+      {
+        # Remove first found instance of prompt from previous post
+        # login buffer
+        var sub_prompt = substr(_cmd_prompt, strlen(_cmd_prompt) - 3, strlen(_cmd_prompt) - 1);
+        _post_login_buffer -= sub_prompt;
+
+        # If we don't find it again (e.g. in MOTD), it's probably ok
+        # to look for last characters of prompt to recognize prompt
+        if(sub_prompt >!< _post_login_buffer)
+          check_prompt = TRUE;
+      }
+
+      if (check_prompt) super.set_cmd_prompt(_cmd_prompt);
+
+      # Receive command prompt, if not already received
+      if (!this.found_cmd_prompt)
+      {
+        channel.window_send_data(data:'shell\n');
+        super.set_timeout_check(timeouts.inactivity);
+        super.reset_buffer_update_time();
+        channel.set_shell_handler(this);
+        if (check_prompt)
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Using command prompt from previous login to find cmd prompt.');
+          session.sshrecv_until(
+            end_states     : make_list("SOC_CLOSED"),
+            check_callback : @sshlib::basic_shell_handler_at_prompt3_or_timeout,
+            channel        : channel,
+            cmd_timeout    : timeouts.recv,
+            timeout        : timeouts.recv
+          );
+        }
+        else
+        {
+          dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id + 'Waiting for inactivity period to find command prompt.');
+          session.sshrecv_until(
+            end_states     : make_list('SOC_CLOSED'),
+            check_callback : @sshlib::basic_shell_handler_on_channel_buffer_inactivity,
+            channel        : channel,
+            cmd_timeout    : timeouts.recv,
+            timeout        : timeouts.recv
+          );
+        }
+      }
+
+      # Set post-login buffer
+      this.post_login_buffer = channel.data_buf;
+
+      if (isnull(get_kb_item(this.kb_id + this.obj_kb + '/post_login_buffer')))
+        set_kb_blob(name:this.kb_id + this.obj_kb + '/post_login_buffer', value:this.post_login_buffer);
+      # Replace the standard blob also, since this one is more accurate
+      replace_kb_blob(name:this.kb_id + '/post_login_buffer', value:this.post_login_buffer);
+
+      channel.clear_data_buf();
+      super.set_fresh_shell(FALSE);
+
+      # Parse and set command prompt
+      var lines = split(this.post_login_buffer, sep:'\n', keep:FALSE);
+      super.set_cmd_prompt(lines[max_index(lines)-1]);
+
+      if (isnull(get_kb_item(this.kb_id + this.obj_kb + '/cmd_prompt')))
+        set_kb_blob(name:this.kb_id + this.obj_kb + '/cmd_prompt', value:this.cmd_prompt);
+
+      # Replace the standard blob also, since this one is more accurate
+      replace_kb_blob(name:this.kb_id + '/cmd_prompt', value:this.cmd_prompt);
+
+      dbg::detailed_log(lvl:1, src:fn, msg:this.obj_ch_id + 'Detected command prompt  "' + this.cmd_prompt + '".');
+
+      if(strlen(this.cmd_prompt) == 0)
+      {
+        session.set_cmd_error(this.obj_ch_id +
+          'Unable to detect command prompt on shell.');
+        super.set_last_cmd_error(TRUE);
+        return FALSE;
+      }
+
+      super.set_timed_out(FALSE);
+      return TRUE;
+    }
+
+    ##
+    # run given command
+    #
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl, cmd_timeout_min, inactivity_timeout_min)
+    {
+
+      var fn = objname + FUNCTION_NAME;
+      super.set_obj_ch_id('[channel ' + channel.local_channel + ']: ');
+
+      # Check channel state
+      if (!channel.session || channel.state == CHANNEL_STATE_CLOSED)
+      {
+        this.last_cmd_error = TRUE;
+        return channel_closed_return_null(fn:fn, channel:channel);
+      }
+      var session = channel.session;
+
+      # Check shell state
+      if (this.last_cmd_error)
+      {
+        return session.set_error(this.obj_ch_id +
+          'ERROR - shell is in unknown state from last interaction, ' +
+          'no additional commands via this shell will be executed.');
+      }
+
+      # Initialize variables
+      super.set_kb_id(SSH_LIB_KB_PREFIX + session.get_kb_connection_id());
+
+      # Clear any errors from previous commands
+      session.clear_cmd_error();
+
+      # Get command prompt
+      if(this.fresh_shell && !this.handle_fresh_citrix_adm_shell(session:session, channel:channel))
+        return NULL;
+
+      return super.run_command(
+                     channel                : channel,
+                     command                : command,
+                     force_priv_escl        : force_priv_escl,
+                     cmd_timeout_min        : timeouts.recv,
+                     inactivity_timeout_min : timeouts.inactivity
+                   );
+    }
+  }
+}

@@ -1,0 +1,524 @@
+#TRUSTED 49a1247520ef56771ac1cb7e96d8a039baa076fd0d72c60cad03d02fdef975907d942e1e67e7179c7a8002a99dd1451a81172177ab05d3d3e2f10b54d5aa573fcfcffd8141ab8765c7caf268d9f47407b8148279d293dd02a5ad98909717f21d3daa797a1268ac7afe87936963d068152f66c120a0c635cfef98dbdca82426be93f8f9a355e2861bad4545b6c11a0e48ca463b9c1abe0e8acc352d2f5cf86ce789728d55ef64c923a7527e4c501a4a3de83a3a9faab7da0c59b9faa281b892dfd31ccc8c072a9c0fdf0542ae19f20d81a8073897b4798ffbf7870ff29034a5a0fe545c5d4631804d7c4794397653f39ba3d544807b93ed4c19260ff4a62d19c8b8953073dff3fd889f2aec94aae2d018669a3f7578b4c001f7a9f98fe329d691055c7ae8c892a5cec068c995ce27f7e67778455bc4d47c56ffa92c276f2888ec039b64948eb046c666eef0cee89c7a28f6928d4e8caed52b3ac96cf8b971c8e882fdc6477eaf5479bd5a5282b6245313d93713e03d3cff961f163499e468b8e754e9663091ec9c0a75d965ca732b7bc18d049e82cf9ac5720ff12c0b8eaf0191e25e4b26f9c1cfded804621654900d552a9f48c40c4114f4d8918c8d008e3f5d5a2ab9ccbed9fb2f6b13e16ca3ba29d7a191ba95d7a22cd18398943cc461f65c47a0758aed42af7eb13419ff2d576587b27b23bca8824c053967de0ea1c4d666
+#TRUST-RSA-SHA256 651dcf3669050cd89951587df759c27ee335dfaadd1b7231c2a9955f44cde92d2836e960b1247bd284d10d81c084b5dbe18dde63392472319c3169f3cf83d69186c47d3e07e2bd5cbec0bff2de1d1b93f8ba90a56c885f4d2b0174dcc9a51ebf851dc5cbe6e3b56c957f64dc76fbd94ccc279d409f30fa9d92848f0f56e7cd7314a71535b840ab61daa552e09d1ce2cd26ae2b4b0b45a05cda7a1f98e5701c74a86523b0e897338871cf91a69b4c937076315646bb78a0de3b6770c7ca2ae68c5d0c1d32c7192e475e708d3ad5d2f6eb43bc85e570eef97515a3bb843bbb15a57b5c2533db876b0dfd71b4a2d22f19a2e62f9e34816d10709d8c5688fb53f0787b1637cd6591869334c8003f3780386b54c830792c5eaf2b60a9c75d65106141c2345fe54de9a7228a53cb4fac78d49a6feeaed6c67241591230969370db75f7e42de5bde8e904b13033944aa63746cd0b0fce9cfa2d7750b1ebdcb98a43ecd58b82a677b2805d7550f7d91f7a4722723c45e36bf5fe376d9411b73e61de4e79a17ab00d18f8d7edcc01d97309bbe983126a44b3a8af0fe41c268432fc04bdb6c57e8240fb273475090705fbf6590d6748d934651fa9a4f4618d91a140bb1cb35a081b1551716595b310436f742f4dcb56139535ab35a743d9077d06fd8556f11d021a00d9e2132264971b15fe2b9ecba6e785acc97a23b80f8ba3523d358254
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.14
+
+
+function mac_pre_check_fail()
+{
+  # we've already checked that the host is not mac previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_mac']) return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not Mac if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:mac_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+# Existing cmd_kb() function from ssh_get_info2_linux.inc will be sufficient.
+
+# callback for systems with "Darwin" in uname
+function handle_mac_os(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var packages_buf, packages_cmd, operating_system, product_build_version, split_lines;
+  local_var system_info_path, system_info_paths, product_extra_version;
+  local_var i, version, num_split, server_buf;
+  if (empty_or_null(host_info_key_val['uname-a_reported'])) {
+    report += '\nThe output of "uname -a" is :\n' + cmd_res;
+    host_info_key_val['uname-a_reported'] = TRUE;
+  }
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  # Attempt to gather Timezone info
+  linux_timezone_check(session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+  # The way RSRs work is by creating a separate partition which sort of acts as an overlay for
+  # various parts of the system - e.g. the dynamic loader will look for libraries in the RSR
+  # partition before the main partition. These partitions get exposed to userspace in 
+  # /System/Crytexes/. So the file there is treated the same by the OS tools as the one in the
+  # root partition. Format-wise it's identical just with the addition of the ProductExtraVersion tags
+  # Check for the presence of an RSR and default back to the core one if not present.
+  system_info_paths = [
+    '/System/Cryptexes/OS/System/Library/CoreServices/SystemVersion.plist',
+    '/System/Library/CoreServices/SystemVersion.plist'
+  ];
+
+  foreach system_info_path (system_info_paths)
+  {
+    # Identify OS version
+    operating_system = run_command(
+          cmd:'export SYSTEM_VERSION_COMPAT=0; cat ' + system_info_path,
+          session:session,
+          use_shell_handler:use_shell_handler,
+          channel:channel);
+    if ('ProductVersion' >< operating_system)
+      break;
+  }
+  split_lines = split(operating_system, keep:FALSE);
+  for ( i = 0 ; i < max_index(split_lines) ; i ++ )
+  {
+    if ( split_lines[i] =~ "<key>ProductVersion</key>")
+    {
+      operating_system = split_lines[i+1];
+    }
+    if ( split_lines[i] =~ "<key>ProductBuildVersion</key>")
+    {
+      product_build_version = split_lines[i+1];
+    }
+    if ( split_lines[i] =~ "<key>ProductVersionExtra</key>")
+    {
+      product_extra_version = split_lines[i+1];
+    }
+  }
+  ##
+  #  Process product_build_version (which is less complex than operating_system)
+  ##
+  if ( product_build_version =~ "<string>[a-zA-Z0-9]+</string>" )
+  {
+    product_build_version = pregmatch(string:product_build_version, pattern:"<string>([a-zA-Z0-9]+)</string>");
+    if (!empty_or_null(product_build_version) && !empty_or_null(product_build_version[1]))
+    {
+      product_build_version = product_build_version[1];
+    }
+    else
+    {
+      product_build_version = NULL;
+    }
+  }
+  if ( product_extra_version =~ "<string>.*</string>")
+  {
+    product_extra_version = pregmatch(string:product_extra_version, pattern:"<string>(.*)</string>");
+    if (!empty_or_null(product_extra_version) && !empty_or_null(product_extra_version[1]))
+    {
+      product_extra_version = product_extra_version[1];
+    }
+    else
+    {
+      product_extra_version = NULL;
+    }
+  }
+
+  ##
+  #  Process operating_system
+  ##
+  if ( operating_system =~ "<string>[0-9.]+</string>" )
+  {
+    operating_system = ereg_replace(pattern:".*<string>([0-9.]+)</string>.*", string:chomp(operating_system), replace:"\1");
+    version = "Mac OS X " + operating_system;
+  }
+  else
+  {
+    operating_system = ereg_replace(pattern:"^.*Darwin Kernel Version ([0-9]+\.[0-9]+\.[0-9]+):.*$", string:cmd_res, replace:"\1");
+    num_split = split(operating_system, sep:".", keep:FALSE);
+    version = "Mac OS X 10." + string(int(num_split[0]) - 4) + "." + int(num_split[1]);
+  }
+
+  var err_msg;
+  if (isnull(operating_system) || ! pregmatch(string: operating_system, pattern:"^[0-9]+\.[0-9]+(\.[0-9]+)?$") )
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because Nessus failed to get
+the operating system version on the remote Mac OS X system.';
+    failure_kb_msg = "Could not obtain the Mac OS X version.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  server_buf = run_command(
+        cmd:'cat /private/etc/sysctl-macosxserver.conf 2>/dev/null',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  if ( server_buf && "# /etc/sysctl-macosxserver.conf is reserved " >< server_buf  ) version = version + " Server";
+
+  var display_version = version;
+  if (!empty_or_null(product_extra_version))
+    display_version += ' ' + product_extra_version;
+  report += '\nThe remote macOS or Mac OS X system is :\n' + display_version + '\n';
+
+  # Gather package info
+  if (session) session.clear_cmd_error();
+  if ( operating_system =~ "^1[0-9]\." )
+  {
+    # 1st command
+    packages_cmd = 'grep -A 1 displayName /Library/Receipts/InstallHistory.plist 2>/dev/null| grep string | sed \'s/<string>\\(.*\\)<\\/string>.*/\\1/g\' | sed \'s/^[      ]*//g\'|tr  -d -c \'a-zA-Z0-9\\n _-\'|sort|uniq';
+    packages_buf = run_command(
+        cmd:packages_cmd,
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+    # 2nd command
+    packages_cmd = 'ls -1 /Library/Receipts|grep -v InstallHistory.plist';
+    packages_buf += run_command(
+        cmd:packages_cmd,
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  }
+  else
+  {
+    packages_cmd = 'ls -1 /Library/Receipts';
+    packages_buf = run_command(
+        cmd:packages_cmd,
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+  }
+
+  var found = FALSE;
+
+  if ( packages_buf && strlen(packages_buf) )
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_mac.static', value: 202);
+
+    replace_kb_item(name:"Host/MacOSX/Version", value:version);
+    replace_kb_item(name:"Host/MacOSX/packages", value:packages_buf);
+    if (! empty_or_null(host_info_key_val['uname-a_unrecognized'])) {
+      delete_element(idx:'uname-a_unrecognized', var:host_info_key_val);
+    }
+    if (! empty_or_null(product_build_version)) {
+      replace_kb_item(name:"Host/MacOSX/ProductBuildVersion", value:product_build_version);
+    }
+    if (! empty_or_null(product_extra_version)) {
+      replace_kb_item(name:"Host/MacOSX/ProductExtraVersion", value:product_extra_version);
+    }
+    found = found_mac_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  register_mac_os(release_info:cmd_res, version: version);
+
+  if (found)
+    return TRUE;
+
+  if (session.cmd_error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+' + session.cmd_error;
+  }
+  else if (session.error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.error;
+  }
+
+  if (! packages_buf || !strlen(packages_buf) )
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because Nessus failed to get
+the list of installed packages on the remote Mac OS X system.';
+    failure_kb_msg = "Could not obtain the list of installed packages.";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  return NULL;
+}
+
+function found_mac_os(session, use_shell_handler, &channel)
+{
+  local_var ip_buf, cmd, ipfw, arg, pf, err_msg;
+
+  cmd_kb(channel:channel,
+         'Host/MacOSX/packages/boms',
+         'ls -1 /Library/Receipts/boms /private/var/db/receipts /System/Library/Receipts 2>/dev/null | grep \'\\.bom$\'',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/MacOSX/ComputerName',
+         '/usr/sbin/scutil --get ComputerName',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/MacOSX/LocalHostName',
+         '/usr/sbin/scutil --get LocalHostName',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/NSM/guiSvr/version_src',
+         '/etc/init.d/guiSvr version 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/NSM/devSvr/version_src',
+         '/etc/init.d/devSvr version 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  ip_buf = run_command(cmd:'/sbin/ifconfig -a',
+                       session:session,
+                       use_shell_handler:use_shell_handler,
+                       channel:channel);
+
+  if (ip_buf && "not found" >!< ip_buf)
+    set_kb_item(name:"Host/ifconfig", value:ip_buf);
+
+  if (agent())
+  {
+    var ip_addr = agent_get_ip();
+    if (!isnull(ip_addr))
+      report_xml_tag(tag:"host-ip", value:ip_addr);
+  }
+
+  cmd_kb(channel:channel,
+         'Host/hostname',
+         '/bin/hostname',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/last_reboot',
+         '/usr/bin/last reboot 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/uname-r',
+         'uname -r',
+         session,
+         use_shell_handler);
+
+  if(host_info_key_val['cpu'])
+    replace_kb_item(name:'Host/cpu', value:host_info_key_val['cpu']);
+  else cmd_kb(channel:channel,
+              'Host/cpu',
+              'uname -m',
+              session,
+              use_shell_handler);
+
+  # Firewall rules section
+  # Two types: pfctl and ipfw
+  if (session) session.clear_cmd_error();
+  cmd = '/sbin/ipfw list';
+  ipfw = run_command(
+           cmd:cmd,
+           session:session,
+           use_shell_handler:use_shell_handler,
+           channel:channel);
+  if (
+    !isnull(ipfw) &&
+    'command not found' >!< tolower(ipfw) &&
+    'operation not permitted' >!< tolower(ipfw) &&
+    'Permission denied' >!< tolower(ipfw)
+  )
+  {
+    set_kb_item(name:'Host/fwrules/output/' + cmd, value:ipfw);
+  }
+  else
+  {
+    if (
+      'command not found' >< tolower(ipfw) ||
+      'operation not permitted' >< tolower(ipfw) ||
+      'Permission denied' >< tolower(ipfw)
+    )
+    {
+      err_msg = ipfw;
+    }
+    else if (session.cmd_error)
+    {
+      err_msg = session.cmd_error;
+    }
+    else if (session.error)
+    {
+      err_msg = session.error;
+    }
+    else
+    {
+      err_msg = 'The command \'' + cmd + '\' failed to produce any results for some reason.';
+    }
+    set_kb_item(name:'Host/fwrules/errmsg/' + cmd, value:err_msg);
+  }
+
+
+  foreach arg (make_list('rules', 'nat', 'queue'))
+  {
+    if (session) session.clear_cmd_error();
+    cmd = '/sbin/pfctl -s ' + arg;
+    pf = run_command(
+           cmd:cmd,
+           session:session,
+           use_shell_handler:use_shell_handler,
+           channel:channel);
+    if (
+      !isnull(pf) &&
+      'command not found' >!< tolower(pf) &&
+      'operation not permitted' >!< tolower(pf) &&
+      'Permission denied' >!< tolower(pf) &&
+      'ALTQ related functions disabled' >!< tolower(pf)
+    )
+    {
+      set_kb_item(name:'Host/fwrules/output/' + cmd, value:pf);
+    }
+    else
+    {
+      if (
+        'command not found' >< tolower(pf) ||
+        'operation not permitted' >< tolower(pf) ||
+        'Permission denied' >< tolower(pf) ||
+        'ALTQ related functions disabled' >< tolower(pf)
+      )
+      {
+        err_msg = pf;
+      }
+      else if (session.cmd_error)
+      {
+        err_msg = session.cmd_error;
+      }
+      else if (session.error)
+      {
+        err_msg = session.error;
+      }
+      else
+      {
+        err_msg = 'The command \'' + cmd + '\' failed to produce any results for some reason.';
+      }
+      set_kb_item(name:'Host/fwrules/errmsg/' + cmd, value:err_msg);
+    }
+  }
+
+  return NULL;
+}
+
+function handle_not_mac_os(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  host_info_key_val['host_not_mac'] = TRUE;
+}
+
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [cpu:str]         CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_mac_os(release_info, version)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Mac OS X 12.0.1
+  #    Mac OS X 10.15.7
+  #    macOS 11.0.1
+  #    macOS 14.2.1
+  #
+  #  - Match groups:
+  #    1: Product (i.e. Mac OS X or macOS)
+  #    2: Release (e.g. 12.0.1)
+
+  var pattern, product, cpe_prod;
+  if ("macOS" >< version)
+  {
+    product = 'macOS';
+    pattern = "(macOS )([\d\.]+)";
+    cpe_prod = 'macos';
+  }
+  else if ("Mac OS" >< version)
+  {
+    product = 'Mac OS X';
+    pattern = "(Mac OS X )([\d\.]+)";
+    cpe_prod = 'mac_os_x';
+  }
+
+  var matches = pregmatch(pattern:pattern, string:version, icase:FALSE);
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+
+  # Release
+  var release = matches[2];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  version = release;
+
+  # OS Name
+  var os_name = strcat(product, ' ', version);
+
+  # CPU (allow x86 to overwrite i386 findings)
+  var cpu;
+  if ("i386" >< release_info)
+    cpu = "i386";
+  if ("x86_64" >< release_info)
+    cpu = "x86_64";
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:2.3:o:apple:macos:13.5:*:*:*:*:*:*:* 
+  var cpe_attributes = [];
+  cpe_attributes = ['apple'];
+  if (!empty_or_null(cpe_prod))
+    append_element(var:cpe_attributes, value:cpe_prod);
+
+  if (!empty_or_null(release))
+    append_element(var:cpe_attributes, value:release);  
+
+  var cpe = 'cpe:/o:' + join(cpe_attributes, sep:':');
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'Apple',
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_name     : os_name,
+    target_hw   : cpu,
+    cpe         : cpe
+  );
+
+  return NULL;
+}

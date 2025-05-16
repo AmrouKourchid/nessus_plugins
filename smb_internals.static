@@ -1,0 +1,1863 @@
+#TRUSTED 077267beb9b990b27b6f9e5f6c247856e8c03f282f3e0d984b94b2f2b77a59aa2a6d760f8bbd64cd6e31d1174020112217470fd62c1608e46c24b26b57dbcdc3a2a56c739d10ae66ec8eab46028a3908997ec33627a99a76edb4e794784cc50d66a21e499ec7fe2d9e9db73f4d164214e38ff631eadf12c54594bbf7610f7c908eb585aaff73291496b464ed25776d05d2564357dd5d77cdcc8335f9303b1db242a57f5be9881d800a752c814bd88adf85352c21b05f2740b7a19b86633ca181a040fa5804c7997b6a60f8522934e3cc2ce36ee2fcd63f0284b52b5e545b8bf22c4dffaa3d111ad7afc4e3a6092c88c991aadae8765ed3940d400ffef2e9a6b7e146c58a89aa34fbc360fa18673942b4f5210dc922a4f6224f78c759c359fc0c28be8ae9d1181f9666e56e155f869faa91606543bb5d93e83ff36f5d63d67e2c9ee8b6b1b39a9a6c6afcd5c31a04e3a291705aa54d72e578b73723f0a752e7af3f248bb4ac2917e41c1f09e0a409767ff508df7ced462de3ca633db0bc8602075b7df1558330110d143cf9a0772b92e6e27d6844d8930d99295eb1fb97d6f2a731b8f5e73b862344a490750f811e532038b55e22d1bd82c81545fbaad210cf1cce46dc9cd6b3f145dfb73cffc72a823288d3f21ee7876080aaa5f15ca4951b6c15fff809e5cbfc3db0846d127ab5828b6e88dfa32f8fa7fce4ed8bfd9a89263c
+#TRUST-RSA-SHA256 80e12fd0a0f79d85ce335d0133aa1fa90a2248ab61edc1eda6360d54e8238aabe7dc521d24a4f44256189fd61a04a9398b35f6b97735e3d71448223083f7c845ad731ab7250fa935f55437d66fe333390dfd5c0e694ad7cba6e0d3bd4cebe2402041facb8a7b3792a6bd6c6a65d2147ed037a45e8662414734b0dde05fe6f8fd4cf6897f5a04831e8c3dca2e9765228edf1ba985cd65e102f99f23ed952ac827863f235791da488621f617dfa6ca8c27818273d6ed0b9dfaf1d628f58e4d8b679702888375ae315bc79b2c41f99350b7b96223b6a34320d1fe699942899c783b3a2b342fe7c6aca99cabba39bd72d2f5b7bef1e9261cf2fb927a4eec840bf3c3dd4cb7ddfe1e2316753804a3ec4109b05f03c1e3c28e136fd1339ade0cc01689aa42d2c1b8808689d798c7efeef620cd1483525e12619299cbbc5e127abb7d01f947a0528870918f1baec8d26c2c9db2388dbf554341097cc4228f07db43c1512d9d33ac182f85d71ebf38c7de49bfd0bd7880db0acf61dcd5a129ce13ada6f756a9c53a5d66addf22265ae2d5491b6735e75b27ec44b173ccc83d3bec14a5c1cdcfda51998be3c522d9971fc2a672051f6f7c2031c9ab7df0f2df9045e6fce925e7a2cd76d2ab519697dfd534136feed714e5a0567ab87ee6d8fea9d696bc95ad46af41b69803aafeb1519c58558fe28a6cd0c0684a1026a66a3028c09f318f
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# smb_internals.inc
+# Revision: 1.34
+#
+
+# GLOBAL VAR : Session. Can be used as arg later.
+global_var Session, previous_hash;
+global_var report_insufficient_access, g_report_failed_authentication, g_report_issues_port;
+
+
+function kb_smb_name()
+{
+  var ret;
+  ret = get_kb_item("SMB/name");
+  if ( ret )
+    return string(ret);
+  else
+    return get_host_ip();
+}
+
+function kb_smb_domain()
+{
+  return string(get_kb_item("SMB/domain"));
+}
+
+function kb_smb_login()
+{
+  return string(get_kb_item("SMB/login"));
+}
+
+function kb_smb_password()
+{
+  return string(get_kb_item("SMB/password"));
+}
+
+function kb_smb_transport()
+{
+  var r;
+  r = get_kb_item("SMB/transport");
+  if ( r ) return int(r);
+  else return 445;
+}
+
+
+#==================================================================#
+# Section 1. Utilities                                             #
+#==================================================================#
+
+
+
+#---------------------------------------------------------#
+# Function    : get_string                                #
+# Description : Extract a null terminated string          #
+#---------------------------------------------------------#
+
+function get_string (blob, pos, _type)
+{
+  var string, i, unicode, len;
+
+  if (isnull (_type))
+    unicode = session_is_unicode();
+  else
+    unicode = _type;
+
+  string = NULL;
+  i = pos;
+  len = strlen(blob);
+
+  while (i < len)
+  {
+    if (unicode == 1)
+    {
+      if ((i+1 >= len) || ((blob[i] == '\0') && (blob[i+1] == '\0')))
+        return unicode2ascii (string:string);
+      string += blob[i] + blob[i+1];
+      i += 2;
+    }
+    else
+    {
+      if (blob[i] == '\0')
+        return string;
+      string += blob[i];
+      i++;
+    }
+  }
+}
+
+
+#---------------------------------------------------------#
+# Function    : get_string2                               #
+# Description : Extract a non null terminated string      #
+#---------------------------------------------------------#
+
+function get_string2 (blob, pos, len, _type)
+{
+  var string, unicode;
+
+  if (isnull (_type))
+    unicode = session_is_unicode();
+  else
+    unicode = _type;
+
+  string = NULL;
+
+  if (pos+len > strlen(blob))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+len);
+    return NULL;
+  }
+
+  string = substr (blob, pos, pos+len-1);
+  if (unicode == 1)
+    return unicode2ascii (string:string);
+  else
+    return string;
+}
+
+
+#---------------------------------------------------------#
+# Function    : null_length                               #
+# Description : return size of null end char              #
+#---------------------------------------------------------#
+
+function null_length ()
+{
+  if (session_is_unicode() == 1)
+    return 2;
+  else
+    return 1;
+}
+
+
+#---------------------------------------------------------#
+# Function    : dos_status                                #
+# Description : Return DOS_status code                    #
+#---------------------------------------------------------#
+
+function dos_status (ErrorClass, ErrorCode)
+{
+  return  raw_byte (b:ErrorClass) +
+          raw_byte (b:0) +
+          raw_word (w:ErrorCode);
+}
+
+
+#---------------------------------------------------------#
+# Function    : nt_status                                 #
+# Description : Return NT_status code                     #
+#---------------------------------------------------------#
+
+function nt_status (Status)
+{
+  return raw_dword (d:Status);
+}
+
+
+#---------------------------------------------------------#
+# Function    : ascii                                     #
+# Description : Convert string to ASCII string (NULL end) #
+#---------------------------------------------------------#
+
+function ascii (string)
+{
+  return string + raw_byte (b:0);
+}
+
+
+
+#---------------------------------------------------------#
+# Function    : unicode                                   #
+# Description : Convert ASCII string to unicode           #
+#---------------------------------------------------------#
+
+function unicode (string)
+{
+  var ustring, i, len, end;
+
+  ustring = NULL;
+
+  len = strlen(string);
+  end = raw_byte (b:0);
+
+  for (i=0; i<len; i++)
+  {
+    ustring += string[i] + end;
+  }
+
+  return ustring;
+}
+
+
+##
+# Convert UTF-16LE multi strings to UTF-8 using an engine call to iconv.
+# encoding_convert between version 8.7.0 (its release) and 8.11.0 truncates at \0 and consumes it.
+# splitting and decoding each string bypasses the issue on all engine levels.
+#
+# @param [data|string] a string of data to be converted
+#
+# @return a string that has been converted from utf16le to utf8
+#
+# @remark Before making any modifications to this section reference AR-39 (Applied Research) and RES-69896
+# @remark WARNING! Do not call this function without first ensuring encoding_convert() exists and
+# @remark   gives the proper "test" response for the string '\x74\x00\x65\x00\x73\x00\x74\x00'.
+# @remark   Although encoding_convert() exists beginning in 8.7.0, iconv fails to install on Nessus
+# @remark   upgrades to that level. Upgrades/fresh installs to 8.8.0 work fine.
+#
+# @remark Errors in encoding_convert() cause the string arg to be returned. If it doesn't work,
+# @remark   this function will likely return the data arg, unmodified.
+#
+##
+function utf16le_to_utf8 (data)
+{
+  var utf8 = NULL;
+  var s = NULL;
+
+  for (var i = 0, pos = 0, al = length(data); (i + 1) < al; i += 2)
+  {
+    s += data[i] + data[i+1];
+    if (data[i] == '\0' && data[i+1] == '\0')
+    {
+      # 20210701: Stopped auto-appending an extra '\0' here; it may already be in s.
+      utf8 += encoding_convert(string: s, length: strlen(s), from: "UTF-16LE", to: "UTF-8");
+      s = NULL;
+      # Append an extra \0 if iconv/encoding_convert() on an older version (8.7) consumed the trailing null.
+      if (utf8[strlen(utf8)-1] != '\0')
+      {
+        utf8 += '\0';
+      }
+    }
+  }
+
+  if (!isnull(s)) {
+    utf8 += encoding_convert(string: s, length: strlen(s), from: "UTF-16LE", to: "UTF-8");
+  }
+
+  return utf8;
+}
+
+
+#---------------------------------------------------------#
+# Function    : unicode2ascii                             #
+# Description : Convert unicode string to ascii           #
+#---------------------------------------------------------#
+
+function unicode2ascii (string)
+{
+  var astring, i, len, testutf16;
+
+  testutf16 = '\x74\x00\x65\x00\x73\x00\x74\x00'; # "test" in UTF16LE
+  # Before making any modifications to this section reference AR-39 and RES-69896
+  if (defined_func("encoding_convert") && # Function exists
+     get_preference("scan.enable_utf8_output") == "yes" && # UI Setting enabled
+     ( nasl_level() >= 80800 || # iconv install known good, or
+     encoding_convert(string:testutf16, length: strlen(testutf16), from: "UTF-16LE", to: "UTF-8") == "test") # Test function for accuracy
+  )
+  {
+    astring = utf16le_to_utf8(data:string);
+  }
+  else
+  {
+    astring = NULL;
+
+    len = strlen (string);
+    for (i=0; i<len; i+=2)
+    {
+      astring += string[i];
+    }
+  }
+
+  while (astring && (astring[strlen(astring)-1] == '\0'))
+    astring = substr(astring, 0, strlen(astring)-2);
+
+  return astring;
+}
+
+
+#---------------------------------------------------------#
+# Function    : isUnicode                                 #
+# Description : Return 1 if string is in real unicode     #
+#---------------------------------------------------------#
+
+function isUnicode (string)
+{
+  # Unicode are not supported yet in nessus
+  return 0;
+}
+
+
+#---------------------------------------------------------#
+# Function    : cstring                                   #
+# Description : Convert string to ascii or unicode        #
+#               If null is set, null end char is not      #
+#               added                                     #
+#---------------------------------------------------------#
+
+function cstring (string, _null)
+{
+  var astring, ustring, i, sUnicode;
+
+  sUnicode = session_is_unicode();
+
+  # If the string is not in real unicode
+  if (isUnicode (string:string) == 0)
+  {
+    if ( (!string && (_null == 1)) || ((sUnicode == 0) && (_null == 1)) )
+      return string;
+
+    if (sUnicode == 1)
+    {
+      if (_null == 1)
+        return unicode (string:string);
+      else
+        return unicode (string:ascii(string:string));
+    }
+    else
+      return ascii (string:string);
+  }
+  else
+  {
+    # sUnicode must be set to 1 in this case.
+    if (_null == 1)
+      return string;
+    else
+      return string + raw_string (0x00,0x00);
+  }
+}
+
+##
+# Converts a 64-bit windows timestamp to a 32-bit unix timestamp
+#
+# @param low least significant 32 bits of the windows timestamp (int)
+# @param high most significant 32 bits of the windows timestamp (int)
+# @return a 32 bit unix timestamp (int) if the conversion succeeded,
+#         NULL otherwise
+##
+function convert_win64_time_to_unixtime(low, high)
+{
+  var wintime, diff, unixtime_100_nanoseconds, unixtime;
+  wintime = make_int64(high:high, low:low);
+
+  # difference, in 100-nanoseconds, between the Windows epoch (January 1, 1601)
+  # and the Unix epoch (January 1, 1970)
+  diff = make_int64(high:0x19DB1DE, low:0xD53E8000);
+  unixtime_100_nanoseconds = sub64(wintime, diff);
+  unixtime = div64(unixtime_100_nanoseconds, make_int64(low:10000000));
+
+  # sanity checking - the high bits should all be zeroed out since unixtime is 32-bits
+  if (unixtime[1] != 0)
+  {
+    # This happens so often and we rarely use this value.
+    #dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    #  'Unixtime 0 sanity check failed.');
+    return NULL;
+  }
+  return unixtime[0];
+}
+
+function convert_time_to_sec (time, no_zero)
+{
+  var high, low, add, tmp, tmp2, i, j, val;
+
+  high = get_dword (blob:time, pos:4);
+  low = get_dword (blob:time, pos:0);
+
+  if ((low == 0) && (high == 0x80000000))
+    return -1;
+
+  if (isnull(no_zero) || (no_zero == FALSE))
+  {
+    # 0 - time
+    if (low != 0)
+      high = 0 - (high+1);
+    else
+      high = 0 - high;
+
+    low = 0 - low;
+  }
+
+  tmp = raw_dword(d:low)+raw_dword(d:high);
+
+  for (i=0; i<7; i++)
+  {
+    val = 0;
+    tmp2 = NULL;
+    for (j=0; j<8; j++)
+    {
+      tmp2 = raw_string((ord(tmp[7-j])+val*256)/2) + tmp2;
+      val = (ord(tmp[7-j])+val*256)%2;
+    }
+    tmp = tmp2;
+  }
+
+  for (i=0; i<7; i++)
+  {
+    val = 0;
+    tmp2 = NULL;
+    for (j=0; j<8; j++)
+    {
+      tmp2 = raw_string((ord(tmp[7-j])+val*256)/5) + tmp2;
+      val = (ord(tmp[7-j])+val*256)%5;
+    }
+    tmp = tmp2;
+  }
+
+  return get_dword(blob:tmp, pos:0);
+}
+
+
+
+function parse_addrlist(addrlist)
+{
+  var list, len, pos, s, code, slen;
+
+  list = NULL;
+  pos = 0;
+
+  slen = strlen(addrlist);
+
+  while (pos+4 < slen)
+  {
+    code = get_word(blob:addrlist, pos:pos);
+    if (code == 0)
+      break;
+
+    len = get_word(blob:addrlist, pos:pos+2);
+    if (pos+4+len > slen)
+      break;
+
+    s = get_string2 (blob:addrlist, pos:pos+4, len:len, _type:1);
+
+    list[code] = s;
+
+    pos += 4 + len;
+  }
+
+  return list;
+}
+
+
+
+#==================================================================#
+# Section 2. Session functions                                     #
+#==================================================================#
+
+
+# Session structure (array):
+#
+# DWORD Socket;
+# DWORD Timeout;
+# WORD  Uid;
+# WORD  Tid;
+# WORD  Pid;
+# WORD  Mid;
+# BYTE  Unicode;
+# DWORD cMaxBufferSize;
+# DWORD SequenceNumber;
+# BYTE  MAC_Key[];
+# BYTE  Flags;
+# WORD  Flags2;
+
+function session_init (socket, port, timeout, login, domain, password, hostname, smb2, report_access, report_auth)
+{
+  var session, host, to;
+
+  # Set global for whether or not to report access / privilege issues
+  # if any are encountered during the session. Reporting these issues
+  # may be disabled if access privileges are being tested directly.
+  if (!report_access)
+    report_insufficient_access = FALSE;
+  else
+    report_insufficient_access = report_access;
+
+  # Set global for whether or not to report authentication failures
+  # for this session. Reporting these issues may be disabled if
+  # default or commonly used credentials are being tested.
+  if (!report_auth)
+    g_report_failed_authentication = FALSE;
+  else
+    g_report_failed_authentication = report_auth;
+
+  # Port to be used for reporting issues
+  g_report_issues_port = port;
+
+  Session[0] = socket;
+
+  if (!isnull (timeout))
+  {
+    Session[1] = timeout;
+  }
+  else
+  {
+    to = int(get_preference("checks_read_timeout"));
+    if ( to <= 0 ) to = 5;
+    Session[1] = to;
+  }
+
+  if (isnull(hostname))
+  {
+    host = NULL;
+  }
+  else
+  {
+    host = hostname;
+    while (host[strlen(host)-1] == ' ')
+    {
+      host = substr(host,0,strlen(host)-2);
+    }
+  }
+
+  if (isnull(smb2))
+  {
+    if (isnull(get_kb_item("SMB/use_smb2")))
+    {
+      smb2 = TRUE;
+    }
+    else
+    {
+      smb2 = get_kb_item("SMB/use_smb2");
+    }
+  }
+
+  Session[2] = 0; # Uid
+  Session[3] = 0; # Tid
+  Session[4] = rand(); # Pid
+  Session[5] = 0; # Mid
+  Session[6] = 0; # Unicode
+  Session[7] = 0x4400; # Client Max Buffer Size
+  Session[8] = 0; # SequenceNumber
+  Session[9] = NULL; # MAC_Key
+  Session[10] = SMB_FLAGS_CANONICAL_PATHNAMES | SMB_FLAGS_CASELESS_PATHNAMES;
+  Session[11] = SMB_FLAGS2_KNOWS_LONG_NAMES | SMB_FLAGS2_32BIT_STATUS | SMB_FLAGS2_EAS;
+  Session[12] = host;
+  Session[13] = 0;
+  Session[14] = 0; # GUEST
+  Session[15] = 0; # cid
+  Session[16] = 0; # Server Max buff size
+  Session[17] = NULL; # Os
+  Session[18] = NULL; # Lan Manager
+  Session[19] = NULL; # Domain
+  Session[20] = NULL; # Addr List
+  Session[21] = 0;  # RPC error code
+  Session[22] = raw_dword(d:0) + raw_dword(d:0); # ServerGuid (SMB2)
+  Session[23] = 0;  # MessageId (SMB2)
+  Session[24] = FALSE;  # IsSmb2
+  Session[25] = smb2;  # enable/disable smb2 support
+  Session[26] = 0;   # SMB2 Security Mode
+  Session[27] = NULL; # Share name
+  Session[28] = raw_dword(d:0) + raw_dword(d:0); # ClientGuid (SMB2)
+  Session[29] = NULL; # Dialect
+  Session[30] = crap(data:'\x00', length:64); # SMB3 Pre-Authentication Integrity Hash Value
+  Session[31] = NULL; # Last response packet for validating signature
+  Session[32] = NULL; # SMBv3 Hash algorithm
+  Session[33] = NULL; # SMBv3 Encryption algorithm
+  Session[34] = FALSE; # Actively encrypting SMBv3 messages
+  session_set_unicode (unicode:1);
+}
+
+
+function session_get_socket ()
+{
+  return Session[0];
+}
+
+
+function session_set_socket (socket)
+{
+  Session[0] = socket;
+}
+
+
+function session_get_timeout ()
+{
+  return Session[1];
+}
+
+
+function session_set_timeout (timeout)
+{
+  Session[1] = timeout;
+}
+
+
+function session_get_uid ()
+{
+  return Session[2];
+}
+
+
+function session_set_uid (uid)
+{
+  Session[2] = uid;
+}
+
+
+function session_get_tid ()
+{
+  return Session[3];
+}
+
+
+function session_set_tid (tid)
+{
+  Session[3] = tid;
+}
+
+
+function session_get_pid ()
+{
+  return Session[4];
+}
+
+
+function session_set_pid (pid)
+{
+  Session[4] = pid;
+}
+
+
+function session_get_mid ()
+{
+  var mid;
+
+  mid = Session[5];
+  Session[5] = mid + 64;
+
+  return mid;
+}
+
+
+function session_set_mid (mid)
+{
+  Session[5] = mid;
+}
+
+
+function session_is_unicode ()
+{
+  return Session[6];
+}
+
+
+function session_set_unicode (unicode)
+{
+  if (unicode == 1)
+    session_add_flags2 (flag:SMB_FLAGS2_UNICODE_STRINGS);
+  else
+  {
+    if (session_is_unicode() == 1)
+      session_del_flags2 (flag:SMB_FLAGS2_UNICODE_STRINGS);
+  }
+  Session[6] = unicode;
+}
+
+
+function session_get_buffersize ()
+{
+  return Session[7];
+}
+
+
+function session_set_buffersize (size)
+{
+  Session[7] = size;
+}
+
+
+function session_get_sequencenumber ()
+{
+  return Session[8];
+}
+
+
+function session_increase_sequencenumber ()
+{
+  Session[8] = Session[8] + 1;
+}
+
+
+function session_get_mackey ()
+{
+  return Session[9];
+}
+
+
+function session_set_mackey (key)
+{
+  Session[9] = key;
+}
+
+
+function session_get_flags ()
+{
+  return Session[10];
+}
+
+
+function session_add_flags (flag)
+{
+  Session[10] = Session[10] | flag;
+}
+
+
+function session_get_flags2 ()
+{
+  return Session[11];
+}
+
+
+function session_add_flags2 (flag)
+{
+  Session[11] = Session[11] | flag;
+}
+
+
+function session_del_flags2 (flag)
+{
+  Session[11] = Session[11] ^ flag;
+}
+
+function session_get_hostname ()
+{
+  return Session[12];
+}
+
+
+function session_set_hostname (hostname)
+{
+  Session[12] = hostname;
+}
+
+
+function session_is_authenticated ()
+{
+  return Session[13];
+}
+
+
+function session_set_authenticated ()
+{
+  Session[13] = 1;
+}
+
+
+function session_is_guest ()
+{
+  if (Session[14] == 1)
+    return 1;
+  else
+    return 0;
+}
+
+
+function session_set_guest (guest)
+{
+  Session[14] = guest;
+}
+
+
+function session_get_cid ()
+{
+  var cid;
+
+  cid = Session[15];
+  Session[15] = cid + 1;
+
+  return cid;
+}
+
+
+function session_set_server_max_size (size)
+{
+  Session[16] = size;
+}
+
+
+function session_get_server_max_size ()
+{
+  return Session[16];
+}
+
+
+function session_set_host_info (domain, os, lan)
+{
+  var tmp;
+
+  Session[17] = os;
+  Session[18] = lan;
+  Session[19] = domain;
+}
+
+
+function session_set_addrlist (addrlist)
+{
+  Session[20] = addrlist;
+}
+
+
+function session_get_addrlist ()
+{
+  return Session[20];
+}
+
+
+function session_get_errorcode ()
+{
+  return Session[21];
+}
+
+
+function session_set_errorcode (code)
+{
+  Session[21] = code;
+}
+
+
+function session_get_sid()
+{
+  return Session[22];
+}
+
+
+function session_set_sid(sid)
+{
+  Session[22] = sid;
+}
+
+
+function session_set_messageid(id)
+{
+  Session[23] = id;
+}
+
+function session_get_messageid()
+{
+  var id;
+
+  id = Session[23];
+  Session[23] = id + 1;
+
+  return id;
+}
+
+
+function session_is_smb2()
+{
+  return Session[24];
+}
+
+
+function session_set_smb2(flag)
+{
+  Session[24] = flag;
+}
+
+
+function session_smb2_support()
+{
+  return Session[25];
+}
+
+function session_get_secmode()
+{
+  return Session[26];
+}
+
+
+function session_set_secmode(mode)
+{
+  Session[26] = mode;
+}
+
+function session_set_share_name (share)
+{
+  Session[27] = share;
+}
+
+
+function session_get_share_name ()
+{
+  return Session[27];
+}
+
+function session_set_client_id(uuid)
+{
+  if (strlen(uuid) == 32) Session[28] = uuid;
+}
+
+function session_get_client_id()
+{
+  return Session[28];
+}
+
+function session_set_dialect(dialect)
+{
+  Session[29] = dialect;
+}
+
+function session_get_dialect()
+{
+  return Session[29];
+}
+
+function session_set_pi_hash(hash)
+{
+  Session[30] = hash;
+}
+
+function session_get_pi_hash()
+{
+  return Session[30];
+}
+
+function session_set_response(data)
+{
+  Session[31] = data;
+}
+
+function session_get_response()
+{
+  return Session[31];
+}
+
+function session_set_hash_algo(data)
+{
+  Session[32] = data;
+}
+
+function session_get_hash_algo()
+{
+  return Session[32];
+}
+
+function session_set_encrypt_algo(data)
+{
+  Session[33] = data;
+}
+
+function session_get_encrypt_algo()
+{
+  return Session[33];
+}
+
+function session_set_encrypt_msgs(data)
+{
+  Session[34] = data;
+}
+
+function session_get_encrypt_msgs()
+{
+  return Session[34];
+}
+
+#==================================================================#
+# Section 3. Utilities                                             #
+#==================================================================#
+
+##
+# Retrieves the SMB port without branching.
+#
+# @return Returns the first SMB port stored in the registry.  If there
+#         is no port stored in the registry returns the default SMB
+#         port 445
+##
+function kb_smb_transport_no_branch()
+{
+  var port_list = get_kb_list("SMB/transport");
+  if(isnull(port_list)) return 445;
+
+  port_list = make_list(port_list);
+  return port_list[0];
+}
+
+global_var smb_open_file_names, smb_open_share_names, smb_open_reg_names;
+
+##
+# Stores a mapping between a file descriptor and file name
+# for open files across the SMB library for logging and
+# access reporting.
+#
+# @param [fid:int] A file descriptor returned by the SMB subsystem
+# @param [name:string] The name of the file being opened.  The name
+#         may be NULL to signify that the file is being closed.
+#
+# @return Returns NULL
+##
+function smb_set_open_file_name(fid, name)
+{
+  if(!fid)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'fid');
+    return NULL;
+  }
+
+  if(isnull(smb_open_file_names))
+    smb_open_file_names = {};
+
+  smb_open_file_names[fid] = name;
+  # This is just assigning an internal array key/value, we don't need a log here
+  return NULL;
+}
+
+##
+# Retrieves the name of a currently open file by file descriptor.
+#
+# @param [fid:int] A file descriptor returned by the SMB subsystem.
+#
+# @return Returns the name of the file opened under the supplied
+#         file descriptor.  If no file is open under that descriptor,
+#         returns NULL.
+##
+function smb_get_open_file_name(fid)
+{
+  if(!fid)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'fid');
+    return NULL;
+  }
+
+  if(empty_or_null(smb_open_file_names))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_open_file_names');
+    return NULL;
+  }
+
+  return smb_open_file_names[fid];
+}
+
+##
+# Stores a mapping between a file descriptor and a share name
+# for an open file share across the SMB library for logging and
+# access reporting.
+#
+# @param [tid:int] A file descriptor for an open share returned by
+#                  the SMB subsystem
+# @param [name:string] The name of the share being opened.  The name
+#         may be NULL to signify that the share is being closed.
+#
+# @return Returns NULL
+##
+function smb_set_open_share_name(tid, name)
+{
+  if(!tid)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'tid');
+    return NULL;
+  }
+
+  if(isnull(smb_open_share_names))
+    smb_open_share_names = {};
+
+  smb_open_share_names[tid] = name;
+
+  # This is just assigning an internal array key/value, we don't need a log here
+  return NULL;
+}
+
+##
+# Retrieves the name of a currently open file share by file descriptor.
+#
+# @param [tid:int] A file descriptor returned by the SMB subsystem.
+#
+# @return Returns the name of the file share opened under the supplied
+#         file descriptor.  If no share is open under that descriptor,
+#         returns NULL.
+##
+function smb_get_open_share_name(tid)
+{
+  if(!tid)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'tid');
+    return NULL;
+  }
+
+  if(empty_or_null(smb_open_share_names))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_open_file_names');
+    return NULL;
+  }
+
+  return smb_open_share_names[tid];
+}
+
+##
+# Creates a string representation of a SMB Registry hive
+# number.  These numbers are defined as constants in smb_header.inc.
+# However, those constants can't be used here since due to
+# include dependencies.
+#
+# @param [hivenum:int] An integer indicating a registry hive.
+#
+# @return Returns a string representation of the given hive.
+##
+function smb_make_registry_hive_text(hivenum)
+{
+  if (isnull(hivenum)) return "";
+  if (hivenum == 0) return "HKEY_CLASSES_ROOT";
+  if (hivenum == 1) return "HKEY_CURRENT_USER";
+  if (hivenum == 2) return "HKEY_LOCAL_MACHINE";
+  if (hivenum == 3) return "HKEY_USERS";
+  return "";
+}
+
+##
+# Stores a mapping between a registry handle and the registry key or
+# registry value name across the SMB library for logging and access
+# reporting.
+#
+# @param [handle:array] A registry key handle for an open registry
+#        key or value.  This handle is constructed by the SMB library.
+# @param [key:string] The name of the registry key.  This may be NULL to
+#        signify that the key is being closed.
+#
+# @return Returns NULL
+##
+function smb_set_open_reg_name(handle, key)
+{
+  if(!handle)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'handle');
+    return NULL;
+  }
+
+  if(isnull(smb_open_reg_names))
+    smb_open_reg_names = {};
+
+  var hive = smb_make_registry_hive_text(hivenum: int(handle[3]));
+  var fullname = NULL;
+  if (!isnull(key)) fullname = hive + "\" + key;
+
+  smb_open_reg_names[handle[0]] = fullname;
+
+  # This is just assigning an internal array key/value, we don't need a log here
+  return NULL;
+}
+
+##
+# Retrieves the name of a currently open registry key or value by
+# handle.
+#
+# @param [handle:array] A registry key handle for an open registry
+#        key or value.  This handle is constructed by the SMB library.
+#
+# @return Returns the name of the registry key or value opened under the
+#         supplied handle .  If no registry object is open under that
+#         handle, returns NULL.
+##
+function smb_get_open_reg_name(handle)
+{
+  if(!handle)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'handle');
+    return NULL;
+  }
+
+  if(empty_or_null(smb_open_reg_names))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_open_file_names');
+    return NULL;
+  }
+
+  return smb_open_reg_names[handle[0]];
+}
+
+
+##
+# Provides a central location for generating problem description
+# text.
+#
+# @param [fid:int] A file descriptor returned by the SMB subsystem.
+# @param [handle:array] A registry key handle for an open registry
+#        key or value.  This handle is constructed by the SMB library.
+# @param [op_desc:string] A string indicating the operation to
+#        generate a description for.
+# @param [text:string] Text to override the default description for
+#        descriptions that require more context.
+#
+# @return Returns the generated problem description or an empty string
+#         if no description could be generated
+##
+function smb_get_problem_description(fid, handle, op_desc, text)
+{
+  var port, name;
+
+  if(!isnull(text)) name = text;
+  else
+  {
+    if(fid) name = smb_get_open_file_name(fid:fid);
+    else if(handle) name = smb_get_open_reg_name(handle:handle);
+
+    if(! isnull(name))
+      name = "'" + name + "'";
+  }
+
+  if(isnull(name)) name = "<unknown>";
+
+  switch(op_desc)
+  {
+    case "session":
+      return "setting up a session";
+    case "connect":
+      return "connecting to " + name;
+    case "open":
+      return "opening " + name;
+    case "write":
+      return "writing to " + name;
+    case "pipe":
+      return "reading or writing from the pipe: " + name;
+    case "close":
+      return "closing " + name;
+    case "ioctl":
+      return "during ioctl operation on " + name;
+    case "dir":
+      return "getting a directory listing from " + name;
+    case "query":
+      return "getting information about " + name;
+    case "info":
+      return "setting information about " + name;
+    case "logoff":
+      return "logging off";
+    case "disconnect":
+      return "disconnecting from the " + name;
+    case "read":
+      return "reading " + name;
+    case "enumerate":
+      return "enumerating " + name;
+    case "security":
+      return "retrieving a security descriptor for " + name;
+    case "create":
+      return "creating " + name;
+    case "set":
+      return "setting " + name;
+  }
+
+  return "";
+}
+
+##
+# Sets a global KB item to be used in authentication reporting to
+# indicate to the customer which items the authenticated user could
+# not access due to insufficient permissions.
+#
+# @param [desc:string] Describes the object and access that failed.
+#
+# @return Returns NULL
+##
+function smb_set_kb_auth_problem(desc)
+{
+  var kb_prefix = "Host/Auth/SMB/";
+  var port;
+
+  if(!report_insufficient_access)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'report_insufficient_access');
+    return NULL;
+  }
+  if(isnull(desc))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'desc');
+    return NULL;
+  }
+
+  port = kb_smb_transport_no_branch();
+
+  #Capture all the problems
+  set_kb_item(name:kb_prefix + port + "/" + SCRIPT_NAME + "/Problem", value:desc);
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:'Logged problem: ' + desc);
+  return NULL;
+}
+
+##
+# Calls lcx::log_issue() to log an authentication failure event. These
+# events are later queried by end of scan plugins to report which
+# plugins did not run as expected due to authentication failure.
+#
+# @param [login:string] Login account for which authentication failed
+# @param [port:int]     Port number on which authentication failed
+#                       (defaults to g_report_issues_port or kb_smb_transport_no_branch())
+# @param [desc:string]  Describes the failure reason, if known
+# @param [preinit:bool] TRUE if the issue prevented a session from
+#                       being initialized. Overrides the requirement
+#                       for global var g_report_failed_authentication
+#                       to be set to TRUE.
+#
+# @return Returns NULL
+##
+function smb_set_auth_failure(login, port, desc, preinit)
+{
+  if (!g_report_failed_authentication && !preinit)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'g_report_failed_authentication and preinit');
+    return NULL;
+  }
+
+  # Do not report failures for NULL / empty sessions
+  if (isnull(login) || login == '')
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'login', level:3);
+    return NULL;
+  }
+
+  # Set defaults if not provided
+  if (isnull(port))  port = g_report_issues_port;
+  if (isnull(port))  port = kb_smb_transport_no_branch();
+  if (isnull(desc) || strlen(desc) == 0) desc = 'No details available';
+
+  # Set the failure status in the KB
+  replace_kb_item(name:'Host/Auth/SMB/' + port + '/Failure', value:TRUE);
+
+  # Log the issue
+  lcx::log_issue(type:lcx::ISSUES_AUTH, msg:desc, port:port, proto:lcx::PROTO_SMB, user:login);
+  dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:desc);
+
+  return NULL;
+}
+
+function hex2raw2(s)
+{
+  var i, j, ret, l;
+
+  s = chomp(s);  # remove trailing blanks, CR, LF...
+  l = strlen(s);
+  ret = NULL;
+  for(i=0;i<l;i+=2)
+  {
+    if(ord(s[i]) >= ord("0") && ord(s[i]) <= ord("9"))
+      j = int(s[i]);
+    else
+      j = int((ord(s[i]) - ord("a")) + 10);
+    j *= 16;
+    if(ord(s[i+1]) >= ord("0") && ord(s[i+1]) <= ord("9"))
+      j += int(s[i+1]);
+    else
+      j += int((ord(s[i+1]) - ord("a")) + 10);
+    ret += raw_string(j);
+  }
+  return ret;
+}
+
+
+function inverse (data)
+{
+  var tmp, i, len;
+
+  tmp = NULL;
+  len = strlen(data);
+  for (i=len-1; i >= 0; i--)
+  {
+    tmp += data[i];
+  }
+
+  return tmp;
+}
+
+
+function _hex (s)
+{
+  return inverse (data:hex2raw2(s:s));
+}
+
+
+function encode_uuid (uuid)
+{
+  var tmp, encoded, val;
+
+  encoded = NULL;
+
+  tmp = split (uuid, sep:"-", keep:FALSE);
+
+  encoded =
+    _hex(s:tmp[0]) +
+    _hex(s:tmp[1]) +
+    _hex(s:tmp[2]) +
+    hex2raw2(s:tmp[3]) +
+    hex2raw2(s:tmp[4]);
+
+  return encoded;
+}
+
+
+function decode_uuid (uuid)
+{
+  return hexstr(inverse(data:substr(uuid, 0, 3))) + "-" +
+         hexstr(inverse(data:substr(uuid, 4, 5))) + "-" +
+         hexstr(inverse(data:substr(uuid, 6, 7))) + "-" +
+         hexstr(substr(uuid, 8, 9)) + "-" +
+         hexstr(substr(uuid, 10, 15));
+}
+
+
+
+function buffer_parameter (ref_id, size)
+{
+  return raw_dword (d:ref_id) + raw_dword (d:size);
+}
+
+
+function class_parameter (ref_id, name, size, _null)
+{
+  var tmp, len, uni, data;
+
+  uni = session_is_unicode ();
+  if (uni == 0)
+    session_set_unicode (unicode:1);
+
+  if (!isnull(_null) && (_null == FALSE))
+    tmp = cstring (string:name, _null:1);
+  else
+    tmp = cstring (string:name);
+  len = strlen (tmp);
+
+  if ((len/2)%2 == 1)
+    tmp += raw_word (w:0);
+
+  if (!isnull (size))
+    data = raw_word (w:len) + # length
+           raw_word (w:len);  # size
+  else
+    data = NULL;
+
+  data += raw_dword (d:ref_id)     + # Referent ID
+          raw_dword (d:len/2)      + # Max count
+          raw_dword (d:0)          + # Offset
+          raw_dword (d:len/2)      + # Actual Count
+          tmp ;                      # name
+
+  if (uni == 0)
+    session_set_unicode (unicode:0);
+  return data;
+}
+
+
+
+function sid_ldiv(l,d)
+{
+  var tmp;
+  var v;
+  var r;
+  var i;
+
+  r = 0;
+  tmp = 0;
+
+  for(i=3; i>=0; i--)
+  {
+    v = (r << 8) + ((l >> (i*8)) & 0xFF);
+
+    tmp = tmp | ( (v/10) << (i*8) );
+    r = v%10;
+  }
+
+  return mklist(tmp, r);
+}
+
+
+function sid_ltoa(l)
+{
+  var tmp;
+  var v;
+  var ret;
+
+  tmp = NULL;
+
+  while(l != 0)
+  {
+    ret = sid_ldiv(l:l,d:10);
+    tmp = string(ret[1]) + tmp;
+
+    l = ret[0];
+  }
+
+  if (!tmp)
+    tmp = "0";
+
+  return tmp;
+}
+
+
+function sid2string (sid)
+{
+  var ret, num, val, i;
+
+  ret = NULL;
+  if (strlen(sid) < 8)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'sid', length:16);
+    return NULL;
+  }
+
+  val = get_byte (blob:sid, pos:0);
+  ret += val + "-";
+  num = get_byte(blob:sid, pos:1);
+  val = get_byte(blob:sid, pos:7);
+  ret += val + "-";
+
+  if (strlen(sid) < 8 + num*4)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'sid', length:num+12);
+    return NULL;
+  }
+
+  for (i=0; i<num; i++)
+  {
+    val = sid_ltoa(l:get_dword (blob:sid, pos:8+i*4));
+    ret += val + "-";
+  }
+
+  return substr (ret,0,strlen(ret)-2);
+}
+
+
+function encode_int (i)
+{
+  var len, ret, j;
+
+  len = strlen(i);
+  ret = 0;
+
+  for (j=0; j<len; j++)
+    ret = ret * 10 + int(i[j]);
+
+  return raw_dword (d:ret);
+}
+
+
+function encode_char (c)
+{
+  var ret;
+
+  ret = encode_int (i:c);
+  if (isnull(ret))
+    return ret;
+
+  return ret[0];
+}
+
+function string2sid (s)
+{
+  var ret, nums, len, i;
+
+  nums = split (s, sep:"-", keep:FALSE);
+  len = max_index (nums);
+  if (len < 3)
+    {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'len', length:3);
+    return NULL;
+  }
+
+  ret = encode_char(c:nums[1]) + raw_string (len-3, 0,0,0,0,0) + encode_char(c:nums[2]);
+  for (i=3; i<len; i++)
+    ret += encode_int(i:nums[i]);
+
+  return ret;
+}
+
+
+function parse_dacl (blob)
+{
+  var dacl, size, access_rights, sid, type, access, apply;
+
+  if (strlen (blob) < 8)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:8);
+    return NULL;
+  }
+
+  dacl = NULL;
+
+  access = get_byte (blob:blob, pos:0);
+  apply = get_byte (blob:blob, pos:1);
+  access_rights = get_dword (blob:blob, pos:4);
+  size = get_word (blob:blob, pos:2); # size + 1
+
+  if (strlen(blob) != size)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:size, operator:'is not');
+    return NULL;
+  }
+
+  sid = substr (blob, 8, size-1);
+
+  dacl[0] = access_rights;
+  dacl[1] = sid;
+  dacl[2] = apply;
+  dacl[3] = access; # deny or allow
+
+  return dacl;
+}
+
+
+function parse_pdacl (blob)
+{
+  var rev, size, nsid, i, pos, pdacl, length;
+
+  if (strlen (blob) < 8)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:8);
+    return NULL;
+  }
+
+  rev = get_word (blob:blob, pos:0);
+  size = get_word (blob:blob, pos:2);
+  nsid = get_dword (blob:blob, pos:4);
+  if (nsid == 0) return make_list();
+
+  pos = 8;
+
+  if (strlen (blob) < size)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:size);
+    return NULL;
+  }
+
+  pdacl = NULL;
+  for (i=0; i<nsid; i++)
+  {
+    if (strlen(blob) < pos + 8)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+8);
+      return NULL;
+    }
+
+    length = get_word (blob:blob, pos:pos+2);
+    if (strlen(blob) < pos+length)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+length);
+      return NULL;
+    }
+
+    pdacl[i] = substr (blob, pos, pos+length-1);  # length = real length + 1 ??
+
+    pos += length;
+  }
+
+  return pdacl;
+}
+
+
+function parse_security_descriptor (blob)
+{
+  var rev, sbz1, sec_control, size, pos, security_descriptor;
+  var psid_owner, psid_group, psid_sacl, psid_dacl;
+  var sid_owner, sid_group, sacl, dacl, blo, pacl_sacl, pacl_dacl;
+
+  sid_owner = sid_group = sacl = dacl = NULL;
+
+  if (strlen (blob) < 20)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:20);
+    return NULL;
+  }
+
+  rev = get_byte (blob:blob, pos:0);
+  sbz1 = get_byte (blob:blo, pos:1);
+  sec_control = get_word (blob:blob, pos:2);
+
+  psid_owner = get_dword (blob:blob, pos:4);
+  psid_group = get_dword (blob:blob, pos:8);
+  pacl_sacl = get_dword (blob:blob, pos:12);
+  pacl_dacl = get_dword (blob:blob, pos:16);
+
+  if (pacl_sacl != 0)
+  {
+    pos = pacl_sacl;
+    if (strlen(blob) < pos + 4)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+4);
+      return NULL;
+    }
+
+    rev = get_word (blob:blob, pos:pos);
+    size = get_word (blob:blob, pos:pos+2);
+
+    if (strlen(blob) < pos + size)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+size);
+      return NULL;
+    }
+
+    sacl = substr (blob, pos, pos+size-1);
+  }
+
+  if (pacl_dacl != 0)
+  {
+    pos = pacl_dacl;
+    if (strlen(blob) < pos + 4)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+4);
+      return NULL;
+    }
+
+    rev = get_word (blob:blob, pos:pos);
+    size = get_word (blob:blob, pos:pos+2);
+
+    if (strlen(blob) < pos + size)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+size);
+      return NULL;
+    }
+
+    dacl = substr (blob, pos, pos+size-1);
+  }
+
+  if (psid_owner != 0)
+  {
+    pos = psid_owner;
+    sid_owner = get_sid(blob:blob, pos:pos);
+    if (!sid_owner)
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'sid_owner');
+      return NULL;
+    }
+  }
+
+  if (psid_group != 0)
+  {
+    pos = psid_group;
+    sid_group = get_sid(blob:blob, pos:pos);
+    if (!sid_group)
+    {
+      _debug_smb_null_return(fname:FUNCTION_NAME, label:'sid_group');
+      return NULL;
+    }
+  }
+
+  security_descriptor = NULL;
+  security_descriptor[0] = sid_owner;
+  security_descriptor[1] = sid_group;
+  security_descriptor[2] = sacl;
+  security_descriptor[3] = dacl;
+
+  return security_descriptor;
+}
+
+
+
+function parse_lsalookupsid (data)
+{
+  var ret, len, pos;
+
+  ret = NULL;
+  ret [0] = get_dword (blob:data, pos:0);
+  len = get_dword (blob:data, pos:4);
+  ret [1] = substr (data, 8, 8+len-1);
+  pos = len + 8;
+  len = get_dword (blob:data, pos:pos);
+  ret [2] = substr (data, pos+4, pos+4+len-1);
+
+  return ret;
+}
+
+
+function get_sid (blob, pos)
+{
+  var count, len;
+
+  if (strlen(blob) < pos + 8)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+8);
+    return NULL;
+  }
+
+  count = ord(blob[pos+1]);
+  len = 8 + count*4;
+
+  if (strlen(blob) < pos + len)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'blob', length:pos+len);
+    return NULL;
+  }
+
+  return substr (blob, pos, pos+len-1);
+}
+
+
+
+function class_name (name)
+{
+  var tmp, len, ret;
+
+  if (isnull(name))
+    return raw_dword (d:0);
+
+  tmp = cstring (string:name);
+  len  = strlen (tmp);
+
+  if ((len%4) != 0)
+    tmp += crap (data:raw_string(0), length:4-(len%4));
+
+  if (session_is_unicode() == 1)
+    len = len / 2;
+
+  ret =  raw_dword (d:len)             + # length
+         raw_dword (d:0)               + # offset
+         raw_dword (d:len)             + # size
+         tmp;                            # hostname
+
+  return ret;
+}
+
+
+
+#==================================================================#
+# Section 10. Old API wrapper                                      #
+#==================================================================#
+
+
+# This function MUST be redone                #
+# we must check for local user (admin rights) #
+#                   domain user (admin group) #
+
+function registry_key_writeable_by_non_admin(security_descriptor)
+{
+  var pdacl, dacl, item, access_rights, sid;
+  var ADMIN_SID, LOCAL_SYSTEM_SID, CREATOR_OWNER_SID;
+
+  # Need to change this function
+  dbg::detailed_log(lvl:1, family:'SMB', src:FUNCTION_NAME, msg:
+    'Function is deprecated.');
+  return FALSE;
+
+  pdacl = security_descriptor[3];
+  pdacl = parse_pdacl (blob:pdacl);
+
+  # sids - written the nessus way
+  ADMIN_SID = "1-5-32-544";
+  LOCAL_SYSTEM_SID = "1-5-18";
+  CREATOR_OWNER_SID = "1-3-0";
+
+  foreach item (pdacl)
+  {
+    dacl = parse_dacl (blob:item);
+    access_rights = dacl[0];
+    sid = sid2string (sid:dacl[1]);
+
+    if ( (access_rights & WRITE_DAC)     ||
+         (access_rights & WRITE_OWNER)   ||
+         (access_rights & SYNCHRONIZE)   ||
+         (access_rights & ACCESS_WRITE)  ||
+         (access_rights & ACCESS_CREATE) ||
+         (access_rights & GENERIC_WRITE) )
+    {
+      if((sid != ADMIN_SID) &&
+      (sid != LOCAL_SYSTEM_SID) &&
+      (sid != CREATOR_OWNER_SID))
+      {
+        return(TRUE);
+      }
+    }
+  }
+
+  return FALSE;
+}

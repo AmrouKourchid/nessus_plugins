@@ -1,0 +1,126 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(225115);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/05");
+
+  script_cve_id("CVE-2022-46176");
+
+  script_name(english:"Linux Distros Unpatched Vulnerability : CVE-2022-46176");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The Linux/Unix host has one or more packages installed with a vulnerability that the vendor indicates will not be
+patched.");
+  script_set_attribute(attribute:"description", value:
+"The Linux/Unix host has one or more packages installed that are impacted by a vulnerability without a vendor supplied
+patch available.
+
+  - Cargo is a Rust package manager. The Rust Security Response WG was notified that Cargo did not perform SSH
+    host key verification when cloning indexes and dependencies via SSH. An attacker could exploit this to
+    perform man-in-the-middle (MITM) attacks. This vulnerability has been assigned CVE-2022-46176. All Rust
+    versions containing Cargo before 1.66.1 are vulnerable. Note that even if you don't explicitly use SSH for
+    alternate registry indexes or crate dependencies, you might be affected by this vulnerability if you have
+    configured git to replace HTTPS connections to GitHub with SSH (through git's [`url.<base>.insteadOf`][1]
+    setting), as that'd cause you to clone the crates.io index through SSH. Rust 1.66.1 will ensure Cargo
+    checks the SSH host key and abort the connection if the server's public key is not already trusted. We
+    recommend everyone to upgrade as soon as possible. (CVE-2022-46176)
+
+Note that Nessus relies on the presence of the package as reported by the vendor.");
+  script_set_attribute(attribute:"solution", value:
+"There is no known solution at this time.");
+  script_set_attribute(attribute:"agent", value:"unix");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:H/Au:N/C:N/I:C/A:N");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2022-46176");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+  script_set_attribute(attribute:"vendor_unpatched", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2023/01/10");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/03/05");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Misc.");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info2.nasl");
+  script_require_keys("Host/cpu", "Host/local_checks_enabled", "global_settings/vendor_unpatched");
+  script_require_ports("Host/Debian/dpkg-l", "Host/Debian/release");
+
+  exit(0);
+}
+include('vdf.inc');
+
+# @tvdl-content
+var vuln_data = {
+ "metadata": {
+  "spec_version": "1.0p"
+ },
+ "requires": [
+  {
+   "scope": "scan_config",
+   "match": {
+    "vendor_unpatched": true
+   }
+  },
+  {
+   "scope": "target",
+   "match": {
+    "os": "linux"
+   }
+  }
+ ],
+ "report": {
+  "report_type": "unpatched"
+ },
+ "checks": [
+  {
+   "product": {
+    "name": [
+     "cargo",
+     "cargo-doc",
+     "librust-cargo+openssl-dev",
+     "librust-cargo-dev"
+    ],
+    "type": "dpkg_package"
+   },
+   "check_algorithm": "dpkg",
+   "constraints": [
+    {
+     "requires": [
+      {
+       "scope": "target",
+       "match": {
+        "distro": "debian"
+       }
+      },
+      {
+       "scope": "target",
+       "match": {
+        "os_version": "11"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+};
+
+var vdf_res = vdf::check_and_report(vuln_data:vuln_data, severity:SECURITY_WARNING);
+vdf::handle_check_and_report_errors(vdf_result: vdf_res);

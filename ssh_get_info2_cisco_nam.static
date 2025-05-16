@@ -1,0 +1,109 @@
+#TRUSTED 42b07a9e2547d211448fefc46c80befb9f5f571523602502294d8744ab768df41e3784f4871e8008c47c41200f08616b11c57461aa7a83086a8307ec89e17178b5592c8ff83a173dcdfcea96beddb0aa8b463a96a3f2e9ba2f9bbae81048ce028ea3b0aa06c45ba7d0c6ad62467ab0dce3f0bb551318d7fe584426e7d9f40873d3251c147ce335780586adfaa6a8896bb4809a90e9ed0666fd97ff5c822a79708af9c8e3da46a0228a46d267c6f3b8587d8f4313f8ed719371d64a8878d09aa6a432454298632a5e538c62e07237a44ce9690e90a69ed4532e919f1da29f9190839f43a611163de385e08772dbdb06feaf87899294f9b55ce96fe165a9e989563f3f670b131cf89b716aa0156d9851a5ec9d022513e021fa583b8f68c0a561b73ea92ae250435cfc39845cbe25c141a6bedcc44ae88f3f47fc0f0576195273b21769bc5dcc759de4ea3a217a6e8d7fd368bfe2aba51663013ef97f024ee612d3d8e1306707ade2ad5dbc6b0959f2f251031b7900d1219f8a5d06a5daf3690994fadfdf6ec837c5482a76f27562aa87744f6f6bbc2eba6ed7d2f48c8f25a4c86a2954164191bf1da3a4346aa01a9bfc13e7b7401a783c694c0d78900c053d1688006dd805734483fd9e8bc3bb8ff52938f20e8c34a792da63c8d0eeb42b33c22d12f42f9f612cefb261abb824cc4d5c2805a4a6d606b656b790f370a8795061d3
+#TRUST-RSA-SHA256 599a794aedcf4193806abafe9119ffb9cdb111a0bcb9898f66ff315dfd30f529027c19d584c5698ec415ebaee28d6e8ea7713cba643304303b97a231d17779e2310d4d2c26ad4298bb0f0e5ddfc2f428c3841db93b0bc5ad6bc45430c11fbfe573676db22d63320fef083e7eec43d1a097ea334818e4e40a8f7d20c30bbdf2f669c11e538881044efc633951fd90da8374f4e0bbff353c3c2db55f2c2f16bc12b30cfd5a22c16a9030472f844e47085448227e401e71817f511d239ee6cad47bf58db82637235643443918b960298084f4c1ed544026d7239c3047d41e66562da01a09d6c857252e2e36364b6fb13e687e61090c372c51c0903772aa1134f7673182c700beec42b2394b649cbb9b0606cd584538f278c880846989f27217ee433f2659543e05894d41ee0a5e160f48f2513ce947341064656110dba6f4a7f47e16fab9bc3cb516053b63b2410158ce56860a4fb39ec0155699b860639db4931a2f178cc35a2b50d120a715bdb53b8be44279e9895f6f695a84d9dfa3c70cbe8598e8eb62c9aba6133f02f785a0fbb2beba925245f804fb06f5ea90274af152e11ffc90a8cc1b1d41a6dfb5d0ed425cac18951fd0aa2cf09113e988b7b5f55785083df80f1f340aa3d845fbeb1777345bcc51765138333687d7483b1fdd69fabd399864f09812106c111718a7d0a3134fd969bab20b98d5f2842d8ff7872431d9
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.10
+
+#
+# cisco_nam_pre_check_fail
+# check if this is a Cisco Network Analysis Module based on information collected
+#
+function cisco_nam_pre_check_fail()
+{
+  # have we already checked that the host is not Cisco NAM?
+  if(host_info_key_val['host_not_cisco_nam'])
+    return TRUE;
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ cisco_nam_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Cisco Network Analysis Module if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "NAM application image version," in show version
+#
+function handle_cisco_nam(session, use_shell_handler, &channel, cmd_res)
+{
+  var cisco_nam_version_match, version;
+
+  #Local checks just means we can run commands on the target host.
+  report += '\nLocal checks have been enabled for this host.';
+
+  replace_kb_item(name:"Host/Cisco/show_ver", value:cmd_res);
+  replace_kb_item(name:"Host/Cisco/NAM", value:TRUE);
+
+  cisco_nam_version_match = pregmatch(pattern:"NAM application image version: ([0-9].+)(?:[\r\n]|$)",
+                                      string:cmd_res, icase:TRUE);
+
+  if(!isnull(cisco_nam_version_match))
+  {
+    if(!isnull(cisco_nam_version_match[1]))
+      version = cisco_nam_version_match[1];
+    else
+      version = "UNKNOWN";
+
+    report += '\nThe remote system is a Cisco Network Analysis Module: ' + version;
+  }
+
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  if(isnull(cisco_nam_version_match) || version == 'UNKNOWN')
+  {
+    var failure_kb_msg = 'The remote host appears to be Cisco Network Analysis Module.\n' +
+                         'However, we were unable to parse the OS version from the output of running\n' +
+                         'the "show version" command.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  report += '\nOS Security Patch Assessment is NOT supported for Cisco Network Analysis Module.\n';
+  replace_kb_item(name:"Host/OS/showver", value:"Cisco Network Analysis Module " + version);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"embedded");
+}
+
+#
+# callback for systems without "NAM application image version" in show version
+#
+function handle_not_cisco_nam(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_nam'] = TRUE;
+  }
+}

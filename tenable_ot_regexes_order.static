@@ -1,0 +1,737 @@
+## vendors in alphabetical order
+## order of regexes matters
+namespace tenable_ot
+{
+  namespace order
+  {
+    var families = {
+        "ABB": {
+            "abb": [
+                "AbbAC500",
+                "AbbAC800M",
+                "Abb800xA",
+                "AbbRelion",
+                "AbbFox",
+                "AbbTotalflow",
+                "AbbRTU500",
+                "AbbM2M",
+                "AC700F",
+                "AC800F",
+                "AC900F",
+                "MelodyRack",
+                "HarmonyRack",
+                "SDSeries"
+            ],
+            "hitachienergy": [
+                "AbbRelion",
+                "AbbRTU500"
+            ]
+        },
+        "Andritz": {
+            "andritz": [
+                "Andritz"
+            ]
+        },
+        "ArecontVision": {
+            "arecont": [
+                "MegaVideoD4",
+                "ConteraIPBullet",
+                "ConteraIPFisheye",
+                "ConteraIPIndoorDome",
+                "ConteraIPMicroBullet",
+                "ConteraIPMicroDomeDuo",
+                "ConteraIPMicroDome",
+                "ConteraIPOmniLXRS",
+                "ConteraIPOmniLX",
+                "ConteraIPOutdoorDome",
+                "ConteraIPPanoramic",
+                "MegaBallG2",
+                "MegaBall",
+                "MegaDomeG3RS",
+                "MegaDomeG3",
+                "MegaDome2",
+                "MegaDome4K",
+                "MegaDomeUltraHD",
+                "MegaDome",
+                "MegaVideo4K",
+                "MegaVideoCompact",
+                "MegaVideoFlex",
+                "MegaVideoG5",
+                "MegaVideo",
+                "MegaView2",
+                "MegaView",
+                "MicroBullet",
+                "MicroDomeDuo",
+                "MicroDomeG2",
+                "MicroDome",
+                "SurroundVideoG5Mini",
+                "SurroundVideoG5",
+                "SurroundVideoOmniG3",
+                "SurroundVideoOmniSX",
+                "SurroundVideoOmni",
+                "SurroundVideo"
+            ]
+        },
+        "AutomatedLogicCorporation": {
+            "automatedlogic": [
+                "WebCTRL"
+            ],
+            "carrier": [
+                "WebCTRL"
+            ]
+        },
+        "AxisCommunication": {
+            "axis": [
+                "AxisCommunication"
+            ]
+        },
+        "Bachmann": {
+            "bachmann": [
+                "Bachmann"
+            ]
+        },
+        "Beckhoff": {
+            "beckhoff": [
+                "BeckhoffCSeries"
+            ]
+        },
+        "BoschSecuritySystems": {
+            "bosch": [
+                "AUTODOME",
+                "MIC",
+                "B426"
+            ]
+        },
+        "CarrierCorporation": {
+            "automatedlogic": [
+                "iVu"
+            ]
+        },
+        "Cisco": {
+            "cisco": [
+                "NXOS",
+                "CiscoIPPhones",
+                "CiscoSmallBusiness"
+            ]
+        },
+        "Cognex": {
+            "cognex": [
+                "InSight"
+            ]
+        },
+        "DahuaSecurity" : {
+            "dahuasecurity" : [
+                "DahuaSecurityCameras",
+                "DahuaSecurityVideoRecorders"
+            ]
+        },
+        "Danfoss": {
+            "danfoss": [
+                "AKSM800A",
+                "AKSM800"
+            ]
+        },
+        "Dell": {
+            "dell": [
+                "iDRAC6",
+                "iDRAC7",
+                "iDRAC8",
+                "iDRAC9",
+                "DellLaserPrinter"
+            ]
+        },
+        "Eaton": {
+            "eaton": [
+                "PLCEC4P",
+                "PLCEasyE4",
+                "PLCXC100",
+                "PLCXC150",
+                "PLCXC200",
+                "PLCXC300",
+                "PLCXN300",
+                "UPS3S",
+                "UPS5PX",
+                "UPS5P",
+                "UPS5SC",
+                "UPS5S",
+                "UPS9155",
+                "UPS9355",
+                "UPS9395",
+                "UPS93PM",
+                "UPS93E",
+                "UPS9PHD",
+                "UPS9PXM",
+                "UPS9PX",
+                "UPS9SX",
+                "UPS9000X",
+                "PXM2000",
+                "PXM4000",
+                "PXM6000",
+                "PXM8000",
+                "PXG900",
+                "SMP"
+            ]
+        },
+        "Emerson": {
+            "emerson": [
+                "Ovation",
+                "SSeries",
+                "MSeries",
+                "SISSeries",
+                "DeltaV",
+                "ROC300",
+                "FloBoss",
+                "ROC800",
+                "RegFlo"
+            ]
+        },
+        "Elspec": {
+            "elspec": [
+                "G5"
+            ]
+        },
+        "FanucRobotics": {
+            "fanuc": [
+                "FanucRobotics"
+            ]
+        },
+        "Festo": {
+            "festo": [
+                "TerminalCPX",
+                "CECC",
+                "CECX"
+            ]
+        },
+        "GE": {
+            "ge": [
+                "PACSystemsRX7i",
+                "PACSystemsRX3i"
+            ],
+            "emerson": [
+                "PACSystemsRX7i",
+                "PACSystemsRX3i"
+            ]
+        },
+        "GeoVision": {
+            "geovision": [
+                "GeoVisionBoxIPCameras",
+                "GeoVisionBulletIPCameras",
+                "GeoVisionDomeIPCameras",
+                "GeoVisionEyeballIPCameras",
+                "GeoVisionFisheyeIPCameras",
+                "GeoVisionIndoorIPCameras",
+                "GeoVisionNetworkVideoRecorders",
+                "GeoVisionPTZIPCameras",
+                "GeoVisionPanoramicIPCameras",
+                "GeoVisionPinholeIPCameras",
+                "GeoVisionTOFIPCameras",
+                "GeoVisionThermalIPCameras",
+                "GeoVisionVideoServers"
+            ]
+        },
+        "Generic": {
+            "tridium": [
+                "Niagara"
+            ]
+        },
+        "HanwhaVision": {
+            "hanwhavision": [
+                "HanwhaVideoRecorders",
+                "HanwhaCameras"
+            ],
+            "hanwha-security": [
+                "HanwhaVideoRecorders",
+                "HanwhaCameras"
+            ],
+            "hanwhasecurity": [
+                "HanwhaVideoRecorders",
+                "HanwhaCameras"
+            ]
+        },
+        "Hikvision": {
+            "hikvision": [
+                "Hikvision",
+                "HikvisionIPCameras",
+                "HikvisionIPCamerasAntiCorrosionSeries",
+                "HikvisionIPCamerasDeepinViewSeries",
+                "HikvisionIPCamerasExplosionProofSeries",
+                "HikvisionIPCamerasPTSeries",
+                "HikvisionIPCamerasPanoramicSeries",
+                "HikvisionIPCamerasProSeries",
+                "HikvisionIPCamerasSolarPoweredSeries",
+                "HikvisionIPCamerasSpecialSeries",
+                "HikvisionIPCamerasUltraSeries",
+                "HikvisionIPCamerasValueSeries",
+                "HikvisionIPCamerasWiFiSeries",
+                "HikvisionVideoRecorders",
+                "HikvisionVideoRecordersDeepinMindSeries",
+                "HikvisionVideoRecordersProSeries",
+                "HikvisionVideoRecordersSpecialSeries",
+                "HikvisionVideoRecordersUltraSeries",
+                "HikvisionVideoRecordersValueSeries"
+            ]
+        },
+        "Hirschmann": {
+            "belden": [
+                "Hirschmann"
+            ]
+        },
+        "Honeywell": {
+            "honeywell": [
+                "EHPMX",
+                "HoneywellExperion"
+            ]
+        },
+        "Illustra": {
+            "johnsoncontrols": [
+                "IllustraEssentials",
+                "IllustraFlex",
+                "IllustraPro",
+                "Illustra"
+            ]
+        },
+        "Ingeteam": {
+            "ingeteam": [
+                "INGECONSUN"
+            ]
+        },
+        "IRZ": {
+            "irz": [
+                "IRZRouters"
+            ]
+        },
+        "Janitza": {
+            "janitza" : [
+                "UMG"
+            ]
+        },
+        "JohnsonControls": {
+            "johnsoncontrols": [
+                "Metasys",
+                "MetasysNae",
+                "MetasysNce",
+                "MetasysNie"
+            ]
+        },
+        "Keyence": {
+            "keyence": [
+                "Keyence"
+            ]
+        },
+        "Korenix": {
+            "korenix": [
+                "JetNet"
+            ]
+        },
+        "Meinberg": {
+            "meinberg": [
+                "LANTIME"
+            ],
+            "meinbergglobal": [
+                "LANTIME"
+            ]
+        },
+        "MettlerToledo": {
+            "mt": [
+                "IND360",
+                "IND500",
+                "IND780"
+            ]
+        },
+        "Microhard": {
+            "microhardcorp": [
+                "MicrohardCellularModem"
+            ]
+        },
+        "MikroTik": {
+            "mikrotik": [
+                "RouterOS"
+            ]
+        },
+        "Mitsubishi": {
+            "inea": [
+                "MERTU"
+            ],
+            "mitsubishi": [
+                "MELSECiQRCP",
+                "MELSECiQR",
+                "MELSECLCP",
+                "MELSECL",
+                "MELSECQCP",
+                "MELSECQ",
+                "MELSECiQFCP",
+                "MELSECiQF",
+                "MELSECWS",
+                "MELSECQS",
+                "MELSECFCP",
+                "MELSECF",
+                "MERTU"
+            ],
+            "mitsubishielectric": [
+                "MELSECiQRCP",
+                "MELSECiQR",
+                "MELSECLCP",
+                "MELSECL",
+                "MELSECQCP",
+                "MELSECQ",
+                "MELSECiQFCP",
+                "MELSECiQF",
+                "MELSECWS",
+                "MELSECQS",
+                "MELSECFCP",
+                "MELSECF",
+                "MERTU"
+            ],
+        },
+        "Mobotix": {
+            "mobotix": [
+                "MobotixCameras"
+            ]
+        },
+        "Moxa": {
+            "moxa":[
+                "MoxaNPort5600",
+                "NPort",
+                "MoxaEDS",
+                "MoxaMGate",
+                "ioLogik",
+                "EDR",
+                "PT",
+                "AWK",
+                "IKS"
+            ]
+        },
+        "Omron": {
+            "omron": [
+                "CJ2H",
+                "CJ2M",
+                "NJ101",
+                "NJ201",
+                "NJ501",
+                "NX1",
+                "NX7",
+                "CP",
+                "CJ1",
+                "CS1",
+                "NE",
+                "G9SP",
+                "DST1"
+            ]
+        },
+        "Neuberger": {
+            "neuberger": [
+                "Open.Room",
+                "PMC2_4000",
+                "PMC2_4000CP",
+                "PMC2_DR4000",
+                "PMC2_DR4000CP",
+                "PMC2_6000",
+                "PMC2_6000CP"
+            ]
+        },
+        "Nexans" : {
+            "nexans": [
+                "iGigaSwitch"
+            ]
+        },
+        "Panasonic": {
+            "panasonic": [
+                "PanasonicIPCameras"
+            ],
+            "i-pro": [
+                "PanasonicIPCameras"
+            ]
+        },
+        "PhoenixContact": {
+            "phoenixcontact": [
+                "ILC100",
+                "ILC200",
+                "ILC2000",
+                "ILC300",
+                "ILC",
+                "RFC400",
+                "RFC",
+                "AXC3000",
+                "AXC1000",
+                "AXC",
+                "S_MAX400",
+                "S_MAX"
+            ]
+        },
+        "Qnap": {
+            "qnap": [
+                "QES",
+                "QTS",
+                "QuTShero"
+            ]
+        },
+        "RICOH": {
+            "ricoh": [
+                "MFP"
+            ]
+        },
+        "Rockwell": {
+            "rockwellautomation": [
+                "GuardLogix5370",
+                "GuardLogix5380",
+                "GuardLogix5560",
+                "GuardLogix5570",
+                "GuardLogix5580",
+                "GuardLogix",
+                "MicroLogix1000",
+                "MicroLogix1100",
+                "MicroLogix1200",
+                "MicroLogix1400",
+                "MicroLogix1500",
+                "MicroLogix",
+                "CompactLogix5320",
+                "CompactLogix5330",
+                "CompactLogix5340",
+                "CompactLogix5370",
+                "CompactLogix5380",
+                "CompactLogix5480",
+                "CompactLogix",
+                "ControlLogix5550",
+                "ControlLogix5560",
+                "ControlLogix5570",
+                "ControlLogix5580",
+                "ControlLogix",
+                "FlexLogix",
+                "DriveLogix",
+                "SoftLogix5800",
+                "Micro810",
+                "Micro820",
+                "Micro830",
+                "Micro850",
+                "Micro870",
+                "SLC5",
+                "PLC5",
+                "ArmorStartST",
+                "ArmorStartLT",
+                "ArmorStartSC",
+                "PowerMonitor1000",
+                "PowerMonitor5000",
+                "PowerMonitor",
+                "Stratix"
+            ]
+        },
+        "Saia":{
+            "saia_burgess_controls": [
+                "PCD1",
+                "PCD2",
+                "PCD3",
+                "PCD7",
+                "PCD"
+            ]
+        },
+        "Schneider": {
+            "schneider-electric": [
+                "SmartxASBController",
+                "SmartxASPController",
+                "SmartxServer",
+                "Ecostruxure",
+                "Micom",
+                "ModiconMC80",
+                "ModiconEasyM100",
+                "ModiconEasyM200",
+                "ModiconM171",
+                "ModiconM172",
+                "ModiconM218",
+                "ModiconM221",
+                "ModiconM241",
+                "ModiconM251",
+                "ModiconM258",
+                "ModiconM262",
+                "ModiconM340M580CP",
+                "ModiconM340PRA",
+                "ModiconM340",
+                "ModiconM580",
+                "MomentumUnity",
+                "PremiumCP",
+                "Premium",
+                "QuantumUnityCP",
+                "QuantumUnity",
+                "QuantumConcept",
+                "Compact",
+                "MomentumConcept",
+                "Atrium",
+                "Concept",
+                "PowerLogicHDPM",
+                "PowerLogicPM",
+                "PowerLogicEGX100",
+                "PowerLogicEGX",
+                "ION",
+                "WiserSmart"
+            ]
+        },
+        "SEH": {
+            "seh": [
+                "SEHUSBDeviceServers"
+            ],
+            "computertechnik": [
+                "SEHUSBDeviceServers"
+            ]
+        },
+        "SEL": {
+            "selinc": [
+                "Rtac",
+                "Sel"
+            ]
+        },
+        "Siemens": {
+            "siemens": [
+                "S7200",
+                "S7300",
+                "S7400",
+                "S71200",
+                "S71500",
+                "ET200SP",
+                "ET200M",
+                "ET200",
+                "Siprotec4",
+                "Siprotec5",
+                "Siprotec",
+                "SicamAK1703ACP",
+                "SicamBC1703ACP",
+                "SicamTM1703ACP",
+                "SicamTM1703EMIC",
+                "SicamTM1703MIC",
+                "SicamA8000CP800",
+                "SicamA8000CP802",
+                "SicamA8000CP803",
+                "SicamA8000CP805",
+                "SicamQ100",
+                "SicamQ200",
+                "SicamP850",
+                "SicamP855",
+                "Sicam",
+                "PxcModular",
+                "PxcCompact",
+                "Desigo",
+                "Apogee",
+                "SCALANCEX000",
+                "SCALANCEX100",
+                "SCALANCEX200IRT",
+                "SCALANCEX200",
+                "SCALANCEX300",
+                "SCALANCEX400",
+                "SCALANCEX500",
+                "SCALANCEM",
+                "SCALANCES",
+                "SCALANCEW",
+                "SCALANCEX",
+                "SCALANCE",
+                "RuggedCom",
+                "TDCCPU551",
+                "TDCCPU555",
+                "TDCCP50m1",
+                "TDCCP51m1",
+                "LOGO!BM",
+                "LOGO!EM",
+                "LOGO!CM",
+                "APE1808",
+                "SITOP",
+                "NETCP1600"
+            ]
+        },
+        "Sony": {
+            "sony": [
+                "SonyIPCameras"
+            ]
+        },
+        "SprecherAutomation": {
+            "sprecher-automation": [
+                "SPRECONE"
+            ]
+        },
+        "Synology": {
+            "synology": [
+                "DiskStation"
+            ]
+        },
+        "Teltonika": {
+            "teltonika-networks": [
+                "RUT1",
+                "RUT2",
+                "RUT3",
+                "RUT9",
+                "RUT5G",
+                "RUTC50",
+                "RUTM",
+                "RUTX",
+                "TCR100",
+                "OTD140"
+            ]
+        },
+        "Toyota": {
+            "toyoda": [
+                "Toyoda"
+            ]
+        },
+        "Trane": {
+            "trane": [
+                "Symbio",
+                "TracerSCPlus",
+                "TracerSC"
+            ]
+        },
+        "UbiquitiNetworks": {
+            "ubiquiti_networks": [
+                "UbiquitiAP"
+            ]
+        },
+        "Vertiv": {
+            "automatedlogic": [
+                "LiebertSiteScan"
+            ],
+            "emerson": [
+                "LiebertSiteScan"
+            ],
+            "vertiv": [
+                "Watchdog"
+            ],
+        },
+        "Wago": {
+            "wago": [
+                "EdgeController",
+                "CompactController",
+                "Controller750",
+                "ControllerPFC100",
+                "ControllerPFC200",
+                "ControllerPFC300"
+            ]
+        },
+        "Welotec": {
+            "welotec": [
+                "WelotecIndustrialRouters"
+            ]
+        },
+        "Westermo": {
+            "westermo": [
+                "WestermoCellular",
+                "WestermoEDW",
+                "WestermoLynx",
+                "WestermoXDSL"
+            ]
+        },
+        "WiesemannTheis": {
+            "wut": [
+                "WTComServer"
+            ]
+        },
+        "Yokogawa": {
+            "yokogawa": [
+                "CentumVP",
+                "ProSafe"
+            ]
+        },
+        "Zebra": {
+            "zebra": [
+                "ZP500",
+                "FX9500",
+                "Zebra"
+            ]
+        }
+    };
+  }
+}

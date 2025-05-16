@@ -1,0 +1,213 @@
+#TRUSTED 6c999726d4b6c625f00e87afba3a185f436858f1fb31c0ba230d0ba63b99b89ea47e16b823c8ab1a9d0662266747c653cb3d2d117f88eb17743b7fb09b1eb0c44c8c6ff68d5036712f984c9b8e27b052ac92a679e579bde45e48cf19dab81cb8c915c2de7c5f20e72843f4b9326522abe39979c8d42f8b2ceb37afd42faea272fa8237515667d6fdee37e7e921675bc49a911f4d595190846845a62a7dee3280c40ef499a96cd23df3d90f0dbb5a1b64f133797daf2f0eb9f0c0682fceb02a8e74a6c129be195579da3d36032efa1302653346e8d5cf9dc82b9e355c7ca1a6264fc44309d3c1a0d0136ca3febb9df4f366cb8a8f323737e84a8943b11be82851b97c8f428a375ec6196406bed9a4d0c35e0bbd52705e5247c94ee28ef1619445915d912c19b4c77bce67d5a0ff5dba59ba73da783be2a83916a59d8250750c22362b339d11f2cc86ddf6cd44c65c0a2605e351d677d9b68d54020481fdf43bf789066e5b8fe078fd8fc81009db63f709b61cd1ef082d8d70f073161b81f33447c8052f6408b0b0250720bdd5f5565db4f2985f515c8cc740cb7332248a06a2cc6ed5623abfa50bf5fe1eba4ba72f0624df66ed220a47a772a9808df0ef05bb3c0439d9d82b37c5523e34edc225ecfafe6534d663e228c3b1712e052a5b35fe4c0fe652369b77263d17e45ed0b2f32fed197eb8d0f09f80f394ae1648c18c06d1
+#TRUST-RSA-SHA256 98c696d209cf2d5415bdf03d107d063476be27776b0f415a442a0bb932f185dfbcecf01a3d12edce28328dbef7cc7d6a961e7785c0ac9354b79227033ec0c0f172198128e414ab8dbd0e808aa70b1d625ae2d39fbbb3011ba12d451bea1e0791cc00e114f93c08bcfed6c13e6c93f7746e8c73d5101526a8f994fcab4b4b9306b22dfd4e0e2ba2a1cc6a96cb39d798ef39c5d538b33ceb107a05d81036bbeff5ac8ef0df9184d12c50c56f8d6ff8d8069cae6b8dcd101e3ce747be527fec3705562d554bb1bcc656473661b8cbbf160036d74e07dcd8cd3b2bed78d5d523998daa1d3e719b045d8a4011dde0d322a6bbc79d94f5231acc80587c7aebc26ae0a8ce55ea447ec5fe78e0c8834544aa6a43a021716e25900d8621e504bba3000c2e5f65986390f14b0d93683dd2fa2157613b5cc11f6c3d9801c0dfe9f5866c5446b0f4d194d9045cb1b45f7a5c195126d8f64c28062ab8e0e0c8a5e39d591be5eab303c18280306eb797efa3e8e2dc844882bc524cf4954328331dbf5931ffaa7f1024090a4b3fc8c9ce62d008cd162a3f40d9bb8e7a4c38c8e60626314bba2745deb589aa8300857d460cf28591d20d7e95702a5778d43159a2c7eb79753ab266f8d9e7be90de60d316e6230b14a1193ef620943eba1c42837d4f631c2570a673b70cf16b908e7c5b44ed7d1d059cbefb3df3d0042fb06881a2b63918977901c9
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.20
+
+#
+# asa_pre_check_fail
+# check if this is a asa device based on information collected
+#
+function asa_pre_check_fail()
+{
+  # have we already checked that the host is not asa?
+  if(host_info_key_val['host_not_asa'])
+  {
+    # already checked that host is not asa, no need to check again
+    return TRUE;
+  }
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ "(?:^|\n)Cisco Adaptive Security Appliance")
+    return TRUE;
+
+  # Not ASA if one of the following devices
+  if (is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "asa..." in show version
+#
+function handle_asa(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var model, image, asa, show_running, show_software, cmd_output, priv;
+  local_var show_inventory, inventory_model, show_vpn_session_data;
+
+  report += '\n' + 'Local checks have been enabled for Cisco ASA.\n';
+  asa = pgrep(pattern:"^Cisco Adaptive Security Appliance Software Version [0-9.]+\(.*\).*", string:cmd_res);
+  if(!asa)
+  {
+    failure_kb_msg =
+      'The device appears to be Cisco ASA, however it was not possible to\n'+
+      'determine the installed version. OS Security Patch Assessment is not available.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  model = pregmatch(string:cmd_res, pattern:"Hardware:\s*(?:ASA\s*(?:[^,]+?)?|(\w[^,]+))(?:,|\r\n|$)");
+
+  # obtain the model via show inventory too.
+  # if model via show version is contained in
+  # model via show inventory, keep the later
+  show_inventory = run_command(
+                    cmd:"show inventory",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if (show_inventory) replace_kb_item(name:"Host/Cisco/show_inventory", value:show_inventory);
+  inventory_model = pregmatch(string:show_inventory,
+                              pattern:'Name: *"Chassis", *DESCR:.*ASA *([^\\s]+)');
+
+  if ((!isnull(model) && !isnull(inventory_model) && model[1] >< inventory_model[1]) ||
+      (isnull(model) && !isnull(inventory_model)))
+  {
+    model = inventory_model;
+  }
+
+  if (!isnull(model))
+    replace_kb_item(name:"Host/Cisco/ASA/model", value:model[1]);
+
+  # determine if the system is SMP or not
+  image = pregmatch(string:cmd_res, pattern:'\\nSystem image file is "[^:]+:/([^"]+)');
+  if (!isnull(image))
+  {
+    set_kb_item(name:"Host/Cisco/ASA/image", value:image[1]);
+    if ( "-smp-" >< image[1] )
+      set_kb_item(name:"Host/Cisco/ASA/SMP", value:TRUE);
+  }
+
+  # Collect VPN session stats for downstream analysis
+  show_vpn_session_data = run_command(
+                           cmd:"show vpn-sessiondb ratio protocol",
+                           session:session,
+                           use_shell_handler:use_shell_handler,
+                           channel:channel);
+  if (show_vpn_session_data)
+    replace_kb_item(name:"Host/Cisco/show_vpn-sessiondb_ratio_protocol", value:show_vpn_session_data);
+
+  # OS fingerprinting
+  set_kb_item(name:"Host/OS/showver", value:asa);
+  set_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  set_kb_item(name:"Host/OS/showver/Type", value:"embedded");
+  get_cisco_mac_addrs(systype:"ASA", session:session, use_shell_handler:use_shell_handler, channel:channel);
+  # local check information
+  set_kb_item(name:"Host/Cisco/ASA", value:asa);
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_asa.static', value: 120);
+  set_kb_item(name:"Host/Cisco/show_ver", value:cmd_res);
+
+  show_running = run_command(
+                  cmd:"show running",
+                  session:session,
+                  use_shell_handler:use_shell_handler,
+                  force_priv_escl:TRUE,
+                  channel:channel);
+  show_software = run_command(
+                    cmd:"show software version",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+  if (show_running)
+  {
+    set_kb_item(name:"Secret/Host/Cisco/show_running", value:show_running);
+    set_kb_item(name:"Secret/Host/Cisco/Config/show_running-config", value:show_running);
+  }
+  if (show_software) set_kb_item(name:"Host/Cisco/show_software_version", value:show_software);
+  var max_privs = 0;
+  cmd_output = run_command(
+                cmd:'show privilege',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output && "Current privilege level is" >< cmd_output)
+  {
+    priv = pregmatch(pattern:'Current privilege level is ([0-9]*)', string:cmd_output);
+    if(priv && priv[1])
+    {
+      priv = int(priv[1]);
+
+      if(priv == 15)
+        max_privs = 1;
+
+      set_kb_item(name:'Host/Cisco/show_privilege', value:priv);
+    }
+  }
+  else #some ASA versions only respond to "show curpriv"
+  {
+    cmd_output = run_command(
+                  cmd:'show curpriv',
+                  session:session,
+                  use_shell_handler:use_shell_handler,
+                  channel:channel,
+                  force_priv_escl:TRUE);
+    if(cmd_output && "Current privilege level :" >< cmd_output)
+    {
+      priv = pregmatch(pattern:'Current privilege level : ([0-9]*)', string:cmd_output);
+      if(priv && priv[1])
+      {
+        priv = int(priv[1]);
+
+        if(priv == 15)
+          max_privs = 1;
+
+        set_kb_item(name:'Host/Cisco/show_privilege', value:priv);
+      }
+    }
+  }
+
+  if(!isnull(session))
+    replace_kb_item(name:"Host/Auth/SSH/" + session.get_port() + "/MaxPrivs", value:max_privs);
+
+  cmd_output = run_command(
+                cmd:'show running-config all',
+                session:session,
+                use_shell_handler:use_shell_handler,
+                channel:channel,
+                force_priv_escl:TRUE);
+  if(cmd_output)
+    set_kb_item(name:"Secret/Host/Cisco/Config/show_running-config_all", value:cmd_output);
+
+  report += '\nOS Security Patch Assessment is available for Cisco ASA.';
+}
+
+#
+# callback for systems without "asa..." in show version
+#
+function handle_not_asa(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_asa'] = TRUE;
+  }
+}

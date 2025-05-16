@@ -1,0 +1,434 @@
+#TRUSTED 6417213d9b1ff449bd9c5b70f6acc39cd8c7d5f62ba01ce183ff2e4aadbfc16ed34706cfc719f1585b64227d702ac434273526d252f8fd9c0627282a89120b3107ce8f672784c9348d137e06b8c9559d5061140cc7cee33afd1952f6dbfcf4ebf82e1d588f894c1adcb749ba2ca3f6498bfb877066e8d493e7f1aa7683164fdc8fc9c71cd1cb69d67693eeb62f893c1ebdb87c42ed4e569bfe816a68daf9d52696374cf9043c9ddd8ff45b11a3ef19a22bc0850a5e4400f1436919b49d77585e53371ac8ee047eb5da83f7aacba55deb4d39afc2355e3e47b609a79185b298aa6fba328276e29e207f3b477ac78b4df4c0d2b19e0cb9049ada8bf9bf098aab45adb84fea3df41c13ef55898e6be36013b6c47688f8c5142e8933d65a1aa4fc48dc3112e71d2d88b7bac86a6c5bcc75883ba1e0305c4d6726a0fed36ac73d7d5694dd96492a62d5e38e6002a727d65da408dc71c3e6afa9746002c171c400f20f8fe332e9658f572854f02e8171e85db63fa803e476c04a5733253cf4be55b3eed76ef209f4d4f8aeaffa5ce6007b956217f5296c78a99a62d5760457ac7c1b8d4b46f3fa6414ccd0907829ff53161517d8b63aa0c60d61dbbbd0f3993e53155044e4a9a2227a958a013936bdba56e0da8b4a96e358eff32aa60536650cc3a6f3c76eaeb3a89afc7c9ea9d126a25bad122ff38eccca04bc6ebfd8f37b5fdfa6a4
+#TRUST-RSA-SHA256 a20c74efd61355f9c56c2811ac9bccf138050900bcabc74eb57838073818afd6ffd0b47469624cf40038c30439c0c90662fd7504ee8f3bc7618205bf53f6888100365cb873b90ba87dba0cde4bf53bd4d864075edcee4fee7a766fbff10aa70e6efafcd15eb2c530182980b996012bdf220892096e97c5dc8cb4c174b862c99868e385ee885aef83023da13a897fb66f21f2b13d7b916ec3ed0696ffdebff21f161a9248fbace156ecf7227d0175576df171d77b9b4079d2270b9c1688999846809e8458b328adad96e08d493af84df4d50b8b294f63dbb542fcfbdcc83c5b206d315995a139c5d4f1d8669d266e2d459bf47dac2f2f0019932d9cd56352a3d142eaea9ed167e090a76bf99e1eebb6a17b41a27589c716213805f9c8f2ae6eb12f9d079876bbb699196953dc594e667aa49f2d8d2f4d497a9f7e4c4eb544a4be67e02a9854149f85e323988b233876639b645127b8de74641f2dc1bce3abfc2f21a82f6dbcfd712cb403b86bf488a2ab0aecb93ed042e43e80708ed47a1154dea8df8a762fc562b2e4e1e3fb460c8ba78de397560257bc1645c34b11fbabeafda4a1c76d098d73d838feb49ffc61427b04c33d9c8d424d4f469a8e333ef347f60212965fbaa9139015098812b3d7039725a35e92fdc8fa407303ec513a373233d0eda2bb11075964f48e6defb354f00b0c592bdb95ca7e5f8d9ec6c895ecc186
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision: 1.6
+
+
+function handle_cisco_aci(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var cpu, err_msg;
+  local_var chassis_pattern, chassis_match;
+  local_var model_pattern, model_match;
+  local_var role_pattern, role_match;
+  local_var chassis_version_id_pattern, chassis_version_id_match;
+  local_var firmware_res, firmware_res_ok;
+  local_var fversion_pattern, fversion_match;
+  local_var fdesc_pattern, fdesc_match;
+  local_var bversion_pattern, bversion_match;
+  local_var bflash_pattern, bflash_match;
+
+  local_var command;
+  local_var interrupted_errors;
+  interrupted_errors = 0;
+
+  replace_kb_item(name:"Host/aci/system/chassis/summary", value: cmd_res);
+
+  report += '\nThe remote Cisco Nexus switch is running in ACI-mode.\n';
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  # Set chassis elements as KB items
+
+  # description    : Nexus C9332C chassis
+  chassis_pattern = "\n\s*description\s+:\s([a-zA-z0-9\s]+)\schassis";
+  chassis_match = pregmatch(string:cmd_res, pattern:chassis_pattern);
+  if (!empty_or_null(chassis_match) && !empty_or_null(chassis_match[1]))
+  {
+    replace_kb_item(name:"Host/Cisco/chassis/description", value: chassis_match[1]);
+  }
+
+  # model          : N9K-C9332C
+  model_pattern = "\n\s*model\s+:\s([a-zA-Z0-9\-]+)\n";
+  model_match = pregmatch(string:cmd_res, pattern:model_pattern);
+  if (!empty_or_null(model_match) && !empty_or_null(model_match[1]))
+  {
+    replace_kb_item(name:"Host/Cisco/chassis/model", value: model_match[1]);
+    report += 'Model ' + model_match[1] + '\n';
+  }
+
+  # role          : spine
+  role_pattern = "\n\s*role\s+:\s([a-zA-z0-9\s]+)\n";
+  role_match = pregmatch(string:cmd_res, pattern:role_pattern);
+  if (!empty_or_null(role_match) && !empty_or_null(role_match[1]))
+  {
+    replace_kb_item(name:"Host/Cisco/chassis/role", value: role_match[1]);
+  }
+
+  # version-id          : V03
+  chassis_version_id_pattern = "\n\s*version-id\s+:\s([a-zA-z0-9\s]+)\n";
+  chassis_version_id_match = pregmatch(string:cmd_res, pattern:chassis_version_id_pattern);
+  if (!empty_or_null(chassis_version_id_match) && !empty_or_null(chassis_version_id_match[1]))
+  {
+    replace_kb_item(name:"Host/Cisco/chassis/version-id", value: chassis_version_id_match[1]);
+  }
+
+  # Gather firmware details
+  command = "cat /aci/system/firmware-version/summary";
+  firmware_res_ok = FALSE;
+  firmware_res = run_command(cmd:command,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+  if (check_cmd_interrupted_local_checks(session:session,
+        command:command))
+    interrupted_errors++;
+
+  if (firmware_res &&
+      "/aci/system/firmware-version/summary" >!< firmware_res &&
+      "No such file or directory" >!< firmware_res)
+  {
+    firmware_res_ok = TRUE;
+    replace_kb_item(name:"Host/aci/system/firmware/summary", value: firmware_res);
+
+    # version                : n9000-14.2(3l)
+    fversion_pattern = "firmware-version\nversion\s+:\s([a-zA-z0-9\-\.\(\)\s]+)\n";
+    fversion_match = pregmatch(string:firmware_res, pattern:fversion_pattern);
+    if (!empty_or_null(fversion_match) && !empty_or_null(fversion_match[1]))
+    {
+      replace_kb_item(name:"Host/Cisco/firmware/version", value: fversion_match[1]);
+      report += 'Firmware Version ' + fversion_match[1] + '\n';
+    }
+
+    # description            : version 14.2(3l) [build 14.2(3l)]
+    fdesc_pattern = "\n\s*description\s+:\s([\.a-zA-z0-9\s\[\]\(\)]+)\n";
+    fdesc_match = pregmatch(string:firmware_res, pattern:fdesc_pattern);
+    if (!empty_or_null(fdesc_match) && !empty_or_null(fdesc_match[1]))
+    {
+      replace_kb_item(name:"Host/Cisco/firmware/description", value: fdesc_match[1]);
+    }
+
+    # bios-version           : 05.39
+    bversion_pattern = "\n\s*bios-version\s+:\s([\.a-zA-z0-9\s]+)\n";
+    bversion_match = pregmatch(string:firmware_res, pattern:bversion_pattern);
+    if (!empty_or_null(bversion_match) && !empty_or_null(bversion_match[1]))
+    {
+      replace_kb_item(name:"Host/Cisco/firmware/bios_version", value: bversion_match[1]);
+    }
+
+    # kickstart-file         : bootflash:///aci-n9000-dk9.14.2.3l.bin
+    bflash_pattern = "\n\s*kickstart-file\s+:\sbootflash:\/\/\/([\.a-zA-z0-9\-]+)\n";
+    bflash_match = pregmatch(string:firmware_res, pattern:bflash_pattern);
+    if (!empty_or_null(bflash_match) && !empty_or_null(bflash_match[1]))
+    {
+      replace_kb_item(name:"Host/Cisco/firmware/bootflash_version", value: bflash_match[1]);
+      report += 'Bootflash Version ' + bflash_match[1] + '\n';
+    }
+
+
+    # Checking if firmware description conforms to our supported version checks
+    # expecting something like 'n9000-14.2(3l)'
+    local_var nexus_desc_pattern = "^n9[\d]{3}-\d+\.\d+\(.+\)$";
+
+    if (isnull(firmware_res))
+    {
+      failure_kb_msg = "Cisco Nexus Switch version does not match known patterns.";
+      failure_kb_type = lcx::ISSUES_INFO;
+      report += '\n' + failure_kb_msg + '\nThe output of "cat /etc/system-release" is :\n' + cmd_res + '\n';
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+      return TRUE;
+    }
+    else if (!empty_or_null(fversion_match) &&
+             !empty_or_null(fversion_match[1]) &&
+             !preg(pattern:nexus_desc_pattern, string:fversion_match[1]))
+    {
+      report +=
+        '\nOS Security Patch Assessment is not supported for this Cisco Nexus Switch release.\n';
+      sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+      return TRUE;
+    }
+  }
+
+  if (firmware_res_ok && !interrupted_errors)
+  {
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_aci.static', value: 147);
+    report += '\nOS Security Patch Assessment is available for this host.';
+    return TRUE;
+  }
+
+
+  # error handling
+  if (session.cmd_error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+  }
+
+  if (empty_or_null(firmware_res))
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because the command \'cat
+/aci/system/firmware-version/summary\' failed to produce any results.';
+    failure_kb_msg = "'cat /aci/system/firmware-version/summary' did not return any result";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += '\n' + err_msg + '\n';
+    return TRUE;
+  }
+
+
+  if (interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because the following' +
+      '\ncommands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing local checks from being enabled:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  return TRUE;
+}
+
+
+function handle_cisco_aci_manager(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var cpu, err_msg;
+  local_var fversion_pattern, fversion_match;
+  local_var controller_enum;
+  local_var ver_enum, env_enum, fex_enum;
+
+  local_var command;
+  local_var interrupted_errors;
+  interrupted_errors = 0;
+
+  replace_kb_item(name:"Host/aci/system/controllers/summary", value: cmd_res);
+
+  report += '\nThe remote Cisco Application Policy Infrastructure Controller (APIC) is running in ACI-mode.\n';
+
+  command = "show controller";
+  controller_enum = run_command(cmd:command,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  if (check_cmd_interrupted_local_checks(session:session,
+        command:command))
+    interrupted_errors++;
+
+  if (!empty_or_null(controller_enum))
+    replace_kb_item(name:"Host/Cisco/apic/show_controller", value:controller_enum);
+
+
+  command = "show version";
+  ver_enum = run_command(cmd:command,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  if (check_cmd_interrupted_local_checks(session:session,
+        command:command))
+    interrupted_errors++;
+
+  if (!empty_or_null(ver_enum))
+    replace_kb_item(name:"Host/Cisco/apic/show_version", value:ver_enum);
+
+
+  # APIC (manager of ACI) does things differently
+  if ("deprecated" >< ver_enum && "NXOS" >< ver_enum)
+  {
+    # NX-OS Command Reference:
+    # https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus5000/sw/command/reference/fex/n5k-fex-cr/n5k-fex_cmds_show.html
+    command = "show fex detail";
+    fex_enum = run_command(cmd:command,
+                          session:session,
+                          use_shell_handler:use_shell_handler,
+                          channel:channel);
+
+    if (check_cmd_interrupted_local_checks(session:session,
+          command:command))
+      interrupted_errors++;
+
+    if (!empty_or_null(fex_enum))
+      replace_kb_item(name:"Host/Cisco/apic/show_fex_detail", value:fex_enum);
+
+    command = "show environment fex";
+    env_enum = run_command(cmd:command,
+                          session:session,
+                          use_shell_handler:use_shell_handler,
+                          channel:channel);
+
+    if (check_cmd_interrupted_local_checks(session:session,
+          command:command))
+      interrupted_errors++;
+
+    if (!empty_or_null(env_enum))
+    {
+      replace_kb_item(name:"Host/Cisco/apic/env", value:env_enum);
+      replace_kb_item(name:"Host/Cisco/apic/show_environment_fex", value:env_enum);
+    }
+  }
+
+  # Checking if firmware description conforms to our supported version checks
+  # expecting something like ' 4.1(1l)'
+  # version (version is the only item in either output that contains parens)
+  fversion_pattern = "\s([\d]+\.[\d]+\(.+\))";
+  fversion_match = pregmatch(string:controller_enum, pattern:fversion_pattern);
+  if (!empty_or_null(fversion_match) && !empty_or_null(fversion_match[1]))
+  {
+    replace_kb_item(name:"Host/Cisco/firmware/version", value: fversion_match[1]);
+    replace_kb_item(name:"Host/Cisco/apic/firmware/version", value: fversion_match[1]);
+    report += 'Firmware Version ' + fversion_match[1] + '\n';
+  }
+  else
+  {
+    fversion_match = pregmatch(string:ver_enum, pattern:fversion_pattern);
+    if (!empty_or_null(fversion_match) && !empty_or_null(fversion_match[1]))
+    {
+      replace_kb_item(name:"Host/Cisco/firmware/version", value: fversion_match[1]);
+      replace_kb_item(name:"Host/Cisco/apic/firmware/version", value: fversion_match[1]);
+      report += 'Firmware Version ' + fversion_match[1] + '\n';
+    }
+    else
+    {
+      fversion_pattern = "FEX version\:\s([\d]+\.[\d]+\(\d+\))";
+      fversion_match = pregmatch(string:fex_enum, pattern:fversion_pattern);
+      if (!empty_or_null(fversion_match) && !empty_or_null(fversion_match[1]))
+      {
+        replace_kb_item(name:"Host/Cisco/firmware/version", value: fversion_match[1]);
+        replace_kb_item(name:"Host/Cisco/apic/firmware/version", value: fversion_match[1]);
+        report += 'Firmware Version ' + fversion_match[1] + '\n';
+      }
+
+    }
+  }
+
+  command = "env";
+  env_enum = run_command(cmd:command,
+                        session:session,
+                        use_shell_handler:use_shell_handler,
+                        channel:channel);
+
+  if (check_cmd_interrupted_local_checks(session:session,
+        command:command))
+    interrupted_errors++;
+
+  if (!empty_or_null(env_enum))
+  {
+    replace_kb_item(name:"Host/Cisco/apic/env", value:env_enum);
+  }
+
+  if (empty_or_null(fversion_match) || empty_or_null(fversion_match[1]))
+  {
+    failure_kb_msg = "OS Security Patch Assessment is not available because the Cisco Nexus APIC version matching known patterns was not found in the output of the commands 'show fex detail', 'show controller' or 'show version'.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  command = "uname -m";
+  cpu = run_command(cmd:command,
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+  if (check_cmd_interrupted_local_checks(session:session, command:command))
+    interrupted_errors++;
+
+  if (cpu && !interrupted_errors)
+  {
+    host_info_key_val['cpu'] = chomp(cpu);
+
+    # Before returning, since all is well,
+    #  try to harvest data from the other 'nx-os style shell' associated with the APIC
+
+    session.close_connection();
+    var nxos_session = new("sshlib::session");
+    if (!sshlib::try_ssh_kb_settings_login(session:nxos_session))
+    {
+      failure_kb_msg = "OS Security Patch Assessment is not available because of a failure encountered while attempting to open a new connection to the NXOS-style shell.\n";
+      failure_kb_type = lcx::ISSUES_INFO;
+      nxos_session.close_connection();
+      report += '\n' + failure_kb_msg + '\n';
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+      return TRUE;
+    }
+
+    var aci_sh = new("sshlib::nexus_shell_manager");
+    var aci_ch = nxos_session.open_shell(shell_handler:aci_sh, skip_check_shell:FALSE);
+    if (aci_ch)
+    {
+      var res = aci_sh.run_command(session:nxos_session, command:"env", channel:aci_ch, cmd_shell:sshlib::NXOS_MODE);
+      if (!empty_or_null(res) && "SSH_" >< res)
+      {
+        replace_kb_item(name:"Host/Cisco/apic/env", value:res);
+
+        res = NULL;
+        res = aci_sh.run_command(session:nxos_session, command:"show running-config", channel:aci_ch, cmd_shell:sshlib::NXOS_MODE);
+        if (!empty_or_null(res) &&
+            "Command:" >< res &&
+            "Time:" >< res)
+        {
+          replace_kb_item(name:"Secret/Host/Cisco/apic/show_running-config", value:res);
+        }
+        nxos_session.close_connection();
+        report += '\nOS Security Patch Assessment is available for this host.';
+        sshlib::enable_local_checks();
+        return TRUE;
+      }
+      else
+      {
+        failure_kb_msg = "OS Security Patch Assessment is not available because of a failure encountered while attempting to execute commands on the NXOS-style shell.\n";
+        failure_kb_type = lcx::ISSUES_INFO;
+        nxos_session.close_connection();
+        report += '\n' + failure_kb_msg + '\n';
+        sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+        return TRUE;
+      }
+    }
+    else
+    {
+      failure_kb_msg = "OS Security Patch Assessment is not available because of a failure encountered while attempting to connect to the NXOS-style shell.\n";
+      failure_kb_type = lcx::ISSUES_INFO;
+      nxos_session.close_connection();
+      report += '\n' + failure_kb_msg + '\n';
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+      return TRUE;
+    }
+  }
+
+
+  # error handling
+  if (session.cmd_error)
+  {
+    err_msg = 'OS Security Patch Assessment is not available because of the following error :' + session.cmd_error;
+  }
+
+  if (!cpu)
+  {
+    if(!err_msg) err_msg = 'OS Security Patch Assessment is not available because the command \'uname -m\' failed to produce any results.';
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += '\n' + err_msg + '\n';
+    session.close_connection();
+    return TRUE;
+  }
+
+  if (interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because the following' +
+      '\ncommands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing local checks from being enabled:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    session.close_connection();
+    return TRUE;
+  }
+
+  # code execution should never get this far, but just in case
+  session.close_connection();
+  return TRUE;
+}
+
+

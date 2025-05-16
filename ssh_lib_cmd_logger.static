@@ -1,0 +1,335 @@
+#TRUSTED 04930da8d6d3d0309b0136476f3541f7d6b60341d55e8ff1d43ad9a8b54b7dcd9c90bc069a0f32db0f973fd5a2b56c1f25cea38100d8e9a7b5cc2c80b0ece01cf9ee87b76c4ca70a1c322c2ea25c0d8ce536aedcddda49b47da0c1299df0daea755e5f6575703543eeb3555b680ca80ef624aaa11ce3db6b660940332a50bc817e561a846c4565fff701bcf9f9adcf56e7b3637e406ea42767da6c199a2de1333ff35c945cd70ddc0eee7e5aacd7bb212fab730ac1bac75eca981bf2a4c166ba30cd411244deda6fa53a62ff2e508fa52895b30df6584223af4f0da5512a6a86c3db957202cd8023d3995863a2d07a7cc133c68b62a0a891b8cba04d9158fbd21e8af8cc2c16d35bda22be891d0dbe788cf99025c25755727185557ff03d215e8301863ae8a752c71d4a1b0ce72bf5d45e5b3adab8eaa689833b683a2a568d7fdb4162a96014f5dc3c58892d597e725e2c1bfcdea59ad6a2d18c49124daaf08374d8e3c112e7ed1efc02b204d78cd62d04442c991213e5f04798f923b0496c6d94645342d4a539b22c71a91bfd1f7daacd242ec56fa8cb2bebb8a9189a806a6bd0574b177447cb95b89e9822574b2ef5763c34b10d2e2c0290f56826a4c390d0c9f6895010bd13a1210b34000db49cdc0208772b8d73d6a055ab5d118be5e3c7d6dbea847b9eee0ec27148c9cdf6eaea80c70ef318e7971b487bec7dc954917a
+#TRUST-RSA-SHA256 525212b865fa0719c6055054c718adffa123b54c5408bea54859c359f7b3d22822d4b65cdf4512304432cda20ab773ef820b09036f8c9a64dcd25814ddb24e429e7562f64990b8417f1412f4180f11e5df853ba147a45defed23cc2981948f67afd0cd36beacebe45723c8c01a48c1c76f4a4e0cf2e88e9fc959107d961672abc3f0d580eca13568851ee10991595df0ec69a55a71dc3ff7cd45901af973bb4f10233559ab9d3df9d2fe47d7e22ed06a9019bca80fe28fcd3793ec58b79af53b83c7d44afebd4df8735496ecd39db5243c738cb661f86119580c910b1f0c96d500766cfd954ef0b2be1e1dc906c7b3bb013235a4f1e432334e194ada2345bd0617f1792a65b4b3c356b6fcfb4b3a9a568913a4ed54bea5c8b6d5fab0415270dd7ca7ed2e3fff73b7e06595ed348edec06d2795bcce43aac1fa447607ae6b8a19dfc60716edc34d1042145e610a5570cde7b265746789ea7ac287ef0cf940993c6d4309ea2921e9db5164a0a39b8840ddf394b6a1575beea579c79e5f371a7255e0b75472b29c3c2d45bf6bb0e5ec2a71fb07e47e97e34234698e01eb419d529b84755db5665bac6a564b0c39bc94006f325ecca15addb0547fd55b67c616158e8a9ce7006558049f5ea960f7b346d595c80d218924d522d0286edf9bf7501b8ec75362ef3c2a3e133cf5a3f6f0ec70f897a88c21246fc6ba164f877d12679bac
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.8
+#
+###
+
+##
+# Track if the table (ssh_cmd_log_json) is created for logging SSH commands in JSON format.
+##
+global_var ssh_command_log_table_built = FALSE;
+
+global_var _SCRIPT_NAME = SCRIPT_NAME;
+
+namespace sshlib
+{
+  object cmd_logger
+  {
+    ##
+    # Constructor function for cmd_logger object
+    #
+    # @return implicit NULL return
+    # @category SSH
+    # @nessus 6.0
+    ##
+    function cmd_logger()
+    {
+      query_scratchpad(
+        "CREATE TABLE IF NOT EXISTS ssh_cmd_log(
+         plugin text,
+         cmd text,
+         md5 text,
+         response text,
+         error text,
+         ran_with_priv_escl integer,
+         forced_escl integer,
+         failed_needs_escl integer,
+         priv_escl_failed integer,
+         user text,
+         escl_user text,
+         escl_method text,
+         emulated integer
+       );");
+
+      query_scratchpad(
+        "CREATE TABLE IF NOT EXISTS ssh_always_escl(
+          cmd_md5 text
+         );");
+    }
+
+    ##
+    # Add log for SSH command including response, user, and escalation information.
+    #
+    # @param cmd Executed command
+    # @param response Command response
+    # @param error Associated error message
+    # @param ran_with_priv_escl Boolean ran with privilege escalation
+    # @param forced_escl Boolean privilege escalation forced
+    # @param failed_needs_escl Boolean command failed needs privilege escalation
+    # @param priv_escl_failed Boolean privilege escalation failed
+    # @param user Login username
+    # @param escl_user Escalation username
+    # @param escl_method Escalation method
+    #
+    # @return NULL
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    public function add(cmd, escl_cmd, response, error, ran_with_priv_escl,
+      forced_escl, failed_needs_escl, priv_escl_failed, user,
+      escl_user, escl_method, emulated)
+    {
+      if(!cmd) return NULL;
+
+      var resp = response;
+      if (!isnull(resp)) resp = chomp(substr(response, 0, 512));
+      else resp = "";
+
+      if(!error) error = "";
+      else error = chomp(string_reverse(chomp(string_reverse(error))));
+
+      if(!ran_with_priv_escl) ran_with_priv_escl = 0;
+      else ran_with_priv_escl = 1;
+
+      if(!forced_escl) forced_escl = 0;
+      else forced_escl = 1;
+
+      if(!failed_needs_escl) failed_needs_escl = 0;
+      else failed_needs_escl = 1;
+
+      if(!priv_escl_failed) priv_escl_failed = 0;
+      else priv_escl_failed = 1;
+
+      if(!user) user = "";
+      if(!escl_user) escl_user = "";
+      if(!escl_method) escl_method = "";
+      if(!escl_cmd) escl_cmd = "";
+      if(!emulated) emulated = 0;
+
+      var md5 = hexstr(MD5(cmd));
+
+      query_scratchpad(
+        "INSERT INTO ssh_cmd_log VALUES(
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", _SCRIPT_NAME, cmd,
+        md5, resp, error, ran_with_priv_escl, forced_escl, failed_needs_escl,
+        priv_escl_failed, user, escl_user, escl_method, emulated);
+
+      if(ran_with_priv_escl)
+        query_scratchpad("INSERT INTO ssh_always_escl VALUES (?);", md5);
+
+      log_command_and_response(
+        cmd                : cmd,
+        escl_cmd           : escl_cmd,
+        response           : response,
+        error              : error,
+        ran_with_priv_escl : ran_with_priv_escl,
+        forced_escl        : forced_escl,
+        failed_needs_escl  : failed_needs_escl,
+        priv_escl_failed   : priv_escl_failed,
+        user               : user,
+        escl_user          : escl_user,
+        escl_method        : escl_method,
+        emulated           : emulated
+      );
+    }
+
+    ##
+    #  Log error for SSH command including response, user, and escalation information.
+    #
+    # @param cmd Executed command
+    # @param response Command response
+    # @param error Associated error message
+    # @param ran_with_priv_escl Boolean ran with privilege escalation
+    # @param forced_escl Boolean privilege escalation forced
+    # @param failed_needs_escl Boolean command failed needs privilege escalation
+    # @param priv_escl_failed Boolean privilege escalation failed
+    # @param user Login username
+    # @param escl_user Escalation username
+    # @param escl_method Escalation method
+    #
+    # @return NULL
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    public function log_error(cmd, response, error, ran_with_priv_escl,
+      escl_cmd, forced_escl, failed_needs_escl, priv_escl_failed, user,
+      escl_user, escl_method)
+    {
+      if(!cmd) return NULL;
+
+      if(!ran_with_priv_escl) ran_with_priv_escl = 0;
+      else ran_with_priv_escl = 1;
+
+      if(!forced_escl) forced_escl = 0;
+      else forced_escl = 1;
+
+      if(!failed_needs_escl) failed_needs_escl = 0;
+      else failed_needs_escl = 1;
+
+      if(!priv_escl_failed) priv_escl_failed = 0;
+      else priv_escl_failed = 1;
+
+      if(!user) user = "";
+      if(!escl_user) escl_user = "";
+      if(!escl_method) escl_method = "";
+      if(!escl_cmd) escl_cmd = "";
+
+      log_command_and_response(
+        cmd                : cmd,
+        escl_cmd           : escl_cmd,
+        response           : response,
+        error              : error,
+        ran_with_priv_escl : ran_with_priv_escl,
+        forced_escl        : forced_escl,
+        failed_needs_escl  : failed_needs_escl,
+        priv_escl_failed   : priv_escl_failed,
+        user               : user,
+        escl_user          : escl_user,
+        escl_method        : escl_method
+      );
+      return NULL;
+    }
+
+    ##
+    # Log SSH command including response, user, and escalation information to debug log and JSON log.
+    #
+    # @param cmd Executed command
+    # @param response Command response
+    # @param error Associated error message
+    # @param ran_with_priv_escl Boolean ran with privilege escalation
+    # @param forced_escl Boolean privilege escalation forced
+    # @param failed_needs_escl Boolean command failed needs privilege escalation
+    # @param priv_escl_failed Boolean privilege escalation failed
+    # @param user Login username
+    # @param escl_user Escalation username
+    # @param escl_method Escalation method
+    #
+    # @return NULL
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    private function log_command_and_response(cmd, escl_cmd, response,
+      error, ran_with_priv_escl, forced_escl, failed_needs_escl,
+      priv_escl_failed, user, escl_user, escl_method, emulated)
+    {
+      if(!cmd) return NULL;
+
+      var resp = response;
+      if (!isnull(response) && strlen(response) >= 512) resp = chomp(substr(resp, 0, 512));
+
+      if(!user) user = "";
+      if(!escl_user) escl_user = "";
+      if(!escl_method) escl_method = "";
+
+      var hostname = get_host_name();
+      if(!hostname) hostname = get_host_ip();
+
+      var message = {
+        'plugin'              : _SCRIPT_NAME,
+        'command'             : cmd,
+        'constructed_command' : escl_cmd,
+        'response'            : resp,
+        'error'               : error,
+        'hostname'            : hostname,
+        'user'                : user,
+        'escl_user'           : escl_user,
+        'escl_method'         : escl_method,
+        'ran_with_priv_escl'  : ran_with_priv_escl,
+        'forced_escl'         : forced_escl,
+        'failed_needs_escl'   : failed_needs_escl,
+        'priv_escl_failed'    : priv_escl_failed,
+        'emulated'            : emulated
+      };
+
+
+      add_ssh_cmd_log_entry(message:serialize(message));
+      dbg::detailed_log(lvl:1, msg:serialize(message), name:'ssh_commands.log');
+    }
+
+    ##
+    # Add JSON command log entry.
+    #
+    # @param message JSON entry to log
+    #
+    # @return implicit NULL
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    private function add_ssh_cmd_log_entry(message)
+    {
+      if(!ssh_command_log_table_built)
+      {
+        query_scratchpad("CREATE TABLE IF NOT EXISTS ssh_cmd_log_json (" +
+                           "id        INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                           "json_text TEXT, " +
+                           "host      TEXT, " +
+                           "time      DATETIME DEFAULT current_timestamp );");
+        ssh_command_log_table_built = TRUE;
+      }
+      query_scratchpad("INSERT INTO ssh_cmd_log_json (json_text, host) VALUES (?, ?);", message, get_host_name());
+    }
+
+    ##
+    # Get command log entries.
+    #
+    # @param using_priv_escal Boolean with privilege escalation
+    #
+    # @return List of arrays containing logged command data
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    public function get_commands(using_priv_escl)
+    {
+      var res;
+      if(!using_priv_escl)
+        res = query_scratchpad("SELECT plugin, cmd, md5, response, error, ran_with_priv_escl, forced_escl FROM ssh_cmd_log ORDER BY ran_with_priv_escl ASC");
+      else
+        res = query_scratchpad("SELECT plugin, cmd, md5, response, error, forced_escl FROM ssh_cmd_log WHERE ran_with_priv_escl=1");
+
+      return res;
+    }
+
+    ##
+    # Should privilege escalation be used for the command.
+    #
+    # @param command Command to check
+    #
+    # @return TRUE if should be escalated otherwise FALSE
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    public function should_escl_privs(cmd)
+    {
+      var md5 = hexstr(MD5(cmd));
+      var res = query_scratchpad("SELECT cmd_md5 FROM ssh_always_escl WHERE cmd_md5=?", md5);
+      if(empty_or_null(res))
+        return FALSE;
+      return TRUE;
+    }
+
+    ##
+    # Add MD5(s) of command(s) that should be escalated.
+    #
+    # @param list_txt MD5(s) of command(s) to be escalated one per line
+    #
+    # @return implicit NULL
+    #
+    # @category SSH
+    # @nessus 6.0
+    ##
+    public function add_escl_md5s(list_txt)
+    {
+      var list_entries = split(list_txt, sep:'\n', keep:FALSE);
+      var item, entry;
+      foreach entry (list_entries)
+      {
+        item = pregmatch(pattern: "^([a-fA-F0-9]{32})\s*(\n|$)", string: entry);
+        if(!isnull(item) && !isnull(item[1]))
+          query_scratchpad("INSERT INTO ssh_always_escl VALUES (?);", tolower(item[1]));
+      }
+    }
+  }
+}

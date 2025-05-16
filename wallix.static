@@ -1,0 +1,351 @@
+#TRUSTED 4b7dbe35775ca18365a66f6e09208c51120251a4197d505d058ede7d3b067dcbbab521a750b4be686c429261b211728cd3df50613d56a0c2612635d4d675ac25b074dbcf058ea753ba46cb876ebe85fe3a4cc6659b9643672cd183d363f71781aefad60b5691e7e95d4d041b58dcb9d558eb05742c6091be5b77018b52f5eb02af9f760e63f7d7d8da958ce3173ce50d604e9be006d807aa4b8e5c375a3c8edbc5f901ce10d4b386d3b6e1363eb7c45ab63671c067927d59c9de94b312d5372aa2e49f4ce816fadbc36082021f0cf7a92eaa0b3dddf1fd44d99e612be6ef571dee923ea736424951f9e7bad07e6d88953550e711b987943b2ee821c5d5d95bc1fe7eb309d322459f6649a5d6be206717af906303c0c0f533fea4fe04a4ea708d181e995e5a41d58638e2933aad7f7e72dac89d9484ad524e882fda03945d9837a6c94117f35f67884fdffa839214829008519c38d1d433c2b77deea7895663ea03763e949e42623f2b2586818184f644870709ec6163568783f6568712f6321279966aefab3113ca434088d9853de9791f771f87bc9b9d2adc4b928528f7886a1010d46e896024b9e5210036da443873a01d3c7c3d27bff780dc5fb2326712e744613d0c0e7589d7ec1524b275316e0b2c0a962f9b4fd4be6e70e13bf0f4eac7d6ce350ce491d1ccb290b4507fd2e3adc0fb897d6b8e585d8fff9c4ea72c3888
+#TRUST-RSA-SHA256 791068941972574480ef716ca8fea49fb0e5ce179761fc3dbe14f7698c6b02955e07b93698953f35c23ff9b81d2fbf3a9e82d938d19c274b29d4dff3f4401e3c13dcdd0a6ff3cb49702c7649a23bd1321a1a1466021b124a7ee7050796b602a689da4d9ae33fed95e721e174050f2d1be99361fb2ca0eefc92880892581e9852483fd82dbb7d01a133d94a1fcad27230f374ee4ee7a6fc9de6e0bd834ed037e9f6f4a65320c738736bc9694a25b2889b1678a9af08eb3bc3b7e69b58058a5a468823d3847db4d59b86f19f868ae56f45558bca26dd14147d8bd6de7687d58c4d665e32161dbdba044998de4b0513b5f4de6844e10033bbb481b9253f76741031eed35eef2ee57299e6e06266f8c009bdfd43305a80d746b71a87a73a0230b9330cb656f91d83ae77fa4af81c07f78d0390027ac81914707d6ce72a3f0ca1a5eb6b578d2fdfb858f4665f468be0a9d60e2404109814f8986f13c3d59c5bc57d0efcec6d85f841e8134547579c9c0c78dec1fe5c63fe0f744638890ab65e885fe860e5c15eb9813c0e6ed217a53139cf0537fa5f95a57aedd64e3a68e25c1325d33d35c27cee616afc7dd880c6105b87d9f5153cf1500369b2e9511b73e100dc1c3831a1cf2a387e0354a9c63a2d8c6f5bec055ea163c8638ac380c98118884df2a85437e608e09cd28e2267e7276b70b0c4b4ed226a416a690604ffd796ff7d30
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 0
+###
+
+namespace wallix
+{
+  object WallixConfig : integrations::IntegrationConfig
+  {
+    var api_user;
+    var api_key;
+    var credential_id;
+    var escalate_with;
+    var escalation_id;
+    var use_kerb; # boolean use Kerberos
+    var kerb_domain; # Kerberos Domain
+    var domain; # Domain name passed to logins.nasl
+
+    ##
+    # Initialize Wallix config.
+    #
+    # @param [prefix:string] The prefix of the UI string for such config element
+    # @param [postfix:string] The postfix of the UI string for such config element
+    #
+    # @return [boolean] TRUE always.
+    ##
+    public function init(prefix, postfix)
+    {
+      prefix += "PAM ";
+      int_name = "Wallix Bastion";
+      host = script_get_preference(prefix + "Host" + postfix);
+      port = script_get_preference(prefix + "Port" + postfix);
+      ssl = integrations::boolean(script_get_preference(prefix + "SSL" + postfix));
+      ssl_verify = integrations::boolean(script_get_preference(prefix + "Verify SSL Certificate" + postfix));
+      username = script_get_preference(prefix + "User" + postfix);
+      password = script_get_preference(prefix + "Password" + postfix);
+      api_user = script_get_preference(prefix + "API User" + postfix);
+      api_key = script_get_preference(prefix + "API Key" + postfix);
+      credential_id = script_get_preference(prefix + "Credential ID" + postfix);
+      escalate_with = script_get_preference("Elevate privileges with" + postfix);
+      escalation_id = script_get_preference(prefix + "Escalation Credential ID" + postfix);
+      use_kerb = integrations::boolean(script_get_preference(prefix + "Use Kerberos KDC" + postfix));
+      kerb_domain = script_get_preference(prefix + "KDC Domain" + postfix);
+
+      integrations::logger(msg:
+        'Wallix Settings ~' +
+        '\nHOST : ' + host +
+        '\nPORT : ' + port +
+        '\nFORCE_SSL : ' + ssl +
+        '\nSSL_VERIFY : ' + ssl_verify +
+        '\nUSERNAME : ' + username +
+        '\nAPI_USER : ' + api_user +
+        '\nEscalate With : |' + escalate_with + '|' +
+        '\nEscalation Account Name : |' + escalation_id + '|' +
+        '\nCredential ID : |' + credential_id + '|'
+        , config:this, lvl:3
+      );
+
+      return TRUE;
+    }
+
+    ##
+    # Removes sensitive data from logs.
+    #
+    # @param [msg:string] msg to remove sensitive data from
+    #
+    # @return [string] The cleaned msg.
+    ##
+    public function scrubber(msg)
+    {
+      # Scrub lines containing passwords, private keys and private key passphrase.
+      msg = integrations::scrub(msg:msg, '("password":|"private_key":|"passphrase":) "(?:[^"])*"');
+
+      return msg;
+    }
+
+    ##
+    #
+    # Assign config domain value. This value is passed to logins.nasl, rather than
+    # going directly through login.nasl plugin to avoid issues we have with Kerberos Domain.
+    #
+    # @return boolean boolean if domain was assigned to config
+    ##
+    public function config_domain(api_domain)
+    {
+      if(this.use_kerb)
+      {
+          this.domain = this.kerb_domain;
+          integrations::logger(msg:'Domain name provided from Kerberos Domain entry: ' + this.domain, lvl:2, config:this);
+          return true;
+      }
+      else if (!empty_or_null(api_domain)) 
+      {
+        this.domain = api_domain;
+        integrations::logger(msg:'Domain name provided from API data collection: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+  }
+
+  
+
+  ##
+  # This is the first API call using the target's IP to obtain a device_name
+  # which is used to make the second API in function _get_credential()
+  #
+  # @param [config:array] This is the config built in the function WallixConfig.init()
+  #
+  # @return API call success is returned as a boolean and device_name retrieved via the
+  #         target IP is also returned for use in the function _get_credential()
+  ##
+  function _get_device_name(config)
+  {
+    var result, command, device_name, api_auth, target, cache_result, cache_kv;
+
+    target = get_host_ip();
+
+    # Build command for API call
+    command = "https://" + config.host + "/api/devices/?q=host=" + target;
+
+    # Add headers for API Key Authentication
+    api_auth['X-Auth-User'] = config.api_user;
+    api_auth['X-Auth-Key'] = config.api_key;
+
+    integrations::logger(msg: "Requesting Device Name: " + command, lvl:2, report:FALSE, config:config);
+
+    cache_result = integrations::get_cache(secret:target);
+    if (cache_result.success)
+    {
+      integrations::logger(msg:"Cache hit for device name at " + command, lvl:2, config:config);
+      device_name = cache_result.kv.device_name;
+    }
+    else
+    {
+      # Evaluates the users chosen authentication method to the API. Options are:
+      # API Key or Basic Authentication
+      if(empty_or_null(config.password) && empty_or_null(config.username))
+      {
+        result = integrations::get(config:config, command:command, headers:api_auth, json:TRUE);
+      }
+      else
+      {
+        result = integrations::get(config:config, command:command, json:TRUE);
+      }
+
+      if (!result.success)
+      {
+        integrations::logger(msg: "Failed to get device name.", lvl:1, report:FALSE, config:config);
+        return result;
+      }
+      else if(isnull(result.body[0]))
+      {
+        integrations::logger(msg: "Failed to get device name.", lvl:1, report:FALSE, config:config);
+        return{success:FALSE};
+      }
+      else
+      {
+        device_name = result.body[0].device_name;
+        cache_kv = {'device_name': device_name};
+        integrations::logger(msg:"Caching device name from: " + command, lvl:2, config:config);
+        integrations::set_cache(secret:target, kv:cache_kv);
+      }
+    }
+    return {success:TRUE, device_name:device_name};
+  }
+
+  ##
+  # Second API call to retrieve credentials from the device_name
+  #
+  # @param [config:array] This is the config built in the function WallixConfig.init()
+  #
+  # @return API call success is returned as a boolean and creds retrieved
+  ##
+  function _get_credential(config)
+  {
+    var result, command, creds, device, api_auth, cache_result, cache_secret;
+
+    device = _get_device_name(config:config);
+    cache_secret = device.device_name;
+
+    # Build command for API call
+    if(!empty_or_null(config.escalation_id))
+    {
+      command = "https://" + config.host  + "/api/accounts?passwords=true&device=" + device.device_name + "&q=account_name=" +config.escalation_id;
+      cache_secret += config.escalation_id;
+    }
+    else if(empty_or_null(config.escalation_id) && !empty_or_null(config.credential_id))
+    {
+      command = "https://" + config.host  + "/api/accounts?passwords=true&device=" + device.device_name + "&q=account_name=" +config.credential_id;
+      cache_secret += config.credential_id;
+    }
+    else
+    {
+      command = "https://" + config.host  + "/api/accounts?passwords=true&device=" + device.device_name; 
+    }
+
+    cache_result = integrations::get_cache(secret:cache_secret);
+    if (cache_result.success)
+    {
+      integrations::logger(msg:"Cache hit for credentials at " + command, lvl:2, config:config);
+      creds = {
+        'username': cache_result.kv.username,
+      };
+      if (!empty_or_null(cache_result.kv.domain))
+      {
+        creds['domain'] = cache_result.kv.domain;
+      }
+      if (!empty_or_null(cache_result.kv.password))
+      {
+        creds['password'] = cache_result.kv.password;
+      }
+      if (!empty_or_null(cache_result.kv.private_key))
+      {
+        creds['private_key'] = cache_result.kv.private_key;
+        if (!empty_or_null(cache_result.kv.passphrase))
+        {
+          creds['passphrase'] = cache_result.kv.passphrase;
+        }
+        else
+        {
+          creds['passphrase'] = '';
+        }
+      }
+    }
+    else
+    {
+      # Add headers for API Key Auth
+      api_auth['X-Auth-User'] = config.api_user;
+      api_auth['X-Auth-Key'] = config.api_key;
+
+      integrations::logger(msg:"Requesting password: " + command, lvl:2, report:FALSE, config:config);
+
+      # Evaluates the users chosen authentication method to the API. Options are:
+      # API Key or Basic Authentication
+      if(empty_or_null(config.password) && empty_or_null(config.username))
+      {
+        result = integrations::get(config:config, command:command, headers:api_auth, json:TRUE);
+      }
+      else
+      {
+        result = integrations::get(config:config, command:command, json:TRUE);
+      }
+
+      if(!result.success)
+      {
+        integrations::logger(msg:"Failed to retrieve credentials.", lvl:1, report:FALSE, config:config);
+        return result;
+      }
+      else if(isnull(result.body[0]))
+      {
+        integrations::logger(msg:"Failed to retrieve credentials.", lvl:1, report:FALSE, config:config);
+        return{success:FALSE};
+      }
+      else
+      {
+        creds = {'username': result.body[0].account_login};
+        if(!empty_or_null(result.body[0].domain) && result.body[0].domain != "local")
+        {
+          config.config_domain(api_domain:result.body[0].domain);
+        }
+        else
+        {
+          config.config_domain();
+          integrations::logger(msg:"No domain in result body", lvl:1, report:FALSE, config:config);
+        }
+        if(config.domain)
+        {
+          creds['domain'] = config.domain;
+        }
+        foreach (var credential in result.body[0].credentials)
+        {
+          if (!empty_or_null(credential.password))
+          {
+            creds['password'] = credential.password;
+          }
+          if (!empty_or_null(credential.private_key))
+          {
+            creds['private_key'] = credential.private_key;
+            if (!empty_or_null(credential.passphrase))
+            {
+              creds['passphrase'] = credential.passphrase;
+            }
+            else
+            {
+              creds['passphrase'] = '';
+            }
+          }
+        }
+        integrations::logger(msg:"Caching credentials from: " + command, lvl:2, config:config);
+        integrations::set_cache(secret:cache_secret, kv:creds);
+      }
+    }
+
+    return {success:TRUE, creds:creds};
+  }
+
+  ##
+  # Get a credential from WALLIX
+  #
+  # @param [prefix:string] The prefix for the configuration elements
+  # @param [postfix:string] The postfix for the configuration elements
+  #
+  # @return [array] full credential information
+  ##
+  function rest_get_credential(prefix, postfix)
+  {
+    var config, cred_result, esc_result;
+    config = new wallix::WallixConfig();
+    config.init(prefix:prefix, postfix:postfix);
+    if (empty_or_null(config.escalation_id))
+    {
+      integrations::logger(msg:'Requesting credential', lvl:2, report:FALSE, config:config);
+      cred_result = _get_credential(config:config);
+      if (!cred_result.success || empty_or_null(cred_result.creds.username) || (empty_or_null(cred_result.creds.password) && empty_or_null(cred_result.creds.private_key)))
+      {
+        integrations::logger(msg:'Failed to retrieve credentials.', lvl:1, report:FALSE, config:config);
+        return {success: FALSE};
+      }
+      integrations::logger(msg:'Successfully retrieved credentials.', lvl:2, report:FALSE, config:config);
+      return {success:TRUE, password:cred_result.creds.password, username:cred_result.creds.username, domain:cred_result.creds.domain, private_key:cred_result.creds.private_key, passphrase:cred_result.creds.passphrase};
+    }
+    else
+    {
+      # Note: when using escalation, cred_result is assigned the value of esc_result, meaning we
+      # assume the same credentials for login as escalation.
+      integrations::logger(msg:'Requesting escalation credential', lvl:2, report:FALSE, config:config);
+      esc_result = _get_credential(config:config);
+      cred_result = esc_result;
+      if (!cred_result.success || empty_or_null(cred_result.creds.username) || (empty_or_null(cred_result.creds.password) && empty_or_null(cred_result.creds.private_key)))
+      {
+        integrations::logger(msg:'Failed to retrieve credentials.', lvl:1, report:FALSE, config:config);
+        return {success: FALSE};
+      }
+      integrations::logger(msg:'Successfully retrieved escalation credentials.', lvl:2, report: FALSE, config: config);
+      return {success:TRUE, password:cred_result.creds.password, username:cred_result.creds.username, domain:cred_result.creds.domain, sudo_password:esc_result.creds.password, private_key:cred_result.creds.private_key, passphrase:cred_result.creds.passphrase};
+    }
+  }
+}

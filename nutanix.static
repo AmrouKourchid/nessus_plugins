@@ -1,0 +1,861 @@
+#TRUSTED ac8fe4c9acc26d9c5dff2c85873c239d9db515bba01e5b4d8961cb46ea36b853f448a51d9a490f30a89458e8f477bd31a5c21a1989db2c7169cb0d020e0126234712180d68b513ca7e7110ce420897b6759f37710e52709db341a4ef2c54fe122d434b970560a873b4d4005eba24dcfac45fccc7d542391098041f8048643fa39ea5d15cff769e1a94872db0948ed5f23f93e4ac2a7872b512361c6822b906666cc85d0e0f95a07c07fb4444c64fad3fdd22bbc4d3877e546e414ba8c7b0014a1a9e6b5203575cfe8e1978f3c2affa0a3cadab7b1593d02572b9cf6e6bfca349af52cb9a91fef995da1c29f0c3cb5cbae4663a7f166d7ec0d9d29a3e401773f9158e4b15eb53917ce0fd778ba7fc3ad5d03f2c91f528f59d19e7703a554faf082350db36b59646d37ac5e4a98c71ccb031469fdf923214f2ee15e96e04b5a7d8f029b551dbdd57a358b35a366b617ba9f6d1eb9d94d7de0858302dbd3dde5cae7f0f57c380a0b61aaa11fc0530d9f71ee5be4bfed6127a4bcfb123328f810904cd075b6863e624aaa9ae272d73de876fd938d8c84ae94091e41f0007e88f92b0912f26f53c938dea22bb0f9982b38f58666ba0d748ce270f470de48207d592946a4577199965aab022af5acd0612478f069d50eacd4a3fd9f9313ebfba2da6f0bf0c7baf9cadf518baeac47618aaa2af297cce6e3c7bb2c3532eab1c7e4fc575
+#TRUST-RSA-SHA256 328bdad5f1576a461b31dd0213dec4a6ceeecb1c61c2d270aaaf35f7441a9a76057ef696ca0c855aadbe63757f8414712264ffeac72edf73f63455fd8cdfec6b0786e4b451ad7091d23d510771544654c27cfb39c3c6d45a3ed5909c54695d9900b3f71ae5595f76963335eb9dd3b20956ccbb8762b07554f21260f64a799ac69506ab36d727a095c5ea79e6e1ef6abcf472d3c74eb3c0cdf9945fbb69bc2318eace84d22d5d6633abd552def58a8f14982eb93c696a8e503820fba8cddd6bff7ec6a36843020c8f08a1b89cc90d8cb1f4a4736105b09cf019445b25540e7551d7772db9d334e5b8633b25e38a4ac28fa523f78a8be21b01bd16ff9cfb23b081f1662cc6a3cd36329cc61426148ec5f86d0bfc9c5bd6dce6c46448e090d6a46604f29d52b552dc3409537fecf47beb7f4fd59631f9f46597ad16280368f0856b6c10ceda4a1226fc9eb28513b116070449d394851db637058df519c71e0405339069981a6ebdf6ec4053a0ac81ed62b337aef61713b600df4f1a831c6be1cb6c4481e76e5871734a0785e760be5c4d52e8d3f1c72a0114aebdc4e923e4155926bfeb68d83c1b41868f61c7746a7152db78046ee896ec3f47f3a66631ce34213d276167d88255b388b063ac2e0ffe54956ee175c0ea2842ca24c5ffbf69f791178cd09006c2250bcb9c76f89e5ffb6a59128001618022cdcfa717db196354efa6
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1
+#
+
+namespace nutanix
+{
+    global_var INTEGRATION_NAME = 'Nutanix Prism Central';
+
+    global_var API_VERSION_V3 = 'v3';
+
+    ##
+    # This function is used to pick which API version to use.
+    #
+    # @param [config:array] Nutanix Config Object
+    #
+    # @return api_version to use
+    ##
+    function api_version(config)
+    {
+        return config.api_version;
+    }
+
+    ##
+    # Basic RESTful API call for handling JSON endpoints
+    #
+    # @param [config:array] Nutanix Config Object
+    # @param [method:string] HTTP Method
+    # @param [command:string] Typically the RESTful endpoint / url
+    # @param [data:array] Payload for the http request
+    # @param [cert:string] optional cert if cert auth
+    # @param [key:string] optional cert key if cert auth
+    # @param [passphrase:string] optional cert passphrase if cert auth
+    #
+    # @return [array] An array representing the success status and data recovered { success: BOOL , message: parsed JSON response body}
+    ##
+    function api_call(config, method, command, data, cert, key, passphrase)
+    {
+        var res, body, protocol;
+
+        if (!empty_or_null(data))
+        {
+            data = json_write(path_store(data));
+        }
+
+        protocol = 'http';
+        if (config.ssl)
+        {
+            protocol += 's';
+        }
+
+        log(msg:'Sending Request => ' + protocol + '://' + config.host + ':' + config.port + command + '\n' + data + '\n\n', lvl:3, config:config);
+
+        res = http_send_recv3(
+            target       : config['host'],
+            method       : method,
+            item         : command,
+            port         : config['port'],
+            data         : data,
+            add_headers  : config.headers,
+            username     : config.username,
+            password     : config.password,
+            transport    : ssl_transport(ssl:config['ssl'], verify:config['verify']),
+            exit_on_fail : FALSE
+        );
+
+        if (empty_or_null(res))
+        {
+            return
+            {
+                success: false, message: "No response from the remote Nutanix server."
+            };
+        }
+
+        log(msg: 'Raw => ' + command + '\n\n', lvl:3, config:config);
+        log(msg: "Response => " + res[0], lvl:3, config:config);
+        log(msg: "Headers => " + res[1], lvl:3, config:config);
+        log(msg: "Body => " + res[2], lvl:3, config:config);
+        
+        if (res[1] =~ "Content-Type: application/json")
+        {
+            body = json_read(res[2]);
+            body = body[0];
+        }
+        else
+        {
+            body = res[2];
+        }
+        
+        if ("200" >< res[0])
+        {
+            return
+            {
+                header: _parse_header(header: res[0]), body: body, success: TRUE
+            };
+        }
+        else
+        {
+            if ("404" >< res[0])
+            {
+                return 
+                {
+                    success: FALSE, message: "Not Found, check URL and try again."
+                };
+            }
+            else 
+            {
+                return
+                {
+                    success: FALSE, message:body
+                };
+            }
+        }      
+    }
+
+    ##
+    # Wraps and "Parses" Nutanix host list
+    #
+    # @param [config:array] Nutanix Config Object
+    #    
+    # @return [array] Hash of IP => Version, returns NULL on failure
+    #
+    # @remark
+    # Normalized output example:
+    #    XX.XX.XX.XX:
+    #        type: AHV
+    #        ip_address: XX.XX.XX.XX
+    #        hypervisor: Nutanix 20201105.2175
+    #    XX.XX.XX.XX:
+    #        type: AHV
+    #        ip_address: XX.XX.XX.XX
+    #        hypervisor: Nutanix 20201105.2175
+    #    XX.XX.XX.XX:
+    #        type: AHV
+    #        ip_address: XX.XX.XX.XX
+    #        hypervisor: Nutanix 20201105.2175
+    ##
+    function host_list(config)
+    {
+        var api_result;
+
+        if (api_version(config:config) != API_VERSION_V3)
+        {
+            log(msg:'[Error] Unknown API_VERSION', lvl:1, config:config);
+            return NULL;
+        }
+        api_result = nutanix::v3::pc_host_list(config:config, offset:0, length:100);
+        if (!api_result.success)
+        {
+            log(msg:'[Error] Host list request failed', lvl:1, config:config);
+            return NULL;
+        }
+
+        return nutanix::v3::parse_host_list(config:config, api_result:api_result);
+    }
+
+    ##
+    # Wraps and "Parses" Nutanix vm list
+    #
+    # @param [config:array] Nutanix config object
+    #
+    # @return [array] Hash of Name => [IP,], returns NULL on failure
+    #
+    # @remark
+    # Normalized output example:
+    #    Test:
+    #        0: XX.XX.XX.XX
+    #    Prism-Central:
+	#        0: XX.XX.XX.XX
+    ##
+    function vm_list(config)
+    {
+        var api_result;
+
+        if (api_version(config:config) != API_VERSION_V3)
+        {
+            log(msg:'[Error] Unknown API_VERSION', lvl:1, config:config);
+            return NULL;
+        }
+        api_result = nutanix::v3::pc_vm_list(config:config, offset:0, length:100);
+        if (!api_result.success)
+        {
+            log(msg:'[Error] VM list request failed ', lvl:1, config:config);
+            return NULL;
+        }
+
+        return nutanix::v3::parse_vm_list(config:config, api_result:api_result);
+    }
+
+    ##
+    # Collects Cluster data from a Prism Central host
+    #
+    # @param [config:array] Nutanix config object
+    #
+    #
+    # @return Result Object with versions on success, NULL on failure.
+    #
+    # @remark
+    # Normalized output example:
+    #    0:
+    #        cluster_arch: X86_64
+    #        cluster_ip: XXX.XX.XX.XX
+    #        cluster_name: Res-Nutanix
+    #        software_map:
+    #            NOS:
+    #                version: 6.0.1.7
+    #                software_type: NOS
+    #                status: INSTALLED
+    #            NCC:
+    #                version: ncc-4.3.0
+    #                software_type: NCC
+    #                status: INSTALLED
+    #        nodes:
+    #            0:
+    #                type: AHV
+    #                version: el7.nutanix.20201105.2175
+    #                ip: XXX.XX.XX.XX
+    #            1:
+    #                type: AHV
+    #                version:
+    #                ip: 127.0.0.1
+    #            2:
+    #                type: AHV
+    #                version: el7.nutanix.20201105.2175
+    #                ip: XXX.XX.XX.XX
+    #            3:
+    #                type: AHV
+    #                version: el7.nutanix.20201105.2175
+    #                ip: XXX.XX.XX.XX
+    #            4:
+    #                type: AHV
+    #                version: el7.nutanix.20201105.2175
+    #                ip: XXX.XX.XX.XX
+    #        cluster_service: AOS
+    #        build:
+    #            commit_id: 927717a4d1e8b021d465bd5bdfa314183c40608e
+    #            version: 6.0.1.7
+    #            type: release
+    #            full_version: el7.3-release-fraser-6.0.1.7-stable-927717a4d1e8b021d465bd5bdfa314183c40608e
+    #            is_long_term_support: 0
+    ##
+    function cluster(config)
+    {
+        var api_result, error;
+
+        if (api_version(config:config) != API_VERSION_V3)
+        {
+            error = '[Error] Unknown API_VERSION';
+            log(msg:error, lvl:1, config:config);
+            set_global_kb_item(name:"Nutanix/DataCollection/clusters", value:error);
+            return NULL;
+        }
+        api_result = nutanix::v3::pc_cluster(config:config, offset:0, length:100);
+        if (!api_result.success)
+        {
+            error = '[Error] Cluster data request failed';
+            log(msg:error, lvl:1, config:config);
+            set_global_kb_item(name:"Nutanix/DataCollection/clusters", value:error);
+            return NULL;
+        }
+
+        set_global_kb_item(name:"Nutanix/DataCollection/clusters", value:"Success");
+        return nutanix::v3::parse_cluster(config:config, api_result:api_result);
+    }
+
+    ##
+    # Builds the JSON required to do a query/sort in Nutanix used in host/vms listing
+    #
+    # @param [kind:string] Known Supported Kind [host, cluster, vm]
+    # @param [length:integer] number of items to return
+    # @param [offset:integer] pagination offset
+    # @param [sort_attribute:string] field to sort by default uuid, known acceptable values [uuid] (optional, default to uuid)
+    #
+    # @return [array] JSON Object used for the query map of { kind, length, sort_order, sort_attribute, offset }
+    ##
+    function _query_json(kind, length, offset, sort_attribute)
+    {
+        if (empty_or_null(sort_attribute))
+        {
+            sort_attribute = "uuid";
+        }
+
+        if (empty_or_null(length) || length < 1)
+        {
+            length = 1;
+        }
+
+        if (empty_or_null(offset) || offset < 0)
+        {
+            offset = 0;
+        }
+
+        return
+        {
+            "kind": kind,
+            "length": length,
+            "sort_order": "ASCENDING",
+            "sort_attribute": sort_attribute,
+            "offset": offset
+        };
+    }
+
+    ##
+    # Parse a HTTP header
+    #
+    # @param [header:string] the http header
+    #
+    # @return [array] map containing the parse header
+    #         code -> the HTTP code
+    #         message -> the HTTP message
+    ##
+    function _parse_header(header) 
+    {
+        var match = pregmatch(pattern: "^HTTP/1\.[01]\s+(\d{1,3})\s+(.*)", string: header);
+        
+        if (!match)
+        {
+            return 
+            {
+                code: '0', message: "Invalid HTTP Header"
+            };
+        }
+        
+        return
+        {
+            code: match[1], message: chomp(match[2])
+        };
+    }
+
+    ##
+    # Parse a URL into parts to be used.
+    #
+    # @param [url:string] url to parse
+    #
+    # @return {ssl:BOOL, target:string, directory:string, port: int} || NULL on fail
+    ##
+    function _parse_url(url)
+    {
+        var val, directory, i , ret, target, has_proto_field, loop_start_index, target_component;
+        directory = "";
+        ret = make_array();
+
+        val = split(sep:"/", url, keep:FALSE);
+
+        has_proto_field = true;
+        if (val[0] == "http:")
+        {
+            ret["ssl"] = FALSE;
+        }
+        else if (val[0] == "https:")
+        {
+            ret["ssl"] = TRUE;
+        }
+        else
+        {
+            ret["ssl"] = FALSE;
+            has_proto_field = false;
+        }
+
+        if (has_proto_field)
+        {
+            target_component = val[2];
+        }
+        else
+        {
+            target_component = val[0];
+        }
+
+        if (target_component =~ ":")
+        {
+            target = split(sep:":", target_component, keep:FALSE);
+            ret["target"] = target[0];
+            ret["port"] = int(target[1]);
+        }
+        else
+        {
+            if (ret["ssl"])
+            {
+                ret["port"] = 443;
+            }
+            else
+            {
+                ret["port"] = 80;
+            }
+            ret["target"] = target_component;
+        }
+
+        loop_start_index = 1;
+        if (has_proto_field)
+        {
+            loop_start_index = 3;
+        }
+
+        for (i=loop_start_index;i<max_index(val);i++)
+        {
+            if (empty_or_null(val[i]))
+            {
+                break;
+            }
+            directory += "/" + val[i];
+        }
+        ret["directory"] = directory += "/";
+
+        return ret;
+    }
+
+    ##
+    # Convert a string "yes" or "no" to a boolean
+    #
+    # @anonparam [1st:string] the string to be converted
+    #
+    # @return [boolean] TRUE if the param is 'yes', FALSE if 'no'
+    ##
+    function _from_boolean()
+    {
+        if (_FCT_ANON_ARGS[0] == 'yes')
+        {
+            return TRUE;
+        }
+        
+        return FALSE;
+    }
+
+    ##
+    # Logs debug messages, scrubs based on the scrubber in the config.
+    #
+    # @param [config:array] Nutanix Config object.
+    # @param [msg:string] Message to log.
+    # @param [report:boolean] Report to UI?
+    # @param [lvl:integer] the debug level to be passed to ``detailed_log()``
+    ##
+    function log(config, msg, report, lvl)
+    {
+        if (!empty_or_null(config['scrubber']))
+        {
+            msg = config['scrubber'](msg:msg);
+        }
+
+        if (empty_or_null(lvl))
+            lvl = 3;
+
+        msg = strip(msg);
+        
+        dbg::detailed_log(
+            name:SCRIPT_NAME + "~" + config['integration_name'],
+            src:FUNCTION_NAME,
+            lvl:lvl,
+            msg:msg);
+  
+        if (!empty_or_null(report) && report)
+        {
+            report_error(title:config['integration_name'], message:msg, severity:1);
+        }
+        
+        if (!empty_or_null(config['debug']))
+        {
+            display(msg);
+        }
+    }
+
+    ##
+    # Scrubber stub to remove sensitive data.
+    #
+    # @param [msg:string] String to scrub.
+    ##
+    function _nutanix_scrub(msg)
+    {
+        #If the last character is a double quote scrub the line.
+        // msg = ereg_replace(icase:TRUE, pattern:'"Content":"(.+?)"', replace:'***REMOVED***', string:msg);
+
+        // if('"' >< substr(msg, strlen(msg) - 1))
+        // {
+        //     msg = "*** REMOVED ***";
+        // }
+
+        return msg;
+    }
+
+    ##
+    # Initalizes the Nutanix Integration.
+    #
+    # @param [override_config:array] If given a config it will use that, useful for testing without UI.
+    #
+    # @return [array] config hash
+    ##
+    function init(override_config)
+    {
+        var config;
+
+        if (!isnull(override_config))
+        {
+            config = override_config;
+        }
+        else
+        {
+            config['scrubber'] = @_nutanix_scrub;
+            config['integration_name'] = INTEGRATION_NAME;
+
+            nutanix::log(msg: config.integration_name + ' Initializing...\n', lvl:2, config:config);
+
+            var host = get_kb_item_or_exit("Host/Nutanix/config/host");
+            var port = get_kb_item_or_exit("Host/Nutanix/config/port");
+            var username = get_kb_item_or_exit("Secret/Nutanix/config/username");
+            var password = get_kb_item_or_exit("Secret/Nutanix/config/password");
+            var ssl = get_kb_item_or_exit("Host/Nutanix/config/ssl");
+            var ssl_verify = get_kb_item_or_exit("Host/Nutanix/config/ssl_verify");
+            var auto_discovery_hosts = get_kb_item_or_exit("Host/Nutanix/config/auto_discovery_hosts");
+            var auto_discovery_vms = get_kb_item_or_exit("Host/Nutanix/config/auto_discovery_vms");
+
+            # Parse the host field as though it were a URL (see: CS-63063). This makes it so that
+            # you can put e.g. https://NUTANIX_IP or NUTANIX_IP:443 in addition to simply NUTANIX_IP.
+            # _parse_url can technically return a falsy value so only set host if something was parsed.
+            # otherwise, just use the original value that was entered.
+            var parsed_host = _parse_url(url:host);
+            if (parsed_host && parsed_host.target)
+            {
+                config['host'] = parsed_host.target;
+            }
+            else
+            {
+                config['host'] = host;
+            }
+
+            config['port'] = port;
+
+            config['username'] = username;
+            config['password'] = password;
+
+            config['ssl'] = ssl;
+            config['verify'] = ssl_verify;
+
+            config['auto_discovery_hosts'] = auto_discovery_hosts;
+            config['auto_discovery_vms'] = auto_discovery_vms;
+
+            config['api_version'] = API_VERSION_V3;
+        }
+
+        if (empty_or_null(config['host']) || empty_or_null(config['port']) || empty_or_null(config['username']) || empty_or_null(config['password']))
+        {
+            log(msg:'Invalid Configuration. Please check the Tenable configuration for this integration.\n', lvl:1, config:config);
+        }
+
+        config.headers = 
+        {
+            "Content-Type" : "application/json",
+            "User-Agent"   : "Nessus Rest v1.0"
+        };
+
+        show_settings(config:config);
+
+        return config;
+    }
+
+    ## 
+    # Writes Nutanix Settings to log file based on config
+    #
+    # @param [config:array] Nutanix config to log
+    ##
+    function show_settings(config)
+    {
+        log(msg:
+            '\nNutanix Settings ~' +
+            '\nHOST : |' + config.host + '|' +
+            '\nPORT : |' + config.port + '|' +
+            '\nFORCE_SSL : |' + config.ssl + '|' +
+            '\nSSL_VERIFY : |' + config.verify + '|' +
+            '\nUsername : |' + config.username + '|' +
+            '\nAUTO_DISCOVER_HOSTS : |' + config.auto_discovery_hosts + '|' +
+            '\nAUTO_DISCOVER_VMS : |' + config.auto_discovery_vms + '|' +
+            '\nAPI_VERSION : |' + config.api_version + '|' +
+            '\n\n', config:config, lvl:2
+        );    
+    }
+
+    namespace v3
+    {
+        global_var PRISM_CENTRAL_API_PREFIX = '/api/nutanix/v3';
+
+        ##
+        # API Call for Host List, for Prism Central Hosts
+        #
+        # @param [config:array] Nutanix Config Object
+        # @param [offset:integer] pagination offset
+        # @param [length:integer] number of items to return
+        #
+        # @reference https://HOST:9440/api/nutanix/v3/api_explorer/index.html#!/hosts/post_hosts_list
+        # @reference see host_list() for normalized form.
+        #
+        # @return results of the api_call to the specificied command 
+        ##
+        function pc_host_list(config, offset, length)
+        {
+            var command = PRISM_CENTRAL_API_PREFIX + '/hosts/list';
+
+            return api_call(config:config, method:"POST", command:command, data:_query_json(kind:'host', length:length, offset:offset, sort_attribute:"uuid"));
+        }
+
+        ##
+        # Parses the /hosts/list endpoint and returns needed data
+        #
+        # @param [config:array] Nutanix Config Object
+        # @param [api_results:array] The return value from pc_host_list()
+        #
+        # @reference see host_list() for normalized form.
+        #
+        # @return [array] Hash Listing hosts and their versions/type
+        # result -> {
+        #               {
+        #                ip -> type,
+        #                ip -> ip 
+        #               }, 
+        #               ...
+        #           }
+        #
+        ##
+        function parse_host_list(config, api_result)
+        {
+            var result = {};
+
+            foreach var entity (api_result.body.entities)
+            {
+                # Specifically coded this way to visualize the nested JSON objects
+                if (!empty_or_null(entity))
+                {
+                    if (!empty_or_null(entity.status))
+                    {
+                        if (!empty_or_null(entity.status.resources))
+                        {
+                            if (!empty_or_null(entity.status.resources.hypervisor))
+                            {
+                                var hypervisor = entity.status.resources.hypervisor;   
+                                
+                                # Ensure we don't have any Null data before we assign
+                                if (!empty_or_null(hypervisor.ip) && !empty_or_null(hypervisor.hypervisor_full_name))
+                                {
+                                    result[hypervisor.ip].hypervisor = hypervisor.hypervisor_full_name;
+
+                                    # Hardcoded as per guidelines
+                                    result[hypervisor.ip].type = 'AHV';
+                                    result[hypervisor.ip].ip_address = hypervisor.ip;
+                                }
+                            }
+                        }
+                    }
+                }    
+            }
+
+            return result;
+        }        
+
+        ##
+        # API Call for VM List, for Prism Central Hosts
+        #
+        # @param [config:array] Nutanix Config Object
+        # @param [offset:integer] pagination offset
+        # @param [length:integer] number of items to return
+        #
+        # @reference https://HOST:9440/api/nutanix/v3/api_explorer/index.html#!/vms/post_vms_list
+        # @reference see vm_list() for normalized form.
+        #
+        # @return results of the api_call to the specificied command
+        ##
+        function pc_vm_list(config, offset, length)
+        {
+            var command = PRISM_CENTRAL_API_PREFIX + '/vms/list';
+
+            return api_call(config:config, method:"POST", command:command, data:_query_json(kind:'vm', length:length, offset:offset));
+        }
+
+        ##
+        # Parses the /vms endpoint and returns needed data
+        #
+        # @param [config:array] Nutanix Config Object
+        # @param [api_results:array] from pc_vm_list()
+        #
+        # @reference see vm_list() for normalized form.
+        #
+        # @return [array] Hash of vm names and their ip
+        # result -> {
+        #               vm_name : {
+        #                           ip_address
+        #                          }
+        #           }
+        ##
+        function parse_vm_list(config, api_result)
+        {
+            var result = {};
+
+            foreach var entity (api_result.body.entities)
+            {
+                var vm_name = "";
+                var ip_addresses = [];
+
+                # Specifically coded this way to visualize the nested JSON objects
+                if (!empty_or_null(entity))
+                {
+                    # Get the VM name
+                    if (!empty_or_null(entity.spec))
+                    {
+                        if (!empty_or_null(entity.spec.name))
+                        {
+                            vm_name = entity.spec.name;
+                        }
+                    }
+
+                    # Get the VM IP Addresses
+                    if (!empty_or_null(entity.status))
+                    {
+                        if (!empty_or_null(entity.status.resources))
+                        {
+                            if (!empty_or_null(entity.status.resources.nic_list))                    
+                            {
+                                # Loop nic_list array
+                                foreach var nic (entity.status.resources.nic_list)
+                                {
+                                    if (!empty_or_null(nic) && !empty_or_null(nic.ip_endpoint_list))
+                                    {
+                                        # Loop endpoints to Collect IP addresses
+                                        foreach var endpoint (nic.ip_endpoint_list)
+                                        {
+                                            if (!empty_or_null(endpoint) && !empty_or_null(endpoint.ip))
+                                            {
+                                                append_element(var:ip_addresses, value:endpoint.ip);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    result[vm_name] = ip_addresses;
+                }    
+            }
+
+            return result;
+        }        
+
+        ##
+        # Issues /cluster to a Prism Central host
+        #
+        # @param [config:array] Nutanix config object
+        # @param [offset:integer] Pagination offset
+        # @param [length:integer] Pagination Length
+        #
+        #
+        # @reference see cluster() for normalized form.
+        #
+        # @return result of api_call, NULL on failure
+        ##
+        function pc_cluster(config, offset, length)
+        {
+            var command = PRISM_CENTRAL_API_PREFIX + '/clusters/list';
+            
+            return api_call(config:config, method:"POST", command:command, data:_query_json(kind:'cluster', length:length, offset:offset));
+        }
+
+        ##
+        # Parses the /clusters/list endpoint and returns needed data
+        #
+        # @param [config:array] Nutanix Config Object
+        # @param [api_results:array] from pc_cluster()
+        #
+        #
+        # @reference see cluster() for normalized form.
+        #
+        # @return [array] Hash of clusters and their data
+        ##
+        function parse_cluster(config, api_result)
+        {
+            var clusters = [];
+            
+            if (!empty_or_null(api_result))
+            {
+                # Explictly verbose empty_or_null() checks due to random missing API data
+                foreach var entity (api_result.body.entities)
+                {
+                    var cluster_info = {};
+
+                    if (!empty_or_null(entity.status))
+                    {
+                        # Cluster name
+                        if (!empty_or_null(entity.status.name))
+                        {
+                            cluster_info.cluster_name = entity.status.name;
+                        }
+
+                        if (!empty_or_null(entity.status.resources))
+                        {   
+                            # Cluster IP
+                            if (!empty_or_null(entity.status.resources.network))
+                            {
+                                if (!empty_or_null(entity.status.resources.network.external_ip))
+                                {
+                                    cluster_info.cluster_ip = entity.status.resources.network.external_ip;
+                                }
+                            }
+
+                            if (!empty_or_null(entity.status.resources.config))
+                            {
+                                # Software Versions
+                                if (!empty_or_null(entity.status.resources.config.software_map))
+                                {
+                                    cluster_info.software_map = entity.status.resources.config.software_map;
+                                }
+
+                                # Build Info
+                                if (!empty_or_null(entity.status.resources.config.build))
+                                {
+                                    cluster_info.build.type = entity.status.resources.config.build.build_type;
+                                    cluster_info.build.version = entity.status.resources.config.build.version;
+                                    cluster_info.build.commit_id = entity.status.resources.config.build.commit_id;
+                                    cluster_info.build.full_version = entity.status.resources.config.build.full_version;
+
+                                    if (!empty_or_null(entity.status.resources.config.build.is_long_term_support))
+                                    {
+                                        cluster_info.build.is_long_term_support = entity.status.resources.config.build.is_long_term_support;
+                                    }
+                                }
+
+                                # Arch
+                                if (!empty_or_null(entity.status.resources.config.cluster_arch))
+                                {
+                                    cluster_info.cluster_arch = entity.status.resources.config.cluster_arch;
+                                }
+
+                                # Service
+                                if (!empty_or_null(entity.status.resources.config.service_list) && !empty_or_null(entity.status.resources.config.service_list[0]))
+                                {
+                                    cluster_info.cluster_service = entity.status.resources.config.service_list[0];
+                                }
+                            }
+
+                            if (!empty_or_null(entity.status.resources.nodes))
+                            {
+                                if (!empty_or_null(entity.status.resources.nodes.hypervisor_server_list))
+                                {
+                                    # Nodes and Node Versions
+                                    cluster_info.nodes = entity.status.resources.nodes.hypervisor_server_list;
+                                }
+                            }
+                        }
+                    }
+
+                    append_element(var:clusters, value:cluster_info);
+                }
+            }
+        
+            return clusters;                
+        }
+    }
+}

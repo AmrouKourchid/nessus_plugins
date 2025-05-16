@@ -1,0 +1,60 @@
+#TRUSTED 4bd0b4aee09fa2e1a59fd51db865e5af4f7638f8e53448e76aaba7ff4175acfae864a71a3223ec5c8df42e8720ba8c5aa3958214efab53eeeb25025d7914a1bfad383b388aaaa964f8413bd4ffced117a608c5e094626a9955fb0e6a6b9aa3f6d1cb5b57d7ae6448744d34af09c1b0e4e70ae6aa03dac09baa99944c17b2053f7443e023bd17cf8d1cc09705bc34ad0c7883b4d9e657b772d3812b649ea1187ebcc20733c1c4b52f37b52556ab0f549e46e3560a94b570018c1558c85d535fae27cfc109b905f45cea965d045356f5130ca0191ea82fc3815579d8fc02b6cf9cf8bd4793ef4a253482ef3239d86d7143f22a0000b8c89efb13e9c9160c67ae0640673e936fe32ee41d6f1950da1118d0bd5cc5857fb16eabd2995287b9e00bc6dc828c16995551e8655cc9b17734bc664314e6d71d7f698a97b583524f6e373340ac7d4c2b5bdc6125af64eacfdd4344e99b4341a747a61c7fceee32d08e0d11025c92c139fef94be36e0679ed9cc7197052c2014ccd8f0a3fd6fb93671d9037acb10af02b817f04ac844bf35a6617dff230e4af4a6e4ed42e2e97c715a0d81afa4b7f0b941c768860da0d7157bfb91e42a0f5090d130f195172b4bb7a3ef9be37ec2c57a80caed88aa6e3743fd708b970a216c48aa415f1da6297aec44f591c14b956193cec9980cd795bb9ce647610b7b8853d0f9a801b243c28bf2139db0f
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.1
+
+
+#MontaVista helper functions
+
+function handle_montavista_os(session, use_shell_handler, &channel, cmd_res)
+{
+  var buf, reg_pat;
+
+  set_kb_item(name: "Host/etc/mvl-release", value:cmd_res);
+  report += '\nThe remote MontaVista system is :\n' +
+             egrep(pattern:"^MontaVista", string:cmd_res) + '\n';
+
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+  reg_pat = "(MontaVista Linux) (?:Version|CGE) (([0-9]+\.)*[0-9]+).*";
+  release = pregmatch(pattern:reg_pat, string:cmd_res);
+  if (isnull(release))
+  {
+    report += 'Unable to determine the MontaVista Linux release version.\n';
+    return TRUE;
+  }
+  release = release[1] + " " + release[2];
+
+  set_kb_item(name:"Host/MontaVista/release", value: release);
+
+  buf = run_command(
+    cmd:'cat /etc/mvl6-version',
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel
+  );
+
+  if (buf)
+   set_kb_item(name: "Host/etc/mvl6-version", value: buf);
+
+  buf = run_command(
+    cmd:'cat /etc/issue',
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel
+  );
+
+  if (buf)
+   set_kb_item(name: "Host/etc/issue", value: buf);
+
+  var err_msg = 'OS Security Patch Assessment is not supported for MontaVista Linux.\n';
+  failure_kb_msg = "OS Security Patch Assessment is not supported for MontaVista Linux.";
+  failure_kb_type = lcx::ISSUES_INFO;
+  report += err_msg;
+  return TRUE;
+}

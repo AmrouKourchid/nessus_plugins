@@ -1,0 +1,699 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The descriptive text and package checks in this plugin were
+# extracted from Ubuntu Security Notice USN-7380-1. The text
+# itself is copyright (C) Canonical, Inc. See
+# <https://ubuntu.com/security/notices>. Ubuntu(R) is a registered
+# trademark of Canonical, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(233479);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/03/28");
+
+  script_cve_id(
+    "CVE-2024-36476",
+    "CVE-2024-39282",
+    "CVE-2024-41932",
+    "CVE-2024-41935",
+    "CVE-2024-43098",
+    "CVE-2024-45828",
+    "CVE-2024-47141",
+    "CVE-2024-47143",
+    "CVE-2024-47408",
+    "CVE-2024-47794",
+    "CVE-2024-47809",
+    "CVE-2024-48873",
+    "CVE-2024-48875",
+    "CVE-2024-48876",
+    "CVE-2024-48881",
+    "CVE-2024-49568",
+    "CVE-2024-49569",
+    "CVE-2024-49571",
+    "CVE-2024-50051",
+    "CVE-2024-51729",
+    "CVE-2024-52319",
+    "CVE-2024-52332",
+    "CVE-2024-53179",
+    "CVE-2024-53680",
+    "CVE-2024-53681",
+    "CVE-2024-53682",
+    "CVE-2024-53685",
+    "CVE-2024-53687",
+    "CVE-2024-53690",
+    "CVE-2024-54191",
+    "CVE-2024-54193",
+    "CVE-2024-54455",
+    "CVE-2024-54460",
+    "CVE-2024-54680",
+    "CVE-2024-54683",
+    "CVE-2024-55639",
+    "CVE-2024-55641",
+    "CVE-2024-55642",
+    "CVE-2024-55881",
+    "CVE-2024-55916",
+    "CVE-2024-56368",
+    "CVE-2024-56369",
+    "CVE-2024-56372",
+    "CVE-2024-56550",
+    "CVE-2024-56551",
+    "CVE-2024-56552",
+    "CVE-2024-56557",
+    "CVE-2024-56558",
+    "CVE-2024-56559",
+    "CVE-2024-56561",
+    "CVE-2024-56562",
+    "CVE-2024-56563",
+    "CVE-2024-56564",
+    "CVE-2024-56565",
+    "CVE-2024-56566",
+    "CVE-2024-56567",
+    "CVE-2024-56568",
+    "CVE-2024-56569",
+    "CVE-2024-56570",
+    "CVE-2024-56572",
+    "CVE-2024-56573",
+    "CVE-2024-56574",
+    "CVE-2024-56575",
+    "CVE-2024-56576",
+    "CVE-2024-56577",
+    "CVE-2024-56578",
+    "CVE-2024-56579",
+    "CVE-2024-56580",
+    "CVE-2024-56581",
+    "CVE-2024-56582",
+    "CVE-2024-56583",
+    "CVE-2024-56584",
+    "CVE-2024-56586",
+    "CVE-2024-56587",
+    "CVE-2024-56588",
+    "CVE-2024-56589",
+    "CVE-2024-56590",
+    "CVE-2024-56591",
+    "CVE-2024-56592",
+    "CVE-2024-56593",
+    "CVE-2024-56594",
+    "CVE-2024-56595",
+    "CVE-2024-56596",
+    "CVE-2024-56597",
+    "CVE-2024-56598",
+    "CVE-2024-56599",
+    "CVE-2024-56600",
+    "CVE-2024-56601",
+    "CVE-2024-56602",
+    "CVE-2024-56603",
+    "CVE-2024-56604",
+    "CVE-2024-56605",
+    "CVE-2024-56606",
+    "CVE-2024-56607",
+    "CVE-2024-56608",
+    "CVE-2024-56609",
+    "CVE-2024-56610",
+    "CVE-2024-56611",
+    "CVE-2024-56613",
+    "CVE-2024-56614",
+    "CVE-2024-56615",
+    "CVE-2024-56616",
+    "CVE-2024-56617",
+    "CVE-2024-56618",
+    "CVE-2024-56619",
+    "CVE-2024-56620",
+    "CVE-2024-56621",
+    "CVE-2024-56622",
+    "CVE-2024-56623",
+    "CVE-2024-56624",
+    "CVE-2024-56625",
+    "CVE-2024-56626",
+    "CVE-2024-56627",
+    "CVE-2024-56629",
+    "CVE-2024-56630",
+    "CVE-2024-56631",
+    "CVE-2024-56632",
+    "CVE-2024-56633",
+    "CVE-2024-56634",
+    "CVE-2024-56635",
+    "CVE-2024-56636",
+    "CVE-2024-56637",
+    "CVE-2024-56638",
+    "CVE-2024-56639",
+    "CVE-2024-56640",
+    "CVE-2024-56641",
+    "CVE-2024-56642",
+    "CVE-2024-56643",
+    "CVE-2024-56644",
+    "CVE-2024-56645",
+    "CVE-2024-56646",
+    "CVE-2024-56647",
+    "CVE-2024-56648",
+    "CVE-2024-56649",
+    "CVE-2024-56650",
+    "CVE-2024-56651",
+    "CVE-2024-56652",
+    "CVE-2024-56653",
+    "CVE-2024-56654",
+    "CVE-2024-56655",
+    "CVE-2024-56656",
+    "CVE-2024-56657",
+    "CVE-2024-56658",
+    "CVE-2024-56659",
+    "CVE-2024-56660",
+    "CVE-2024-56662",
+    "CVE-2024-56663",
+    "CVE-2024-56664",
+    "CVE-2024-56665",
+    "CVE-2024-56667",
+    "CVE-2024-56669",
+    "CVE-2024-56670",
+    "CVE-2024-56671",
+    "CVE-2024-56672",
+    "CVE-2024-56673",
+    "CVE-2024-56675",
+    "CVE-2024-56709",
+    "CVE-2024-56710",
+    "CVE-2024-56711",
+    "CVE-2024-56712",
+    "CVE-2024-56713",
+    "CVE-2024-56714",
+    "CVE-2024-56715",
+    "CVE-2024-56716",
+    "CVE-2024-56717",
+    "CVE-2024-56718",
+    "CVE-2024-56719",
+    "CVE-2024-56757",
+    "CVE-2024-56758",
+    "CVE-2024-56759",
+    "CVE-2024-56760",
+    "CVE-2024-56761",
+    "CVE-2024-56763",
+    "CVE-2024-56764",
+    "CVE-2024-56765",
+    "CVE-2024-56766",
+    "CVE-2024-56767",
+    "CVE-2024-56768",
+    "CVE-2024-56769",
+    "CVE-2024-56770",
+    "CVE-2024-56771",
+    "CVE-2024-56772",
+    "CVE-2024-56773",
+    "CVE-2024-56774",
+    "CVE-2024-56775",
+    "CVE-2024-56776",
+    "CVE-2024-56777",
+    "CVE-2024-56778",
+    "CVE-2024-56779",
+    "CVE-2024-56780",
+    "CVE-2024-56781",
+    "CVE-2024-56782",
+    "CVE-2024-56783",
+    "CVE-2024-56784",
+    "CVE-2024-56785",
+    "CVE-2024-56786",
+    "CVE-2024-56787",
+    "CVE-2024-57791",
+    "CVE-2024-57792",
+    "CVE-2024-57793",
+    "CVE-2024-57795",
+    "CVE-2024-57798",
+    "CVE-2024-57799",
+    "CVE-2024-57801",
+    "CVE-2024-57802",
+    "CVE-2024-57804",
+    "CVE-2024-57805",
+    "CVE-2024-57806",
+    "CVE-2024-57807",
+    "CVE-2024-57809",
+    "CVE-2024-57838",
+    "CVE-2024-57839",
+    "CVE-2024-57841",
+    "CVE-2024-57843",
+    "CVE-2024-57849",
+    "CVE-2024-57850",
+    "CVE-2024-57857",
+    "CVE-2024-57872",
+    "CVE-2024-57874",
+    "CVE-2024-57875",
+    "CVE-2024-57876",
+    "CVE-2024-57878",
+    "CVE-2024-57879",
+    "CVE-2024-57880",
+    "CVE-2024-57881",
+    "CVE-2024-57882",
+    "CVE-2024-57883",
+    "CVE-2024-57884",
+    "CVE-2024-57885",
+    "CVE-2024-57886",
+    "CVE-2024-57887",
+    "CVE-2024-57888",
+    "CVE-2024-57889",
+    "CVE-2024-57890",
+    "CVE-2024-57892",
+    "CVE-2024-57893",
+    "CVE-2024-57894",
+    "CVE-2024-57895",
+    "CVE-2024-57896",
+    "CVE-2024-57897",
+    "CVE-2024-57898",
+    "CVE-2024-57899",
+    "CVE-2024-57900",
+    "CVE-2024-57901",
+    "CVE-2024-57902",
+    "CVE-2024-57903",
+    "CVE-2024-57904",
+    "CVE-2024-57905",
+    "CVE-2024-57906",
+    "CVE-2024-57907",
+    "CVE-2024-57908",
+    "CVE-2024-57910",
+    "CVE-2024-57911",
+    "CVE-2024-57912",
+    "CVE-2024-57913",
+    "CVE-2024-57916",
+    "CVE-2024-57917",
+    "CVE-2024-57918",
+    "CVE-2024-57919",
+    "CVE-2024-57921",
+    "CVE-2024-57924",
+    "CVE-2024-57925",
+    "CVE-2024-57926",
+    "CVE-2024-57929",
+    "CVE-2024-57931",
+    "CVE-2024-57932",
+    "CVE-2024-57933",
+    "CVE-2024-57934",
+    "CVE-2024-57935",
+    "CVE-2024-57938",
+    "CVE-2024-57939",
+    "CVE-2024-57940",
+    "CVE-2024-57944",
+    "CVE-2024-57945",
+    "CVE-2024-57946",
+    "CVE-2024-58087",
+    "CVE-2025-21629",
+    "CVE-2025-21631",
+    "CVE-2025-21632",
+    "CVE-2025-21633",
+    "CVE-2025-21634",
+    "CVE-2025-21635",
+    "CVE-2025-21636",
+    "CVE-2025-21637",
+    "CVE-2025-21638",
+    "CVE-2025-21639",
+    "CVE-2025-21640",
+    "CVE-2025-21642",
+    "CVE-2025-21643",
+    "CVE-2025-21644",
+    "CVE-2025-21645",
+    "CVE-2025-21646",
+    "CVE-2025-21647",
+    "CVE-2025-21648",
+    "CVE-2025-21649",
+    "CVE-2025-21650",
+    "CVE-2025-21651",
+    "CVE-2025-21652",
+    "CVE-2025-21653",
+    "CVE-2025-21654",
+    "CVE-2025-21655",
+    "CVE-2025-21656",
+    "CVE-2025-21658",
+    "CVE-2025-21659",
+    "CVE-2025-21660",
+    "CVE-2025-21661",
+    "CVE-2025-21662",
+    "CVE-2025-21663",
+    "CVE-2025-21664",
+    "CVE-2025-21834"
+  );
+  script_xref(name:"USN", value:"7380-1");
+
+  script_name(english:"Ubuntu 24.10 : Linux kernel (Low Latency) vulnerabilities (USN-7380-1)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote Ubuntu host is missing one or more security updates.");
+  script_set_attribute(attribute:"description", value:
+"The remote Ubuntu 24.10 host has a package installed that is affected by multiple vulnerabilities as referenced in the
+USN-7380-1 advisory.
+
+    Several security issues were discovered in the Linux kernel. An attacker could possibly use these to
+    compromise the system. This update corrects flaws in the following subsystems:
+
+    - ARM64 architecture;
+
+    - MIPS architecture;
+
+    - PowerPC architecture;
+
+    - RISC-V architecture;
+
+    - S390 architecture;
+
+    - x86 architecture;
+
+    - Block layer subsystem;
+
+    - Compute Acceleration Framework;
+
+    - ACPI drivers;
+
+    - Drivers core;
+
+    - Ublk userspace block driver;
+
+    - Virtio block driver;
+
+    - Bluetooth drivers;
+
+    - Buffer Sharing and Synchronization framework;
+
+    - DMA engine subsystem;
+
+    - EFI core;
+
+    - GPIO subsystem;
+
+    - GPU drivers;
+
+    - HID subsystem;
+
+    - Microsoft Hyper-V drivers;
+
+    - Hardware monitoring drivers;
+
+    - I3C subsystem;
+
+    - IIO ADC drivers;
+
+    - IIO subsystem;
+
+    - InfiniBand drivers;
+
+    - IOMMU subsystem;
+
+    - LED subsystem;
+
+    - Multiple devices driver;
+
+    - Media drivers;
+
+    - Microchip PCI driver;
+
+    - MTD block device drivers;
+
+    - Network drivers;
+
+    - Mellanox network drivers;
+
+    - STMicroelectronics network drivers;
+
+    - NVME drivers;
+
+    - PCI subsystem;
+
+    - PHY drivers;
+
+    - Pin controllers subsystem;
+
+    - x86 platform drivers;
+
+    - i.MX PM domains;
+
+    - Power supply drivers;
+
+    - Voltage and Current Regulator drivers;
+
+    - SCSI subsystem;
+
+    - i.MX SoC drivers;
+
+    - SPI subsystem;
+
+    - UFS subsystem;
+
+    - USB Gadget drivers;
+
+    - TDX Guest driver;
+
+    - AFS file system;
+
+    - BTRFS file system;
+
+    - Ceph distributed file system;
+
+    - File systems infrastructure;
+
+    - F2FS file system;
+
+    - JFFS2 file system;
+
+    - JFS file system;
+
+    - Network file systems library;
+
+    - Network file system (NFS) server daemon;
+
+    - NILFS2 file system;
+
+    - File system notification infrastructure;
+
+    - Overlay file system;
+
+    - Diskquota system;
+
+    - SMB network file system;
+
+    - DRM display driver;
+
+    - BPF subsystem;
+
+    - VLANs driver;
+
+    - KASAN memory debugging framework;
+
+    - Memory management;
+
+    - StackDepot library;
+
+    - Bluetooth subsystem;
+
+    - LAPB network protocol;
+
+    - Network namespace;
+
+    - Netfilter;
+
+    - io_uring subsystem;
+
+    - Control group (cgroup);
+
+    - DMA mapping infrastructure;
+
+    - KCSAN framework;
+
+    - Scheduler infrastructure;
+
+    - Seccomp subsystem;
+
+    - Tracing infrastructure;
+
+    - Workqueue subsystem;
+
+    - KUnit library;
+
+    - CAN network layer;
+
+    - Networking core;
+
+    - DCCP (Datagram Congestion Control Protocol);
+
+    - HSR network protocol;
+
+    - IEEE802154.4 network protocol;
+
+    - IPv4 networking;
+
+    - IPv6 networking;
+
+    - MAC80211 subsystem;
+
+    - Multipath TCP;
+
+    - NET/ROM layer;
+
+    - Packet sockets;
+
+    - RDS protocol;
+
+    - Network traffic control;
+
+    - SCTP protocol;
+
+    - SMC sockets;
+
+    - TIPC protocol;
+
+    - Wireless networking;
+
+    - eXpress Data Path;
+
+    - SELinux security module;
+
+    - ALSA framework;
+
+    - Intel ASoC drivers;
+
+    - SOF drivers; (CVE-2024-57850, CVE-2024-57895, CVE-2024-57843, CVE-2024-56587, CVE-2024-56590,
+    CVE-2024-56584, CVE-2024-56673, CVE-2024-56552, CVE-2024-56644, CVE-2024-57940, CVE-2024-47809,
+    CVE-2024-56784, CVE-2024-57935, CVE-2024-56561, CVE-2025-21642, CVE-2024-56573, CVE-2024-53682,
+    CVE-2024-39282, CVE-2024-56653, CVE-2024-56606, CVE-2024-56651, CVE-2024-56608, CVE-2024-56649,
+    CVE-2024-56761, CVE-2024-57921, CVE-2024-57804, CVE-2024-57902, CVE-2024-56630, CVE-2024-56769,
+    CVE-2024-56782, CVE-2025-21652, CVE-2025-21634, CVE-2024-48881, CVE-2024-41935, CVE-2024-57912,
+    CVE-2024-56659, CVE-2025-21663, CVE-2024-57857, CVE-2024-56670, CVE-2024-56631, CVE-2024-52319,
+    CVE-2024-56637, CVE-2024-56643, CVE-2025-21643, CVE-2024-55881, CVE-2024-56619, CVE-2024-53687,
+    CVE-2025-21654, CVE-2025-21655, CVE-2024-56648, CVE-2024-57893, CVE-2025-21651, CVE-2024-57939,
+    CVE-2024-56622, CVE-2024-56763, CVE-2024-56591, CVE-2024-56559, CVE-2024-57883, CVE-2024-56592,
+    CVE-2024-57795, CVE-2024-56578, CVE-2024-56780, CVE-2024-57904, CVE-2024-57934, CVE-2024-56369,
+    CVE-2024-57931, CVE-2024-47408, CVE-2025-21644, CVE-2024-56625, CVE-2025-21659, CVE-2024-56640,
+    CVE-2024-56605, CVE-2024-56638, CVE-2024-56775, CVE-2024-47141, CVE-2024-56773, CVE-2024-53681,
+    CVE-2024-57802, CVE-2024-56550, CVE-2024-56717, CVE-2025-21662, CVE-2024-53685, CVE-2024-57890,
+    CVE-2024-56765, CVE-2025-21629, CVE-2024-57918, CVE-2024-57841, CVE-2024-57894, CVE-2025-21649,
+    CVE-2024-56613, CVE-2024-56611, CVE-2024-57946, CVE-2024-57908, CVE-2024-57900, CVE-2024-56665,
+    CVE-2024-56786, CVE-2024-56778, CVE-2024-56627, CVE-2024-56712, CVE-2024-52332, CVE-2025-21834,
+    CVE-2024-56616, CVE-2024-56595, CVE-2024-56623, CVE-2024-57807, CVE-2024-41932, CVE-2024-57809,
+    CVE-2024-54193, CVE-2025-21637, CVE-2024-54455, CVE-2024-56565, CVE-2024-57849, CVE-2024-56647,
+    CVE-2024-57896, CVE-2024-57924, CVE-2024-57944, CVE-2024-56711, CVE-2024-57881, CVE-2024-56614,
+    CVE-2024-54460, CVE-2024-56563, CVE-2024-58087, CVE-2024-57798, CVE-2024-56615, CVE-2024-53179,
+    CVE-2024-57919, CVE-2024-56580, CVE-2024-56771, CVE-2024-56572, CVE-2024-56581, CVE-2024-56586,
+    CVE-2024-56654, CVE-2024-57916, CVE-2024-56645, CVE-2024-56672, CVE-2024-56597, CVE-2024-56671,
+    CVE-2024-56658, CVE-2024-56634, CVE-2024-49568, CVE-2024-56588, CVE-2024-56655, CVE-2024-48876,
+    CVE-2024-57889, CVE-2025-21647, CVE-2024-47794, CVE-2024-57938, CVE-2024-56767, CVE-2025-21664,
+    CVE-2024-56656, CVE-2024-56787, CVE-2024-57925, CVE-2024-57876, CVE-2024-57874, CVE-2024-56766,
+    CVE-2024-57878, CVE-2024-57898, CVE-2024-56617, CVE-2024-56604, CVE-2025-21645, CVE-2024-56551,
+    CVE-2024-57892, CVE-2024-49571, CVE-2024-45828, CVE-2024-57911, CVE-2025-21660, CVE-2024-56558,
+    CVE-2024-57805, CVE-2024-53680, CVE-2024-57839, CVE-2024-56626, CVE-2024-57901, CVE-2024-56636,
+    CVE-2024-56646, CVE-2024-56667, CVE-2025-21648, CVE-2024-56660, CVE-2024-56368, CVE-2024-56600,
+    CVE-2024-57793, CVE-2024-36476, CVE-2024-56610, CVE-2024-57888, CVE-2024-57886, CVE-2024-57885,
+    CVE-2024-56776, CVE-2025-21635, CVE-2025-21661, CVE-2024-56576, CVE-2024-56662, CVE-2024-56589,
+    CVE-2024-57806, CVE-2024-57887, CVE-2025-21650, CVE-2024-56582, CVE-2024-56709, CVE-2024-57913,
+    CVE-2024-56633, CVE-2024-56639, CVE-2024-56768, CVE-2024-57799, CVE-2024-56715, CVE-2025-21653,
+    CVE-2024-57929, CVE-2024-54680, CVE-2024-56635, CVE-2024-57801, CVE-2024-50051, CVE-2024-56609,
+    CVE-2024-56624, CVE-2024-51729, CVE-2024-56772, CVE-2024-56785, CVE-2024-56568, CVE-2024-56577,
+    CVE-2025-21646, CVE-2024-56713, CVE-2024-56567, CVE-2024-56777, CVE-2024-56760, CVE-2024-57899,
+    CVE-2024-56664, CVE-2024-57879, CVE-2024-56579, CVE-2024-56758, CVE-2024-56710, CVE-2024-48875,
+    CVE-2024-56574, CVE-2024-55641, CVE-2024-56663, CVE-2024-55639, CVE-2024-57875, CVE-2024-57910,
+    CVE-2024-56621, CVE-2024-57791, CVE-2024-56557, CVE-2024-56774, CVE-2024-56641, CVE-2024-56601,
+    CVE-2024-56603, CVE-2024-57897, CVE-2024-56594, CVE-2024-57882, CVE-2024-56583, CVE-2025-21639,
+    CVE-2025-21658, CVE-2024-56575, CVE-2024-57945, CVE-2024-57907, CVE-2024-56632, CVE-2024-56629,
+    CVE-2025-21632, CVE-2024-56596, CVE-2024-56602, CVE-2024-54683, CVE-2024-56607, CVE-2024-56764,
+    CVE-2024-53690, CVE-2024-56719, CVE-2024-56783, CVE-2024-57905, CVE-2024-57872, CVE-2024-56598,
+    CVE-2024-55916, CVE-2024-54191, CVE-2024-56779, CVE-2024-57917, CVE-2024-56562, CVE-2024-56599,
+    CVE-2024-56620, CVE-2024-56650, CVE-2024-57926, CVE-2024-56757, CVE-2024-56669, CVE-2025-21638,
+    CVE-2024-56675, CVE-2024-56618, CVE-2024-56593, CVE-2025-21631, CVE-2024-57933, CVE-2024-55642,
+    CVE-2024-57884, CVE-2024-56652, CVE-2024-57903, CVE-2024-56657, CVE-2024-56642, CVE-2024-43098,
+    CVE-2024-57838, CVE-2024-56714, CVE-2024-56716, CVE-2024-56566, CVE-2024-56781, CVE-2025-21656,
+    CVE-2024-56372, CVE-2024-56718, CVE-2024-57932, CVE-2024-57906, CVE-2024-56759, CVE-2024-48873,
+    CVE-2024-49569, CVE-2024-56564, CVE-2024-56770, CVE-2025-21640, CVE-2024-57792, CVE-2024-56569,
+    CVE-2025-21633, CVE-2025-21636, CVE-2024-47143, CVE-2024-56570, CVE-2024-57880)
+
+Tenable has extracted the preceding description block directly from the Ubuntu security advisory.
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://ubuntu.com/security/notices/USN-7380-1");
+  script_set_attribute(attribute:"solution", value:
+"Update the affected kernel package.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:H/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2024-58087");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2023/11/14");
+  script_set_attribute(attribute:"patch_publication_date", value:"2025/03/27");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/03/28");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:canonical:ubuntu_linux:24.10");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:canonical:ubuntu_linux:linux-image-6.11.0-1011-lowlatency");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:canonical:ubuntu_linux:linux-image-6.11.0-1011-lowlatency-64k");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Ubuntu Local Security Checks");
+
+  script_copyright(english:"Ubuntu Security Notice (C) 2025 Canonical, Inc. / NASL script (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl", "linux_alt_patch_detect.nasl");
+  script_require_keys("Host/cpu", "Host/Ubuntu", "Host/Ubuntu/release", "Host/Debian/dpkg-l");
+
+  exit(0);
+}
+
+include('debian_package.inc');
+include('ksplice.inc');
+
+if ( ! get_kb_item('Host/local_checks_enabled') ) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+var os_release = get_kb_item('Host/Ubuntu/release');
+if ( isnull(os_release) ) audit(AUDIT_OS_NOT, 'Ubuntu');
+os_release = chomp(os_release);
+if (! ('24.10' >< os_release)) audit(AUDIT_OS_NOT, 'Ubuntu 24.10', 'Ubuntu ' + os_release);
+if ( ! get_kb_item('Host/Debian/dpkg-l') ) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 's390' >!< cpu && 'aarch64' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'Ubuntu', cpu);
+
+var kernel_mappings = {
+  '24.10': {
+    '6.11.0': {
+      'lowlatency': '6.11.0-1011',
+      'lowlatency-64k': '6.11.0-1011'
+    }
+  }
+};
+
+var host_kernel_release = get_kb_item('Host/uptrack-uname-r');
+if (empty_or_null(host_kernel_release)) host_kernel_release = get_kb_item_or_exit('Host/uname-r');
+var host_kernel_base_version = get_kb_item_or_exit('Host/Debian/kernel-base-version');
+var host_kernel_type = get_kb_item_or_exit('Host/Debian/kernel-type');
+if(empty_or_null(kernel_mappings[os_release][host_kernel_base_version][host_kernel_type])) audit(AUDIT_INST_VER_NOT_VULN, 'kernel ' + host_kernel_release);
+
+var extra = '';
+var kernel_fixed_version = kernel_mappings[os_release][host_kernel_base_version][host_kernel_type] + "-" + host_kernel_type;
+if (deb_ver_cmp(ver1:host_kernel_release, ver2:kernel_fixed_version) < 0)
+{
+  extra += 'Running Kernel level of ' + host_kernel_release + ' does not meet the minimum fixed level of ' + kernel_fixed_version + ' for this advisory.\n\n';
+}
+  else
+{
+  audit(AUDIT_PATCH_INSTALLED, 'Kernel package for USN-7380-1');
+}
+
+if (get_one_kb_item('Host/ksplice/kernel-cves'))
+{
+  var cve_list = make_list('CVE-2024-36476', 'CVE-2024-39282', 'CVE-2024-41932', 'CVE-2024-41935', 'CVE-2024-43098', 'CVE-2024-45828', 'CVE-2024-47141', 'CVE-2024-47143', 'CVE-2024-47408', 'CVE-2024-47794', 'CVE-2024-47809', 'CVE-2024-48873', 'CVE-2024-48875', 'CVE-2024-48876', 'CVE-2024-48881', 'CVE-2024-49568', 'CVE-2024-49569', 'CVE-2024-49571', 'CVE-2024-50051', 'CVE-2024-51729', 'CVE-2024-52319', 'CVE-2024-52332', 'CVE-2024-53179', 'CVE-2024-53680', 'CVE-2024-53681', 'CVE-2024-53682', 'CVE-2024-53685', 'CVE-2024-53687', 'CVE-2024-53690', 'CVE-2024-54191', 'CVE-2024-54193', 'CVE-2024-54455', 'CVE-2024-54460', 'CVE-2024-54680', 'CVE-2024-54683', 'CVE-2024-55639', 'CVE-2024-55641', 'CVE-2024-55642', 'CVE-2024-55881', 'CVE-2024-55916', 'CVE-2024-56368', 'CVE-2024-56369', 'CVE-2024-56372', 'CVE-2024-56550', 'CVE-2024-56551', 'CVE-2024-56552', 'CVE-2024-56557', 'CVE-2024-56558', 'CVE-2024-56559', 'CVE-2024-56561', 'CVE-2024-56562', 'CVE-2024-56563', 'CVE-2024-56564', 'CVE-2024-56565', 'CVE-2024-56566', 'CVE-2024-56567', 'CVE-2024-56568', 'CVE-2024-56569', 'CVE-2024-56570', 'CVE-2024-56572', 'CVE-2024-56573', 'CVE-2024-56574', 'CVE-2024-56575', 'CVE-2024-56576', 'CVE-2024-56577', 'CVE-2024-56578', 'CVE-2024-56579', 'CVE-2024-56580', 'CVE-2024-56581', 'CVE-2024-56582', 'CVE-2024-56583', 'CVE-2024-56584', 'CVE-2024-56586', 'CVE-2024-56587', 'CVE-2024-56588', 'CVE-2024-56589', 'CVE-2024-56590', 'CVE-2024-56591', 'CVE-2024-56592', 'CVE-2024-56593', 'CVE-2024-56594', 'CVE-2024-56595', 'CVE-2024-56596', 'CVE-2024-56597', 'CVE-2024-56598', 'CVE-2024-56599', 'CVE-2024-56600', 'CVE-2024-56601', 'CVE-2024-56602', 'CVE-2024-56603', 'CVE-2024-56604', 'CVE-2024-56605', 'CVE-2024-56606', 'CVE-2024-56607', 'CVE-2024-56608', 'CVE-2024-56609', 'CVE-2024-56610', 'CVE-2024-56611', 'CVE-2024-56613', 'CVE-2024-56614', 'CVE-2024-56615', 'CVE-2024-56616', 'CVE-2024-56617', 'CVE-2024-56618', 'CVE-2024-56619', 'CVE-2024-56620', 'CVE-2024-56621', 'CVE-2024-56622', 'CVE-2024-56623', 'CVE-2024-56624', 'CVE-2024-56625', 'CVE-2024-56626', 'CVE-2024-56627', 'CVE-2024-56629', 'CVE-2024-56630', 'CVE-2024-56631', 'CVE-2024-56632', 'CVE-2024-56633', 'CVE-2024-56634', 'CVE-2024-56635', 'CVE-2024-56636', 'CVE-2024-56637', 'CVE-2024-56638', 'CVE-2024-56639', 'CVE-2024-56640', 'CVE-2024-56641', 'CVE-2024-56642', 'CVE-2024-56643', 'CVE-2024-56644', 'CVE-2024-56645', 'CVE-2024-56646', 'CVE-2024-56647', 'CVE-2024-56648', 'CVE-2024-56649', 'CVE-2024-56650', 'CVE-2024-56651', 'CVE-2024-56652', 'CVE-2024-56653', 'CVE-2024-56654', 'CVE-2024-56655', 'CVE-2024-56656', 'CVE-2024-56657', 'CVE-2024-56658', 'CVE-2024-56659', 'CVE-2024-56660', 'CVE-2024-56662', 'CVE-2024-56663', 'CVE-2024-56664', 'CVE-2024-56665', 'CVE-2024-56667', 'CVE-2024-56669', 'CVE-2024-56670', 'CVE-2024-56671', 'CVE-2024-56672', 'CVE-2024-56673', 'CVE-2024-56675', 'CVE-2024-56709', 'CVE-2024-56710', 'CVE-2024-56711', 'CVE-2024-56712', 'CVE-2024-56713', 'CVE-2024-56714', 'CVE-2024-56715', 'CVE-2024-56716', 'CVE-2024-56717', 'CVE-2024-56718', 'CVE-2024-56719', 'CVE-2024-56757', 'CVE-2024-56758', 'CVE-2024-56759', 'CVE-2024-56760', 'CVE-2024-56761', 'CVE-2024-56763', 'CVE-2024-56764', 'CVE-2024-56765', 'CVE-2024-56766', 'CVE-2024-56767', 'CVE-2024-56768', 'CVE-2024-56769', 'CVE-2024-56770', 'CVE-2024-56771', 'CVE-2024-56772', 'CVE-2024-56773', 'CVE-2024-56774', 'CVE-2024-56775', 'CVE-2024-56776', 'CVE-2024-56777', 'CVE-2024-56778', 'CVE-2024-56779', 'CVE-2024-56780', 'CVE-2024-56781', 'CVE-2024-56782', 'CVE-2024-56783', 'CVE-2024-56784', 'CVE-2024-56785', 'CVE-2024-56786', 'CVE-2024-56787', 'CVE-2024-57791', 'CVE-2024-57792', 'CVE-2024-57793', 'CVE-2024-57795', 'CVE-2024-57798', 'CVE-2024-57799', 'CVE-2024-57801', 'CVE-2024-57802', 'CVE-2024-57804', 'CVE-2024-57805', 'CVE-2024-57806', 'CVE-2024-57807', 'CVE-2024-57809', 'CVE-2024-57838', 'CVE-2024-57839', 'CVE-2024-57841', 'CVE-2024-57843', 'CVE-2024-57849', 'CVE-2024-57850', 'CVE-2024-57857', 'CVE-2024-57872', 'CVE-2024-57874', 'CVE-2024-57875', 'CVE-2024-57876', 'CVE-2024-57878', 'CVE-2024-57879', 'CVE-2024-57880', 'CVE-2024-57881', 'CVE-2024-57882', 'CVE-2024-57883', 'CVE-2024-57884', 'CVE-2024-57885', 'CVE-2024-57886', 'CVE-2024-57887', 'CVE-2024-57888', 'CVE-2024-57889', 'CVE-2024-57890', 'CVE-2024-57892', 'CVE-2024-57893', 'CVE-2024-57894', 'CVE-2024-57895', 'CVE-2024-57896', 'CVE-2024-57897', 'CVE-2024-57898', 'CVE-2024-57899', 'CVE-2024-57900', 'CVE-2024-57901', 'CVE-2024-57902', 'CVE-2024-57903', 'CVE-2024-57904', 'CVE-2024-57905', 'CVE-2024-57906', 'CVE-2024-57907', 'CVE-2024-57908', 'CVE-2024-57910', 'CVE-2024-57911', 'CVE-2024-57912', 'CVE-2024-57913', 'CVE-2024-57916', 'CVE-2024-57917', 'CVE-2024-57918', 'CVE-2024-57919', 'CVE-2024-57921', 'CVE-2024-57924', 'CVE-2024-57925', 'CVE-2024-57926', 'CVE-2024-57929', 'CVE-2024-57931', 'CVE-2024-57932', 'CVE-2024-57933', 'CVE-2024-57934', 'CVE-2024-57935', 'CVE-2024-57938', 'CVE-2024-57939', 'CVE-2024-57940', 'CVE-2024-57944', 'CVE-2024-57945', 'CVE-2024-57946', 'CVE-2024-58087', 'CVE-2025-21629', 'CVE-2025-21631', 'CVE-2025-21632', 'CVE-2025-21633', 'CVE-2025-21634', 'CVE-2025-21635', 'CVE-2025-21636', 'CVE-2025-21637', 'CVE-2025-21638', 'CVE-2025-21639', 'CVE-2025-21640', 'CVE-2025-21642', 'CVE-2025-21643', 'CVE-2025-21644', 'CVE-2025-21645', 'CVE-2025-21646', 'CVE-2025-21647', 'CVE-2025-21648', 'CVE-2025-21649', 'CVE-2025-21650', 'CVE-2025-21651', 'CVE-2025-21652', 'CVE-2025-21653', 'CVE-2025-21654', 'CVE-2025-21655', 'CVE-2025-21656', 'CVE-2025-21658', 'CVE-2025-21659', 'CVE-2025-21660', 'CVE-2025-21661', 'CVE-2025-21662', 'CVE-2025-21663', 'CVE-2025-21664', 'CVE-2025-21834');
+  if (ksplice_cves_check(cve_list))
+  {
+    audit(AUDIT_PATCH_INSTALLED, 'KSplice hotfix for USN-7380-1');
+  }
+  else
+  {
+    extra = extra + ksplice_reporting_text();
+  }
+}
+if (extra) {
+  security_report_v4(
+    port       : 0,
+    severity   : SECURITY_HOLE,
+    extra      : extra
+  );
+  exit(0);
+}

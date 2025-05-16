@@ -1,0 +1,468 @@
+#TRUSTED b0966d2459b2025738324237baf4e28467737798ba62c8d13f9e62d26876ed9c0741552a021fc94ee5ba623b847422450312447f2afd7c85660df7c30e1a945dbe54dc23ab743c3561bca7434c03e4e047ee132584725a7129d9100ae80732559bf215386c600054b75614e33792fb49c9e9693efb1b85733da47bb9421aa9ab3cdb0e8b44c703c8879360547f67ebc4dcc533beea8c60d0bd268f41b0bb1fa04ec7d2d12d12ce703fb26a202947a757f59c6213b80a173f1f76641632519ddae21fc336aa738b776ffff04ea68aec79ec04a08d9de0ca5dc500a34d179b0d9d3f11046be7323b0e392119fb409782481bffee6a2d3e4ec4f8376d72b221f4022c8368d1a7161f5e9802d97ec24c8c2b35f0f175f0a7d27ccd4e14eed20f0c0aed34d8579ebf3ed5ddbeacc884da96adf59c6f3510e03a27b6d3979bc5a2e342d5930455a8dfe1cbb6c6cd63b8a689866b601cbac54b40463dc63c5cba86d55d17875f75379fcf31bbdc331f26b4cb5a4fa8fca4ec378be119684626dc7ea639b3859b8bae3c7f6ce3f042eb3b6ee5e759f579cafd3a230ab267798eb77e7ca20daf8f3887a061b6ced512dc7c77aafc86b08ee3f3230a2b9ecdadd56e3150dbedf27bd0d75cd246261aeabf8a6da8b5bbd23b4c6ec0d0654b4f7bad3c41bfa1b7e68af37378db60eee98a8619c97d5cd2e9dcaabb51fd29394e791cc8de59a4
+#TRUST-RSA-SHA256 8f0ae18d4a85494d07a288dd0d47cf0b24fb595d9ba9d0295a9a4378253db30f2a086983fb9f36476c47ad2c6006e9613f2f21ea33eb809f83ea6681f1a81d6ef2106b84f99734b850e58c0dcbcbc45d63802111a1cc032f34a6bff7996c712cbefc30ffaed63e037dc10a174216c003ad34cd59b12235339d87f994bb6399e6a02989b003e7c5b0424356ae429a5fbeb7e6c29a1b2591166e0f1e24229ed05aa8aec35393a7f90615690a011eec4bb3d1a0cbf6c91c74a76301161b2e796fdaff27396bc570bd9dbaf5532b970c3b5cdb6382ce7990dbdb4a627e608161e9add7705599ec598ea269c34185720a69651c0c1a2c02b90decb7db5dfb9e73ee9048affcf6ae2a50a1339f2dc4ea1ece4f6e93b775de73981d1f61a94bfb6a15180c1ae2ea36f4ce146223d1bf6c500984b446b6eec752a8bf9802777fa29ec4e03b035bbe3d1c28f1fabf0e3dcb33b9d0de0df9b7ea23dfcee70ad7331ae011c71e1bdc8be0b8711f6abf4d844a74730bb32a041a0fbaa4637fa5080f14e987d628d3b54db2555e8f4447604a4e040628b6fbe291739dc299834c0f9dfa8879fbcef9dab6beaa517af9ef914197e357dfe11bec81628f07af4d264c551673ac12d87a710199bced66150b2239e860d6b66279fe0e3a54dbc649fa0d7d819027b0b23c4fea1d1ff4a042ad08a4c72c67e7b90c1d91b5d77878ce241619c8d41446
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# smb_dcerpc.inc
+# Revision: 1.16
+#
+
+function dce_rpc (type,cid,data,flags,auth_header,auth_data)
+{
+  var packet, flag, alen, flen;
+
+  if (isnull(flags))
+    flag = 3; # FIRST fragment, LAST fragment
+  else
+    flag = flags;
+
+
+  if (!isnull(auth_data))
+  {
+    alen = strlen(auth_data);
+    flen = 16 + strlen(data) + alen + strlen (auth_header);
+  }
+  else
+  {
+    alen = 0;
+    flen = 16 + strlen(data);
+    auth_data = auth_header = NULL;
+  }
+
+  packet = raw_byte (b:5) +                # version
+           raw_byte (b:0) +                # version (minor)
+           raw_byte (b:type) +             # packet type
+           raw_byte (b:flag) +             # packet flags
+           raw_dword (d:16) +              # data representation (little-endian/ascii)
+           raw_word (w:flen) +             # Frag length
+           raw_word (w:alen) +             # auth length
+           raw_dword (d:cid) +             # caller ID
+           data +
+           auth_header +
+           auth_data;
+
+  return packet;
+}
+
+
+function dce_rpc_ntlmssp_header (code)
+{
+  var header;
+
+  header =
+    raw_byte (b:DCERPC_AUTHN_SVC_WINNT) + # Auth type: NTLMSSP
+    raw_byte (b:code)                   + # Auth level
+    raw_byte (b:0)                      + # Auth pad length: 0
+    raw_byte (b:0)                      + # Reserved
+    raw_dword (d:0);                      # Auth context id (to randomize for multiple sessions)
+
+  return header;
+}
+
+
+function dce_rpc_bind (cid, uuid, vers, auth)
+{
+  var packet, auth_header, auth_data;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Attempting rpc bind');
+
+  packet = raw_word (w:4280) +       # Max Xmit Frag
+           raw_word (w:4280) +       # Max recv Frag
+           raw_dword (d:0)   +       # Assoc group
+           raw_dword (d:1)   +       # Num context items
+           raw_word (w:0)    +       # Context ID
+           raw_word (w:1)    +       # num trans item
+           encode_uuid (uuid:uuid) + # Interface uuid
+           raw_word (w:vers) +       # interface version
+           raw_word (w:0)    +       # interface version (minor)
+           encode_uuid (uuid:"8a885d04-1ceb-11c9-9fe8-08002b104860") +
+           raw_dword (d:2) ;         # syntax version
+
+  if (!isnull(auth) && (auth == TRUE))
+  {
+    auth_header = dce_rpc_ntlmssp_header (code:DCERPC_AUTHN_CONNECT);
+    auth_data = raw_ntlmssp_negotiate();
+  }
+  else
+  {
+    auth_data = auth_header = NULL;
+  }
+
+  return dce_rpc (type:DCE_RPC_BIND, cid:cid, data:packet, auth_header:auth_header, auth_data:auth_data);
+}
+
+
+
+function dce_rpc_parse_bind_ack (data, auth, cid)
+{
+  var len, res, ret, ntlmssp, pos, pad_len;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Attempting parse');
+
+  if (strlen (data) < 26)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'Data', length:26);
+    return NULL;
+  }
+  len = get_word (blob:data, pos:24);
+  if ((len%2) != 0)
+    len += 1; # byte padding
+
+  if (strlen (data) < (26+len+4))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'Data', length:(26+len+4));
+    return NULL;
+  }
+
+  res = get_word (blob:data, pos:26+len+4); # error code
+
+  # if no auth, returns the value for compatibility
+  if (isnull(auth) || (auth == FALSE))
+    return res;
+
+  ret = NULL;
+  ret[0] = res;
+
+  if (res != 0)
+    return ret;
+
+  ret[1] = get_word (blob:data, pos:20);  # association group
+
+  if (strlen (data) < 26+len+4+32)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'Data', length:(26+len+4+32));
+    return NULL;
+  }
+
+  pos = 26+len+4+26;
+  pad_len = get_byte (blob:data, pos:pos);
+
+  pos += 6 + pad_len;
+
+  ntlmssp = substr(data, pos, strlen(data)-1);
+  if (isnull(ntlmssp))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'ntlmssp');
+    return NULL;
+  }
+
+  ntlmssp = raw_ntlmssp_parse_challenge(data:ntlmssp);
+
+  if (isnull(ntlmssp))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'raw_ntlmssp_parse_challenge');
+    return NULL;
+  }
+
+  ret[2] = ntlmssp[0];
+  ret[3] = cid;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Parse okay');
+  return ret;
+}
+
+function dce_rpc_alter_context (cid, uuid, vers)
+{
+  var packet, auth_header, auth_data;
+
+  packet = raw_word (w:4280) +       # Max Xmit Frag
+           raw_word (w:4280) +       # Max recv Frag
+           raw_dword (d:0)   +       # Assoc group
+           raw_dword (d:1)   +       # Num context items
+           raw_word (w:0)    +       # Context ID
+           raw_word (w:1)    +       # num trans item
+           encode_uuid (uuid:uuid) + # Interface uuid
+           raw_word (w:vers)    +       # interface version
+           raw_word (w:0)    +       # interface version (minor)
+           encode_uuid (uuid:"8a885d04-1ceb-11c9-9fe8-08002b104860") +
+           raw_dword (d:2) ;         # syntax version
+
+  auth_data = auth_header = NULL;
+
+  auth_header = dce_rpc_ntlmssp_header (code:DCERPC_AUTHN_CONNECT);
+  auth_data = raw_dword (d:1) + crap(data:raw_string(0), length:12);
+
+  return dce_rpc (type:DCE_RPC_ALTER, cid:cid, data:packet, auth_header:auth_header, auth_data:auth_data);
+}
+
+
+function dce_rpc_auth3 (cid, login, password, domain, challenge)
+{
+  var packet, auth_header, auth_data;
+
+  packet = raw_word (w:4280) +       # Max Xmit Frag
+           raw_word (w:4280) ;       # Max recv Frag
+
+  auth_header = dce_rpc_ntlmssp_header (code:DCERPC_AUTHN_CONNECT);
+  auth_data = raw_ntlmssp_auth_securityblob (password:password, login:login, domain:domain, challenge:challenge);
+
+  return dce_rpc (type:DCE_RPC_AUTH3, cid:cid, data:packet, auth_header:auth_header, auth_data:auth_data[0]);
+}
+
+
+function dce_rpc_connect (socket, cid, uuid, vers, login, password, domain)
+{
+  var ret, resp, pass, name, dom;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Attempting rpc connect');
+
+  ret = dce_rpc_bind(cid:cid, uuid:uuid, vers:vers, auth:TRUE);
+
+  send (socket:socket, data:ret);
+  resp = recv (socket:socket, length:4096);
+
+  if (!resp)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce rpc bind');
+    return NULL;
+  }
+
+  resp = dce_rpc_parse_bind_ack(data:resp, cid:cid, auth:TRUE);
+  if (isnull (resp))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_parse_bind_ack()');
+    return NULL;
+  }
+
+  pass = cstring (string:password, _null:1);
+  name = cstring (string:login, _null:1);
+  dom = cstring (string:domain, _null:1);
+
+  ret = dce_rpc_auth3 (cid:cid, login:name, password:pass, domain:dom, challenge:resp[2]);
+  send (socket:socket, data:ret);
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Potentially successful rpc connect');
+  return resp;
+}
+
+
+
+function dce_rpc_request (code, data, flags, id, auth, type)
+{
+  var packet, cid, auth_header, auth_data;
+
+  if (!isnull(auth) && (auth == TRUE))
+  {
+    auth_header = dce_rpc_ntlmssp_header (code:DCERPC_AUTHN_CONNECT);
+    auth_data = raw_dword (d:1) + crap(data:raw_string(0), length:12);
+    cid = id;
+  }
+  else
+  {
+    if (isnull(id))
+      cid = session_get_cid();
+    else
+      cid = id;
+
+    auth_header = auth_data = NULL;
+  }
+
+  # this is an edge case where we wanted to control the type field
+  if (isnull(type)) type = DCE_RPC_REQUEST;
+
+  packet = raw_dword (d:strlen(data))  +       # Alloc hint
+           raw_word (w:0)              +       # Context ID
+           raw_word (w:code)           +       # Opnum
+           data;
+
+  return dce_rpc (type:type, cid:cid, data:packet, flags:flags, auth_header:auth_header, auth_data:auth_data);
+}
+
+
+
+function dce_rpc_sendrecv_request (socket, id, code, data, flags)
+{
+  var req, ret;
+
+  req = dce_rpc_request (code:code, data:data, flags:flags, id:id);
+  send (socket:socket, data:req);
+  ret = recv (socket:socket, length:4096);
+
+  return ret;
+}
+
+
+function dce_rpc_pipe_request (fid, code, data, type)
+{
+  var tmp, rep, len, flag, ret, offset, cid, dat, size, data_len;
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Attempting pipe request');
+
+  size = session_get_server_max_size() - 110;
+  cid = session_get_cid();
+  offset = 0;
+  data_len = strlen(data);
+
+  if (data_len > size)
+  {
+    flag = 1; # FIRST fragment
+    tmp = substr (data, 0, size-1);
+    len = size;
+  }
+  else
+  {
+    flag = 3; # FIRST fragment, LAST fragment
+    tmp = data;
+    len = data_len;
+  }
+
+  while (len < data_len)
+  {
+    ret = smb_write_and_x (fid:fid, offset:offset, mode:WRITE_START, data:dce_rpc_request (code:code, data:tmp, flags:flag, id:cid));
+    if (isnull (ret) || (ret != 1))
+    {
+      _debug_smb_status_not_success(fname:FUNCTION_NAME);
+      return NULL;
+    }
+
+    offset += strlen(tmp);
+
+    if ((len + size) < data_len)
+    {
+      flag = 0;
+      tmp = substr (data, len, len+size-1);
+      len += size;
+    }
+    else
+    {
+      flag = 2;
+      tmp = substr (data, len, data_len-1);
+      break;
+    }
+  }
+
+  ret = smb_trans_pipe (fid:fid, data:dce_rpc_request (code:code, data:tmp, flags:flag, id:cid, type:type));
+  if (isnull (ret))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_trans_pipe()');
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Pipe request success');
+  return ret;
+}
+
+
+function dce_rpc_parse_response (fid, data)
+{
+  var resp, flag, len, alloc, tmp, dat, type;
+
+  if (strlen (data) < 24)
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'Data', length:24);
+    return NULL;
+  }
+
+  type = get_byte (blob:data, pos:2);
+
+  # Fault -> return NULL
+  if (type == 3)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'data pos 2)', value:'Fault');
+    return NULL;
+  }
+
+  flag = get_byte (blob:data, pos:3);
+  len = get_word (blob:data, pos:8) - 24;
+  alloc = get_dword (blob:data, pos:16);
+
+  if (strlen (data) < (24 + len))
+  {
+    _debug_smb_length(fname:FUNCTION_NAME, varname:'Data', length:(24 + len));
+    return NULL;
+  }
+
+  resp = substr (data, 24, 24 + len - 1);
+
+  # If it is not the last dce_rpc packet we continue to read
+  while (!(flag & 2))
+  {
+    # we read only 1000 bytes at a time
+    tmp = smb_read_and_x (fid:fid, offset:0, length:1024);
+    if (strlen (tmp) < 24)
+    {
+      _debug_smb_length(fname:FUNCTION_NAME, varname:'smb_read_and_x return', length:24);
+      return NULL;
+    }
+
+    flag = get_byte (blob:tmp, pos:3);
+    len = get_word (blob:tmp, pos:8);
+    alloc = get_dword (blob:tmp, pos:16);
+
+    while (strlen (tmp) < len)
+    {
+      dat = smb_read_and_x (fid:fid, offset:0, length:1024);
+      if (!dat)
+      {
+        _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_read_and_x()');
+        return NULL;
+      }
+      tmp += dat;
+    }
+
+    resp += substr (tmp, 24, 24 + len - 1);
+  }
+
+  return resp;
+}
+
+
+function bind_pipe (pipe, uuid, vers)
+{
+  var fid, ret, data;
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+  'Attempting pipe bind');
+
+  ret = smb_create_and_x (
+    name:pipe,
+    desired_access:FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+    flags_attributes:0,
+    share_mode:0,
+    create_disposition:OPEN_EXISTING,
+    create_options:0x00400040
+  );
+  if (isnull(ret))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_create_and_x()');
+    return NULL;
+  }
+
+  fid = ret[0];
+
+  ret = smb_write_and_x (fid:fid, offset:0, mode:WRITE_START, data:dce_rpc_bind(cid:session_get_cid(), uuid:uuid, vers:vers));
+  if (isnull (ret) || (ret != 1))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_write_and_x()', value:'Non-1');
+    return NULL;
+  }
+
+  data = smb_read_and_x (fid:fid, offset:0, length:1024);
+  if (!data)
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'smb_read_and_x()');
+    return NULL;
+  }
+
+  ret = dce_rpc_parse_bind_ack(data:data);
+  if (isnull (ret) || (ret != 0))
+  {
+    _debug_smb_null_return(fname:FUNCTION_NAME, label:'dce_rpc_parse_bind_ack()', value:'NULL or Non-zero');
+    return NULL;
+  }
+
+  dbg::detailed_log(lvl:3, family:'SMB', src:FUNCTION_NAME, msg:
+    'Pipe bind success');
+  return fid;
+}

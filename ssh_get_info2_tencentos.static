@@ -1,0 +1,114 @@
+#TRUSTED 12dd092bcfdb93bd70a9c61993d656dc7d3e533ffedb81abee617244251079f559a002eb3ea47719249111b9b299f044c33f60fd2e25ad2907997bc16ec885d39a5214187e58da338b9abbe2b0bce5d653635d6512e2609374a7abb24b70578b28219fa690dea301d44b0d272951fcdcbb7bec86d77b211efbbe751572089d4f457bcc5a02c8e8071b39728a372a0f648a2dbd685bcfcefeda6cdd40d8ef8351df5313d03d46c620cbc387a7ba5634d7d635b920ec3deaecf862db93f948744a14115b337a3ead3ee751d88a5c06c03ae31e27749b045fb029bed9157ea6e2d9aa386043bde3f8c1cfc167461b692152ddb7be5a9318a8434b1ebb09a688470455bd56c70c969622e383dedff7247a10a350e010c50f0f84549ae83561d64f1eebda0e255c5c7eadbe61dec07a5be29190f91cf0e9eb15268f373a234413b42b2ab800060bd3eba74382fb3f86e37d167a0a6b5658059ccf096ff296f1d913161faf0cb3073f225a68179079a3f2046e3326d68fb872ef9b77ad358d3e880e31fd0e1f0c3e0fba6f6443792f59980d9b11189861b1c9be85309edd72447d94e899075404e3f2a03503b64c28a04f2d58c8bfafd1113313d8cedf8599ca6cb8ebac7ec1f0206f42b8f10011ed67bb42670235e5a51c958da5a247e7b6902cb252b17cffbfb23246dd578837cb4a892d107a1e085cde00937f8bb7ad922a8b25e9
+#TRUST-RSA-SHA256 854ef0b99f64a152d4cf38ded4f03caaf2b1a0e11cb1adc72be7ad1a4b38762a14f80f56bcd6b7b9c23f0bc8770d87794f2af3e779b3c56ebf25253add4755d91f980af5b033df3405513890f06c733f964796da3f3b1ac007cde544de9f4d8ce113ce540be9683437e36a51a9f9381a766c2cd0d78d7b636776e88cfaab7209db604564022701fa933e74b2da4baa8ab6e17307e03e3442f44423ba5fc93cd509745b1d31756b63aaa96e365f8f6d08aa95c17b9871fd8f2ae4b40b01e3277cbd811fa439386bbd53e56cffb0f8c4501b3e714457404721193d03e0a6b9403168fc9f97dd2c40ed92f40cbfb5847c724b0f27fae3ae1f27c1aa02435855d2693d1b686d0f6ab41bd4216df2e5603b66e40888f29202c9f48a15505c45b3201057c42fc3621a2def0d8c5372f141478890f9744d97c058a8a936abf5b15f987477b193387fe51016a8849b2a40ccadfc1199800db1ad52dbec14bbc93e6dad8143a4321f0d0839c8434e4983d020f282f8457d295741573099ebc7e6d18c3558f9ab7b41e3610224040b058027219ab6bc21f4b1f6708a09f644805a8b0f0e7c4efe4167417a05fd861b3567e6c0fb00eaa75eeaf1d249e725a0b655775f2f122ae0a122c77d0e3e56e78b419d28591eb7cbfb346b42559deb59d769c4bece74cace5c1ea688b94445c976ec9597af90393eb496c16caad7318115c8f1fefac1
+
+function handle_tencentos(session, use_shell_handler, &channel, cmd_res)
+{
+  var value, line, lines, name, version, platform_id, cpe, kernel;
+  var buf, match, inventory, patches, rpm, err_msg, cpu;
+  var failure_pretext = 'OS Security Patch Assessment is not available because ';
+
+  replace_kb_item(name: "Host/etc/os-release", value:cmd_res);
+
+  if(session)
+    session.clear_cmd_error();
+
+  # Parse out the data given by cat /etc/os-release
+  lines = split(cmd_res, sep:'\n', keep:FALSE);
+
+  foreach line (lines)
+  {
+    if ("NAME" >< line)
+    {
+      value = pregmatch(string:line, pattern:'^NAME *= *"?([^"]+)"?$');
+
+      if (!isnull(value) && value[1])
+        name = value[1];
+    }
+    else if ("VERSION" >< line)
+    {
+      value = pregmatch(string:line, pattern:'^VERSION *= *"?([0-9.]+[^"]*)"?$');
+
+      if (!isnull(value) && value[1])
+        version = value[1];
+    }
+    else if ("PLATFORM_ID" >< line)
+    {
+      value = pregmatch(string:line, pattern:'^PLATFORM_ID *= *"?([^"]+)"?$');
+
+      if (!isnull(value) && value[1])
+        platform_id = value[1];
+    }
+  }
+
+  # If we couldn't get a name or version for some reason...
+  if (!version || !name)
+  {
+    err_msg = '';
+    failure_kb_msg = '';
+    if (!name)
+    {
+      err_msg += '\nThe TencentOS Product could not be precisely identified;';
+      failure_kb_msg += '\nCould not identify TencentOS Product from /etc/os-release';
+    }
+
+    if (!version)
+    {
+      err_msg += '\nThis version of TencentOS could not be precisely identified;';
+      failure_kb_msg += '\nCould not identify version from /etc/os-release';
+    }
+
+    err_msg = '\n'+failure_pretext + err_msg;
+    failure_kb_msg = failure_pretext + failure_kb_msg;
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  replace_kb_item(name:"Host/TencentOS/Product", value:name);
+  replace_kb_item(name:"Host/TencentOS/Version", value:version);
+
+  if (platform_id)
+    replace_kb_item(name:"Host/TencentOS/Platform ID", value:platform_id);
+
+  report += '\nThe remote TencentOS system is : ' + name + ' ' + version;
+  report += '\nLocal checks have been enabled for this host.';
+
+  # Try and grab the Kernel via uname -r
+  kernel = host_info_key_val['kernel'];
+
+  if(kernel)
+    replace_kb_item(name:"Host/TencentOS/Kernel", value:kernel);
+
+  if(session.cmd_error || !kernel)
+  {
+    if(session.cmd_error)
+      failure_kb_msg += '\nThe following error :' + session.cmd_error;
+    else
+      failure_kb_msg += '\nThe command "uname -r" failed to produce any results.';
+
+    failure_kb_msg = failure_pretext + failure_kb_msg;
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  rpm = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                        internal_label:"TencentOS");
+
+  cpu = host_info_key_val['cpu'];
+
+  if(kernel && rpm && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_tencentos.static', value: 107);
+  }
+
+  if(!empty_or_null(failure_kb_msg))
+    failure_kb_msg = failure_pretext + failure_kb_msg;
+
+  return TRUE;
+}

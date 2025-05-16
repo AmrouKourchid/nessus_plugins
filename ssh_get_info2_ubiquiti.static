@@ -1,0 +1,124 @@
+#TRUSTED 7da7d3c7ac6f025c013254d76221127b90a25758f370d84d27140966a48022ee5c01371a0e4712743a8582ef88bcc05f174271b9e7442e6378b1fa2d1086cfc8111cbd744fd5aff5e71a9b9f4fd14b2c06edafda316ed8a2737755c3d868acf47b58028dc0c633c0a7074988ee0855f7d571fd7193a165b4b897bf21dc38571b4c2d0fb9265284397522a14027d441daa063c28acafa86b035ffac11ee9b1b2efc76e8260677b2f6f63cea7e2d576d454b102e38b5dda4904b1275cbdf3ddf1351196a4e04e3758d3485928f7bbff13fa5864aed6ee0ef42d91b16dddacaf6e4c8a37ef60d97be03c1eeeecce9fdcb807464f339e77bc5417c33dc9ffbad4044e66954702bdf9b8d6254c16e4d524d2b1975d3d1f406f117365d28b6040d70fff02633699372574ddc63ea7aba4285c2bc42b8a0a94aea22426a54a7276c841cafd4dcf3428b665391c2a08e9d0a99f9d137135438b8cdf085512a82afcf3c194c9c39461fb620a9a26a2c56a152cb32dc06440099ef388cf244c94836749ac0827dfccb35cfe0441f2a7a06cdc3c5fde280b1c03a20e622b95526c5a3384178cefa6b52b34d3406939919a4335cfe8d6295d06a5ef39e06aa43b14e34662a2fe10724484fa435e4c4a7d4bb0e04b2d5496af166c44c5b3feec26249e62488194afa0c7c9ed071a0b0966b94d40c8b56e6ac7abe3e1ccfb63e31206daa616d68
+#TRUST-RSA-SHA256 46d93aadd9205897fe5cd00661da3d5622ea54fa05cc36e89b941d83f37e3beecaca6061bae3a68f5a5174e439be55d292aa426608d6ca80e9cba126e3b64559f1823b7d71df3112739eef80d4d8ffd49f2355ddf1304bbf9c487f8c76221b0887258163acd6c63d1999dde6598e5e631c4c350dbc6739a85b350b06390526cef8d332119031300f1b4ae1ee77b394f7f7fe8b8c4c5f4f2fe38136189e43bae40f3807d01977c0c9bd0de000955274ae6395ce93b6531ff6647c93492d60206945743537c38ff877732219711552d9ae5acf4b0037fb8afdab8504998200346a13fb8684af981780b22ee361e7e2e29204576f884dbdcfd77fd421e10629f77b2ac466277cf7d61b3c16a212fb87fc9e7047b9e63cb591bb872d359cff995675cea191fbb7c8b20ef404a07c3ea7cbfa3c4cfa36b7c9ebf44be1b6009768e2ee803e800db968ba76f37115eb6651822bc3bab27a117158e674d23f431f41721540cb90573a82d53ad4e88d05a4a81505df53b32d983d3277ca57d97d9ad6ae46839fadcc772556e720a1d56fc38b99b0a4f3ea2c4e0cf28fa4643fdf09a0b532d6cb06635af3a4cf7215e42e066b35ec9fe1eee8dd89f200eeb14b0249722073064322fed69f841ab642b6487152deb9bcd48e1fd6a1043fb9efacd1db6be0f5b66e21448f8322914b4a0259d22b369e7bb9dea711b516ff9a591f260f239b92
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+#
+# Notes:
+#   This handler covers detection of Ubiquity UniFi wireless access points
+#   previously covered by ssh_get_info.nasl
+#
+
+function ubiquiti_pre_check_fail()
+{
+  # have we already checked that the host is not a Ubiquity UniFi access point?
+  if(host_info_key_val['host_not_ubiquiti'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['info_unrecognized']) &&
+     host_info_key_val['info_unrecognized'] !~ ubiquiti_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Ubiquity UniFi access point if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with
+#     "(^|\n)Model:\s*UAP[\r\n]+Version:\s*[0-9.]+"
+# in response to running 'info'
+#
+function handle_ubiquiti(session, use_shell_handler, &channel, cmd_res)
+{
+  #Local checks just means we can run commands on the target host.
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  report += '\nLocal checks have been enabled for this host.';
+  replace_kb_item(name:"Host/Ubiquiti/show_version", value:cmd_res);
+
+  var unifi;
+  var match;
+  var version;
+  var model;
+
+  match = pregmatch(pattern:"(?:^|\n)Model:\s*(.+)\nVersion:\s*([0-9.]+)", string:cmd_res);
+
+  if(!isnull(match))
+  {
+    if(!isnull(match[1]))
+      model = match[1];
+
+    if(!isnull(match[2]))
+      version = match[2];
+  }
+
+  if(empty_or_null(model) || empty_or_null(version))
+  {
+    var failure_kb_msg = 'The remote host appears to be running a Ubiqiti UniFi wireless access point.\n' +
+                         'However, something went wrong when we tried to capture the output of\n' +
+                         'the "info" command.';
+
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    return TRUE;
+  }
+
+  unifi = 'UBNT UniFi ' + model + " " + version;
+
+  report += '\nOS Security Patch Assessment for ' + unifi + ' is available.\n' +
+
+  replace_kb_item(name:"Host/OS/showver", value:unifi);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"wireless-access-point");
+
+  replace_kb_item(name:"Host/UBNT_UniFi/Model", value:model);
+  replace_kb_item(name:"Host/UBNT_UniFi/Version", value:version);
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_ubiquiti.static', value: 103);
+
+  return NULL;
+}
+
+#
+# callback for systems that where 'info' does not match the Ubiquiti regex
+#
+function handle_not_ubiquiti(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+    # store more details for other handlers to use
+    host_info_key_val['info_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_ubiquiti'] = TRUE;
+  }
+}

@@ -1,0 +1,256 @@
+#%NASL_MIN_LEVEL 70300
+#
+# (C) Tenable Network Security, Inc.
+#
+# The descriptive text and package checks in this plugin were  
+# extracted from Red Hat Security Advisory RHSA-2010:0471. The text 
+# itself is copyright (C) Red Hat, Inc.
+#
+
+include('deprecated_nasl_level.inc');
+include('compat.inc');
+
+if (description)
+{
+  script_id(47017);
+  script_version("1.36");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2024/11/04");
+
+  script_cve_id(
+    "CVE-2010-0084",
+    "CVE-2010-0085",
+    "CVE-2010-0087",
+    "CVE-2010-0088",
+    "CVE-2010-0089",
+    "CVE-2010-0090",
+    "CVE-2010-0091",
+    "CVE-2010-0092",
+    "CVE-2010-0094",
+    "CVE-2010-0095",
+    "CVE-2010-0837",
+    "CVE-2010-0838",
+    "CVE-2010-0839",
+    "CVE-2010-0840",
+    "CVE-2010-0841",
+    "CVE-2010-0842",
+    "CVE-2010-0843",
+    "CVE-2010-0844",
+    "CVE-2010-0846",
+    "CVE-2010-0847",
+    "CVE-2010-0848",
+    "CVE-2010-0849"
+  );
+  script_bugtraq_id(
+    39062,
+    39065,
+    39067,
+    39068,
+    39069,
+    39070,
+    39072,
+    39073,
+    39075,
+    39077,
+    39078,
+    39081,
+    39083,
+    39084,
+    39086,
+    39090,
+    39091,
+    39093,
+    39094,
+    39095,
+    39096
+  );
+  script_xref(name:"RHSA", value:"2010:0471");
+  script_xref(name:"CISA-KNOWN-EXPLOITED", value:"2022/06/15");
+
+  script_name(english:"RHEL 5 : Red Hat Network Satellite Server IBM Java Runtime (RHSA-2010:0471)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote Red Hat host is missing one or more security updates for Red Hat Network Satellite Server IBM Java Runtime.");
+  script_set_attribute(attribute:"description", value:
+"The remote Redhat Enterprise Linux 5 host has packages installed that are affected by multiple vulnerabilities as
+referenced in the RHSA-2010:0471 advisory.
+
+    This update corrects several security vulnerabilities in the IBM Java
+    Runtime Environment shipped as part of Red Hat Network Satellite Server
+    5.3. In a typical operating environment, these are of low security risk as
+    the runtime is not used on untrusted applets.
+
+    Several flaws were fixed in the IBM Java 2 Runtime Environment.
+    (CVE-2010-0084, CVE-2010-0085, CVE-2010-0087, CVE-2010-0088, CVE-2010-0089,
+    CVE-2010-0090, CVE-2010-0091, CVE-2010-0092, CVE-2010-0094, CVE-2010-0095,
+    CVE-2010-0837, CVE-2010-0838, CVE-2010-0839, CVE-2010-0840, CVE-2010-0841,
+    CVE-2010-0842, CVE-2010-0843, CVE-2010-0844, CVE-2010-0846, CVE-2010-0848,
+    CVE-2010-0849)
+
+    Users of Red Hat Network Satellite Server 5.3 are advised to upgrade to
+    these updated java-1.6.0-ibm packages, which resolve these issues. For this
+    update to take effect, Red Hat Network Satellite Server must be restarted
+    (/usr/sbin/rhn-satellite restart), as well as all running instances of
+    IBM Java.
+
+Tenable has extracted the preceding description block directly from the Red Hat Enterprise Linux security advisory.
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  # https://access.redhat.com/security/data/csaf/v2/advisories/2010/rhsa-2010_0471.json
+  script_set_attribute(attribute:"see_also", value:"http://www.nessus.org/u?132de00e");
+  script_set_attribute(attribute:"see_also", value:"http://www.redhat.com/security/updates/classification/#low");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575740");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575747");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575755");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575756");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575760");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575769");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575772");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575808");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575818");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575846");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575854");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=575865");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=578430");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=578432");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=578433");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=578436");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=578437");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=578440");
+  script_set_attribute(attribute:"see_also", value:"https://access.redhat.com/errata/RHSA-2010:0471");
+  script_set_attribute(attribute:"solution", value:
+"Update the RHEL Red Hat Network Satellite Server IBM Java Runtime package based on the guidance in RHSA-2010:0471.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:P/I:P/A:P");
+  script_set_cvss_temporal_vector("CVSS2#E:H/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:H/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2010-0849");
+  script_set_attribute(attribute:"cvss3_score_source", value:"CVE-2010-0840");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+  script_set_attribute(attribute:"exploit_framework_core", value:"true");
+  script_set_attribute(attribute:"exploited_by_malware", value:"true");
+  script_set_attribute(attribute:"metasploit_name", value:'Java MixerSequencer Object GM_Song Structure Handling Vulnerability');
+  script_set_attribute(attribute:"exploit_framework_metasploit", value:"true");
+  script_set_attribute(attribute:"exploit_framework_canvas", value:"true");
+  script_set_attribute(attribute:"canvas_package", value:"CANVAS");
+  script_cwe_id(190, 367);
+  script_set_attribute(attribute:"vendor_severity", value:"Low");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2010/04/01");
+  script_set_attribute(attribute:"patch_publication_date", value:"2010/06/14");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2010/06/15");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.6.0-ibm");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:java-1.6.0-ibm-devel");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:redhat:enterprise_linux:4");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:redhat:enterprise_linux:5");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Red Hat Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2010-2024 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("redhat_repos.nasl", "ssh_get_info.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/RedHat/release", "Host/RedHat/rpm-list", "Host/cpu");
+
+  exit(0);
+}
+
+
+include('rpm.inc');
+include('rhel.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+var os_release = get_kb_item('Host/RedHat/release');
+if (isnull(os_release) || 'Red Hat' >!< os_release) audit(AUDIT_OS_NOT, 'Red Hat');
+var os_ver = pregmatch(pattern: "Red Hat Enterprise Linux.*release ([0-9]+(\.[0-9]+)?)", string:os_release);
+if (isnull(os_ver)) audit(AUDIT_UNKNOWN_APP_VER, 'Red Hat');
+os_ver = os_ver[1];
+if (!rhel_check_release(operator: 'ge', os_version: os_ver, rhel_version: '5')) audit(AUDIT_OS_NOT, 'Red Hat 5.x', 'Red Hat ' + os_ver);
+
+if (!get_kb_item('Host/RedHat/rpm-list')) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 's390' >!< cpu && 'aarch64' >!< cpu && 'ppc' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'Red Hat', cpu);
+
+var constraints = [
+  {
+    'repo_relative_urls': [
+      'content/dist/rhel/server/5/5Server/i386/satellite/5.3/os',
+      'content/dist/rhel/server/5/5Server/i386/satellite/5.3/source/SRPMS',
+      'content/dist/rhel/server/5/5Server/x86_64/satellite/5.3/os',
+      'content/dist/rhel/server/5/5Server/x86_64/satellite/5.3/source/SRPMS',
+      'content/dist/rhel/system-z/5/5Server/s390x/satellite/5.3/os',
+      'content/dist/rhel/system-z/5/5Server/s390x/satellite/5.3/source/SRPMS'
+    ],
+    'pkgs': [
+      {'reference':'java-1.6.0-ibm-1.6.0.8-1jpp.1.el5', 'cpu':'i386', 'release':'5', 'rpm_spec_vers_cmp':TRUE, 'epoch':'1'},
+      {'reference':'java-1.6.0-ibm-1.6.0.8-1jpp.1.el5', 'cpu':'s390x', 'release':'5', 'rpm_spec_vers_cmp':TRUE, 'epoch':'1'},
+      {'reference':'java-1.6.0-ibm-1.6.0.8-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE, 'epoch':'1'},
+      {'reference':'java-1.6.0-ibm-devel-1.6.0.8-1jpp.1.el5', 'cpu':'i386', 'release':'5', 'rpm_spec_vers_cmp':TRUE, 'epoch':'1'},
+      {'reference':'java-1.6.0-ibm-devel-1.6.0.8-1jpp.1.el5', 'cpu':'s390x', 'release':'5', 'rpm_spec_vers_cmp':TRUE, 'epoch':'1'},
+      {'reference':'java-1.6.0-ibm-devel-1.6.0.8-1jpp.1.el5', 'cpu':'x86_64', 'release':'5', 'rpm_spec_vers_cmp':TRUE, 'epoch':'1'}
+    ]
+  }
+];
+
+var applicable_repo_urls = rhel_determine_applicable_repository_urls(constraints:constraints);
+if(applicable_repo_urls == RHEL_REPOS_NO_OVERLAP_MESSAGE) exit(0, RHEL_REPO_NOT_ENABLED);
+
+var flag = 0;
+foreach var constraint_array ( constraints ) {
+  var repo_relative_urls = NULL;
+  if (!empty_or_null(constraint_array['repo_relative_urls'])) repo_relative_urls = constraint_array['repo_relative_urls'];
+  foreach var pkg ( constraint_array['pkgs'] ) {
+    var reference = NULL;
+    var _release = NULL;
+    var sp = NULL;
+    var _cpu = NULL;
+    var el_string = NULL;
+    var rpm_spec_vers_cmp = NULL;
+    var epoch = NULL;
+    var allowmaj = NULL;
+    var exists_check = NULL;
+    var cves = NULL;
+    if (!empty_or_null(pkg['reference'])) reference = pkg['reference'];
+    if (!empty_or_null(pkg['release'])) _release = 'RHEL' + pkg['release'];
+    if (!empty_or_null(pkg['sp'])) sp = pkg['sp'];
+    if (!empty_or_null(pkg['cpu'])) _cpu = pkg['cpu'];
+    if (!empty_or_null(pkg['el_string'])) el_string = pkg['el_string'];
+    if (!empty_or_null(pkg['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = pkg['rpm_spec_vers_cmp'];
+    if (!empty_or_null(pkg['epoch'])) epoch = pkg['epoch'];
+    if (!empty_or_null(pkg['allowmaj'])) allowmaj = pkg['allowmaj'];
+    if (!empty_or_null(pkg['exists_check'])) exists_check = pkg['exists_check'];
+    if (!empty_or_null(pkg['cves'])) cves = pkg['cves'];
+    if (reference &&
+        _release &&
+        rhel_decide_repo_relative_url_check(required_repo_url_list:repo_relative_urls) &&
+        (applicable_repo_urls || (!exists_check || rpm_exists(release:_release, rpm:exists_check))) &&
+        rpm_check(release:_release, sp:sp, cpu:_cpu, reference:reference, epoch:epoch, el_string:el_string, rpm_spec_vers_cmp:rpm_spec_vers_cmp, allowmaj:allowmaj, cves:cves)) flag++;
+  }
+}
+
+if (flag)
+{
+  var extra = NULL;
+  if (isnull(applicable_repo_urls) || !applicable_repo_urls) extra = rpm_report_get() + redhat_report_repo_caveat();
+  else extra = rpm_report_get();
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_HOLE,
+      extra      : extra
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'java-1.6.0-ibm / java-1.6.0-ibm-devel');
+}

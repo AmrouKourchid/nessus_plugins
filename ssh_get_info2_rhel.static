@@ -1,0 +1,524 @@
+#TRUSTED 6eaa765f4bebae8d0873c27036d43eda20bd5d935597569e7dd53bb06139f0c1d2a51a37d51d15e53ff3f482a9da8071368fa5af06aeb1fbcef13ff5e7181b910f29a96c73e88fc55f6000b17b46f78e185f4306a6be9b50223a91bb8f3fbdf165b7ff3107119425dd99e54df54d912f01b5151422cc16651095c85a69b1356f01aaf170059d321a5394c3b01b840e64d0b2aa0208756abd83cf8a38e6a1a72db527d8200b2ad6112536cf212854f17b5b3f544c4039f70565f918e74abe8e989d29ac2910a9c1cc4ccc2046773cd64ac5be0be74fd0097fbec001cb1e40eb2946d7c9782fa0747fb0fa35ecf76a051138f0511d0cb12e36d9cc5402a95470243e1ec38b2e4b3dd5eef6874decb7c50c826ee4e82de49f47b805f6f66bcc62b380713cc58bc44a1d049098535c476cec63658ec85bce948350191e09a88386600bdfca0da553c865fdb3ef3a51d18eb529617388683d83d7eb159863f7d6dfe807781d97a214ad8bc29a788e0cc2b17fcee3cd1aa2ddb59bf74c38bd055b998508475ea00520af3b049f9e8cb474c96c271e18b4241e6a9fed6a35d1224a313f35394fb8476f2cca769c61f8de1d74a79cfdf5192afa647bd3c16dbe4b0693dc987814ac8aeebe66b9070c79db4a205ccf5841f5865f08615eb41c94cf188ed4e372e6f5aeb59cedf477427ab9b6de82de32ef9d71a262b4db8ab68b099acca1
+#TRUST-RSA-SHA256 0ae0fed3dbb8d202b6c03608aa296bd4624baca5cc02d34cab7705d890c9d8f32fe4f87f078b2021c7154eafe4d4007608a6259f46633f325285c6924efe9ed8750f1af4d5eeec2a8de51925285ebeefe3ad4cb949bee4a0837fabb8740124cf71d626bb2f18e0cef0983e736363aba981d42de0898a9f6bf3714d6a6e5712389a17035ff710149bf771a1ca6ff543a196afd861b1c0977c980ddcb37d22e56d3929920fddfa54ed62344f448cd5c9e83ea86bbe415b201d75939c1165804976bdff40dedf75c8fcf9eac87699f103f6ef8a35305372b216a12e0ed82b13ecbf47b57c4a1d6c643df60f05011dae547ce97cc482028e163f5ea1b76abeda5462ab6ddab2e3b5070ee8eeaff4862b7f055b106dc63b53137adce3f253bc7073051700f7573b93ce784497b5bd566e5d118d6f666534eecf45bb7e79aeb92d8b3593c03d83978531f69308583fdc78c75145e7c1d2dc311874709999431e460350d1ed0bc8ecc363fdca3e391a455efc6915ced3f5ede201ef5ef6b4115f3918ff553fe75b918287d9a6af2a140b7fbde0a588c876e5ce590ef73fd73321bc005da3e44ea6903c53e75d8b5113793cb77f53207d0d7002eb92813c6e2b235a98d0fc91e3779f12cff31926601d1fc43a8473304137c329f5147ee1057ec8659568ba549e049e5cf531a6909631ee4548176ee48e4dfcd08f8dfe126ef83ab8ca63
+
+###
+# RHEL helper functions
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.25
+###
+
+##
+# Run commands and set KBs after identifying the target as RHEL
+#
+# @param [session:object] SSH session
+# @param [use_shell_handler:boolean] Tell the commands to run in a shell handler.
+# @param [channel:object] SSH channel
+# @param [cmd_res:string] Result of 'cat redhat-release'
+#
+# @return [boolean] FALSE if there are no errors, TRUE otherwise.
+##
+function handle_rhel_os(session, use_shell_handler, &channel, cmd_res)
+{
+  replace_kb_item(name: "Host/etc/redhat-release", value:cmd_res);
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"RedHat");
+
+  # Check for Oracle Linux, not currently handled by this plugin
+  if(pgrep(pattern:"Red Hat.*(Enterprise|Advanced).*(?!release) [3-9]", string:cmd_res))
+  {
+    var release_file, oracle_buf;
+
+    if (cmd_res =~ 'release [3-5]([^0-9]|$)')
+      release_file = '/etc/enterprise-release';
+    else release_file = '/etc/oracle-release';
+
+    oracle_buf = run_command(cmd:"cat " + release_file,
+                      session:session,
+                      use_shell_handler:use_shell_handler,
+                      channel:channel);
+
+    if ( strlen(oracle_buf) && ( "Oracle Linux Server" >< oracle_buf ||
+                                   "Enterprise Linux Enterprise Linux" >< oracle_buf ||
+         ( strlen(rpm_buf) && pgrep(pattern:"^(oraclelinux|enterprise)-release", string:rpm_buf) ) ) )
+    {
+      # Errors are considered responses when scans run with priv escalation (sudo/dzdo/etc..)
+      # Confirming the response is not an error should only apply to those scenarios
+      if ('no such file' >!< tolower(oracle_buf))
+      {
+        # Set up for the OracleLinux handler
+        host_info_key_val['oracle_linux_rpm_interrupted'] = FALSE;
+        if("rpm -qa" >< cmd_interrupted_names_local_checks)
+          host_info_key_val['oracle_linux_rpm_interrupted'] = TRUE;
+        host_info_key_val['oracle_linux'] = oracle_buf;
+        host_info_key_val['oracle_linux_release_file'] = release_file;
+        if (rpm_buf && strlen(rpm_buf)) host_info_key_val['oracle_linux_rpm'] = rpm_buf;
+        return FALSE;
+      }
+    }
+  }
+
+  var sysname = "Red Hat";
+  var is_avaya = FALSE;
+  if(!isnull(get_kb_item("Host/Avaya/Product")))
+  {
+    is_avaya = TRUE;
+    sysname = get_kb_item("Host/Avaya/Product");
+  }
+
+
+  report += '\nThe remote ' + sysname + ' system is :\n' + pgrep(pattern:"^Red Hat", string:cmd_res);
+
+  replace_kb_item(name:"Host/RedHat/release", value:cmd_res);
+  replace_kb_item(name:"Host/distro", value:REDHAT_DISTRO);
+
+  if (!pgrep(pattern:"Red Hat.*(Enterprise|Advanced).*release ([3-9]|2\.1)", string:cmd_res))
+  {
+    report +=
+      '\nOS Security Patch Assessment is not supported for this Red Hat release.\n';
+    sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+    return TRUE;
+  }
+
+  var rhn_channel_list = run_command(cmd:'rhn-channel -l 2>/dev/null',
+                                     session:session,
+                                     use_shell_handler:use_shell_handler,
+                                     channel:channel);
+
+  if (
+    !isnull(rhn_channel_list) &&
+    'command not found' >!< tolower(rhn_channel_list) &&
+    'operation not permitted' >!< tolower(rhn_channel_list) &&
+    'username:' >!< tolower(rhn_channel_list)
+  )
+    replace_kb_item(name:'Host/RedHat/rhn-channel-list', value:rhn_channel_list);
+
+  # Calculate Red Hat minor version
+  var rh_array;
+  # RHEL 3.x
+  rh_array = pregmatch(pattern:"Red Hat Enterprise Linux.*release 3 .*pdate (\d+).*", string:cmd_res);
+  # RHEL 4.x
+  if(!rh_array)
+    rh_array = pregmatch(pattern:"Red Hat Enterprise Linux.*release 4 .*pdate (\d+).*", string:cmd_res);
+  # RHEL 5.x
+  if(!rh_array)
+    rh_array = pregmatch(pattern:"Red Hat Enterprise Linux.*release \d+\.(\d+).*", string:cmd_res);
+
+  var cpu = host_info_key_val['cpu'];
+
+  if(rh_array)
+    replace_kb_item(name:"Host/RedHat/minor_release", value:rh_array[1]);
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this Red Hat release.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_rhel.static', value: 132);
+    found_rhel_os(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  # Register OS
+  if(is_avaya)
+    register_avaya(product:sysname, cpu:cpu);
+  else
+    register_rhel_os(release_info:cmd_res, cpu:cpu);
+
+  return TRUE;
+}
+
+
+##
+# Run additional commands and set KBs after identifying the target as RHEL
+#
+# @param [session:object] SSH session
+# @param [use_shell_handler:boolean] Tell the commands to run in a shell handler.
+# @param [channel:object] SSH channel
+#
+# @return [boolean] returns TRUE
+##
+function found_rhel_os(session, use_shell_handler, &channel)
+{
+  var repo_ls, ls_split, ls_line, match_result, repo_name, redhat_repo, repo_data;
+  var relative_url, relative_url_list, url_match, cpu, release, releasever_from_cmd;
+  var cmd_result, rpm_list, major_releasever, major_minor_releasever, cmd_releasever;
+  # misc commands
+  # You might be tempted to execute the subscription-manager list command here.
+  # Do not run that.
+  # subscription-manager does not correctly handle permission issues and can
+  # lock the account it automatically tries to escalate to. It has been added twice
+  # in the past. It should not be added again.
+  # Do not add yum repolist as a command, it will call out to a public site
+  # and lead to unwanted traffic.
+  # 20200911: Calls to run rct cat-cert were removed. They weren't helping,
+  # and were causing errors.
+  # 20210420: It turns out the .repo files can have arbitrary names. Fun.
+
+  # Retrieve list of repositories from the host
+  relative_url_list = [];
+  repo_ls = run_command(cmd:"ls -1 /etc/yum.repos.d/*.repo",
+            session:session,
+            use_shell_handler:use_shell_handler,
+            channel:channel);
+  if (!empty_or_null(repo_ls))
+  {
+    cpu = get_one_kb_item("Host/cpu");
+    release = get_one_kb_item("Host/RedHat/release");
+    if (isnull(cpu)) cpu = '';
+    if (isnull(release)) release = '';
+    match_result = pregmatch(pattern:"release (\d+(?:\.\d+)?)", string:release);
+    if (!empty_or_null(match_result) && !empty_or_null(match_result[1]))
+      release = match_result[1];
+    # If release isn't readable, something is very wrong. Shouldn't happen. Bail.
+    if (empty_or_null(release))
+      return TRUE;
+    var split_release = split(release, sep:'.', keep:FALSE);
+    # maj_release will be populated. It might be the same as release if there's no dot in there.
+    var maj_release = int(split_release[0]);
+    # Attempt to fetch $releasever
+    if (maj_release > 6)
+    {
+      cmd_result = run_command(
+        cmd:'rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d " " -f 3',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+      if (!empty_or_null(cmd_result) && preg(string:cmd_result, pattern:"^\d"))
+      {
+        releasever_from_cmd = chomp(cmd_result);
+      }
+    }
+    else
+    {
+      rpm_list = get_one_kb_item("Host/RedHat/rpm-list");
+      match_result = pregmatch(pattern:"(?:^|\n)redhat-release-[a-zA-Z]+-(\d[a-zA-Z]+)-[^\|-]+\|", string:rpm_list);
+      if (!empty_or_null(match_result) && !empty_or_null(match_result[1]))
+      {
+        releasever_from_cmd = match_result[1];
+      }
+    }
+    repo_ls = ereg_replace(pattern:'\r', replace:'', string:repo_ls);
+    ls_split = split(repo_ls, sep:'\n', keep:FALSE);
+    foreach ls_line (ls_split)
+    {
+      match_result = pregmatch(pattern:"\/([^\/]+)\.repo$", string:ls_line);
+      if (!empty_or_null(match_result) && !empty_or_null(match_result[1]))
+      {
+        repo_name = match_result[1];
+        # There should not be command ending symbols in these filenames, but play it safe.
+        # Strip them out rather than risk a dangerous situation.
+        repo_name = ereg_replace(string:repo_name, pattern:"[;\|&]", replace:"");
+        redhat_repo = run_command(cmd:"cat /etc/yum.repos.d/" + repo_name + ".repo",
+                         session:session,
+                         use_shell_handler:use_shell_handler,
+                         channel:channel);
+        if (!empty_or_null(redhat_repo))
+        {
+          if (preg(string:redhat_repo, pattern:"^\[.*\]", multiline:TRUE))
+          {
+            # Remove any carriage returns that sneak in.
+            redhat_repo = ereg_replace(pattern:"\r", replace:'', string:redhat_repo);
+            foreach repo_data (split(redhat_repo, sep:'[', keep:FALSE))
+            {
+              if (empty_or_null(repo_data))
+              {
+                continue;
+              }
+              
+              if (preg(string:repo_data, pattern:"\nenabled\s*=\s*1\s*\n", multiline:TRUE))
+              {
+                match_result = ereg_replace(string:repo_data, pattern:"\].*$", replace:"");
+                if (!empty_or_null(match_result))
+                {
+                  replace_kb_item(name:'Host/RedHat/repo-list/' + match_result, value:TRUE);
+                  # Check for relative_url
+                  url_match = pregmatch(string:repo_data, pattern:"\n\s*(?:baseurl|mirrorlist)\s*=\s*(?:['" + '"' + "])?.*(content\/.*?)(?:['" + '"' + "])?(?:\n|$)");
+                  if (!empty_or_null(url_match) && !empty_or_null(url_match[1]))
+                  {
+                    relative_url = url_match[1];
+                    # Remove trailing / if it exists
+                    relative_url = ereg_replace(pattern:"\/$", replace:"", string:relative_url);
+                    # Replace any variables with proper values
+                    relative_url = ereg_replace(pattern:"\$basearch", replace:cpu, string:relative_url);
+                    # Remove rhui if it meets a specific pattern
+                    relative_url = ereg_replace(pattern:"(\/rhel\d?\/)rhui\/", replace:"\1", string:relative_url);
+                    # Remove any carriage returns that sneak in.
+                    relative_url = ereg_replace(pattern:"\r", replace:'', string:relative_url);
+                    # Remove any traling spaces if they exist
+                    relative_url = chomp(relative_url);
+                    
+                    # $releasever can be major, major.minor, or the results of the "provides" command.
+                    # Add all 3, RedHat data is inconsistent.
+                    major_releasever = ereg_replace(pattern:"\$releasever", replace:maj_release, string:relative_url);
+                    replace_kb_item(name:'Host/RedHat/repo-list/' + match_result + '/0/relative-url', value:major_releasever);
+                    append_element(var:relative_url_list, value:major_releasever);
+                    major_minor_releasever = ereg_replace(pattern:"\$releasever", replace:release, string:relative_url);
+                    if (major_releasever != major_minor_releasever)
+                    {
+                      replace_kb_item(name:'Host/RedHat/repo-list/' + match_result + '/1/relative-url', value:major_minor_releasever);
+                      append_element(var:relative_url_list, value:major_minor_releasever);
+                    }
+                    if (!empty_or_null(releasever_from_cmd))
+                    {
+                      # Remove any carriage returns that sneak in.
+                      releasever_from_cmd = ereg_replace(pattern:"\r", replace:'', string:releasever_from_cmd);
+                      cmd_releasever = ereg_replace(pattern:"\$releasever", replace:releasever_from_cmd, string:relative_url);
+                      if (cmd_releasever != major_releasever && cmd_releasever != major_minor_releasever)
+                      {
+                        replace_kb_item(name:'Host/RedHat/repo-list/' + match_result + '/2/relative-url', value:cmd_releasever);
+                        append_element(var:relative_url_list, value:cmd_releasever);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (!empty_or_null(relative_url_list))
+    {
+      replace_kb_item(name:'Host/RedHat/relative-url-list', value:serialize(sort(list_uniq(relative_url_list))));
+    }
+  }
+  return TRUE;
+}
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [cpu:str]         CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_rhel_os(release_info, cpu)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Red Hat Enterprise Linux 9.3 (Plow)
+  #    Red Hat Enterprise Linux 8.9 (Ootpa)
+  #
+  #    Red Hat Enterprise Linux Server 7.9 (Maipo)
+  #    Red Hat Enterprise Linux Workstation 7.9 (Maipo)
+  #    Red Hat Enterprise Linux ComputeNode 7.9 (Maipo)
+  #    Red Hat Enterprise Linux Server 6.9 Beta (Santiago)
+  #
+  #    Red Hat Enterprise Linux Server release 5
+  #    Red Hat Enterprise Linux Client release 5
+  #
+  #    Red Hat Enterprise Linux AS release 5
+  #    Red Hat Enterprise Linux ES release 5
+  #    Red Hat Enterprise Linux WS release 5
+  #
+  #    Red Hat Linux Advanced Server 2.1
+  #
+  #  - Match groups:
+  #    1: Product (i.e. Enterprise Linux, Linux)
+  #    2: Edition (e.g. Server, Workstation, ComputeNode)
+  #    3: Release (e.g. 6, 7, 8)
+  #    4: Version (e.g. .3, .9)
+  #    5: Codename (e.g. Plow, Oopta, Maipo)
+
+  var pattern =
+    'Red Hat ((?:Enterprise)?(?: ?Linux))? ?([\\w -]+?)?(?: release)? ([0-9]+)(\\.[0-9.]+)?(?: Beta)? *(?:\\(([^)]+)\\))?';
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Vendor
+  var vendor = 'Red Hat';
+
+  # Product
+  var product = 'Enterprise Linux';
+  if (!empty_or_null(matches[1]))
+    product = matches[1];
+
+  product = strcat(vendor, ' ', product);
+
+  # Edition
+  var edition = matches[2];
+  #  - 'release' may be captured so filter it here
+  if (edition == 'release') edition = NULL;
+
+  # Release
+  var release = matches[3];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version = release;
+  if (!empty_or_null(matches[4]))
+    version += matches[4];
+
+  # Display version
+  var display_version;
+  if (!empty_or_null(matches[5]))
+  {
+    display_version = strcat('(', matches[5], ')');
+    if (!empty_or_null(version))
+      display_version = strcat(version, ' ', display_version);
+  }
+
+  # OS Name
+  var os_name = product;
+  if (!empty_or_null(edition))
+    os_name += ' ' + edition;
+  
+  # - Prefer the display version (e.g. 9.3 (Plow)) over just the version (e.g. 9.3)
+  if (!empty_or_null(display_version))
+    os_name += ' ' + display_version;
+  else if (!empty_or_null(version))
+    os_name += ' ' + version;
+
+  # Extended support
+  var extended_support = check_rhel_extended_support();
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:/o:redhat:enterprise_linux:9.1
+  #    cpe:/o:redhat:enterprise_linux_eus:8.8
+  #    cpe:/o:redhat:enterprise_linux_update_services_for_sap_solutions:8.8
+  var cpe_attributes = [];
+
+  var cpe_product;
+  if (!isnull(edition) && tolower(edition) == 'coreos')
+    cpe_product = 'enterprise_linux_coreos';
+  else cpe_product = 'enterprise_linux';
+  if (!empty_or_null(extended_support))
+    cpe_product += '_' + str_replace(string:tolower(extended_support), find:' ', replace:'_');
+
+  append_element(var:cpe_attributes, value:cpe_product);
+
+  var cpe = 'cpe:/o:redhat:' + join(cpe_attributes, sep:':');
+
+  # Entry not in NVD, add 'x-' prefix to specify custom CPE
+  if (cpe_product == 'enterprise_linux_enhanced_eus')
+    cpe = 'x-' + cpe;
+
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : vendor,
+    product     : product,
+
+    release         : release,
+    version         : version,
+    display_version : display_version,
+
+    os_edition  : edition,
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    extended_support : extended_support,
+
+    cpe : cpe
+  );
+
+  return NULL;
+}
+
+
+##
+# Check if OS is on extended support.
+#
+# @return type of extended support or NULL if not on extended support
+##
+function check_rhel_extended_support()
+{
+  var repo_list = get_kb_list('Host/RedHat/repo-list/*');
+  if (empty_or_null(repo_list))
+    return NULL;
+
+  # Extended support repos
+  #  - https://access.redhat.com/support/policy/updates/errata
+  #  - https://access.redhat.com/articles/rhel-eus
+  var repo_patterns = {
+
+    # Update Services for SAP Solutions
+    #  - Examples:
+    #    rhel-8-for-x86_64-sap-solutions-rpms
+    #    rhel-7-for-aarch64-sap-solutions-eus-rpms
+    'Update Services for SAP Solutions' : [
+      'rhel-[0-9]+-for-\\w+-sap-solutions-((eus|e4s)-)?rpms$'
+    ],
+
+    # Enhanced Extended Update Support (EUS)
+    # - Examples:
+    #   rhel-9-for-x86_64-appstream-e4s-rpms
+    #   rhel-8-for-x86_64-baseos-e4s-rpms
+    'Enhanced EUS' : [
+      'rhel-[0-9]+-for-\\w+-(baseos|appstream)-e4s-rpms$',
+      'rhel-[0-9]+-server-e4s-rpms$'
+    ],
+
+    # Advanced Update Support (AUS)
+    # - Examples:
+    #   rhel-9-for-x86_64-appstream-aus-rpms
+    #   rhel-8-for-x86_64-baseos-aus-rpms
+    'AUS' : [
+      'rhel-[0-9]+-for-\\w+-(baseos|appstream)-aus-rpms$',
+      'rhel-[0-9]+-server-aus-rpms$'
+    ],
+
+    # Telco Update Support (TUS)
+    # - Examples:
+    #   rhel-9-for-x86_64-appstream-tus-rpms
+    #   rhel-8-for-x86_64-baseos-tus-rpms
+    'TUS' : [
+      'rhel-[0-9]+-for-\\w+-(baseos|appstream)-tus-rpms$',
+      'rhel-[0-9]+-server-tus-rpms$'
+    ],
+
+    # Extended Update Support (EUS)
+    # - Examples:
+    #   rhel-9-for-x86_64-appstream-eus-rpms
+    #   rhel-8-for-x86_64-baseos-eus-rpms
+    'EUS' : [
+      'rhel-[0-9]+-for-\\w+-(baseos|appstream)-eus-rpms$',
+      'rhel-[0-9]+-server-eus-rpms$'
+    ]
+
+  };
+
+  # Order matters (e.g. Update Services for SAP should be before EUS)
+  var order = [ 'Update Services for SAP Solutions', 'Enhanced EUS', 'AUS', 'TUS', 'EUS' ];
+
+
+  # Process each extended support type in order and list of patterns
+  for (var type of order)
+  {
+    var patterns = repo_patterns[type];
+    for (var pattern of patterns)
+    {
+      # Process each repo
+      #  - Examples: Host/RedHat/repo-list/rhel-7-server-eus-rpms, Host/RedHat/repo-list/rhel-9-for-x86_64-appstream-eus-rpms
+      for (var kb_name in repo_list)
+      {
+        if (preg(pattern:pattern, string:kb_name))
+        {
+          # Pattern matched
+          dbg::detailed_log(lvl:3, msg:strcat('KB item "', kb_name, '" matched on pattern "', pattern, '"'));
+          return type;
+        }
+      }
+    }
+  }
+
+  return NULL;
+}

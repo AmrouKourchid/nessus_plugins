@@ -1,0 +1,38 @@
+#TRUSTED 3bb472fd9fa9c7c2c3196f0e7304508fe720c22318629f09bb26c673984b9ba7c381aae8f1a18ab1ac051d20201a8918ff02480b7438bd56778a39531576ad8161aa0c5e9d0e26905b1f1477383e64258e6253e7503394dd331b6fd187e100905352638b3e4fac4c160c139c3865b6f4c751b5e4ac1a4a48caad57889fc03a1e2e0a5060f51c925d4667194ca0be7f7e03d7aace93fa606bbc8381e87d154baacc3dd32e6162500819b58d347edfdfbae150f2243725e35802a2310f62f89781b945b9976742f41efa23a69666a27d4ab965ede0cda77c85df44ee0aeb2b5cf036783ca6bd65a02a8240ab0a5d7443acdb23cdf714adc4c12a38d4f7446516726d4a70c5050d88a8f20af605dbcaa83af0b054f65c2c2ce4fa3bcd68dacd8953950343d0277f4bd985f8fea2ff8fa19a9b487b895f3155ee4bf70aaf5cc2bab895ae428c0a5a698f7cdc4f156ace75ebcf06a0bc8e443f0c5b8cf26336e54b0df5ff9684b914c93739ee728df09ab697513e3d10963bc1ed2885281f41412f554df1c7dcb55d81d5dabaa07b1928335cc56ea64599252e469249bbb8dabfc760a2119016c7e638648e0cb375c167d8c9d09b3c4ded5c1e92c764925540b43804320a27d5e91de3b998e78ac07285906b8b8b47ff688e2dfc29e5b25364e0dce8665a530175c60d46f73236c8f420a14ea35f948f487d492187687aad9953e779
+#TRUST-RSA-SHA256 4fa8e935731ef2d22ea041796bb9248c27ac7b4d2bd983552ce1c11018aebd5cc550861e9b15cca2d0bde5c2891d62203929a313714e5066f136d61da7a80337a7e9a91e7321f7bf9d070e464ab776e85113995089e785ebeae51006c3ba03346c0e8529baed0c627ba44f7ba185e058d958e8046a67d10b42e81f34d8cce89938156e9b1d9629024ee52e69cd8e14c4dbe3d86b9923d5ade7840d6900ef01775e02cb5433b1f2d3af054ba78f43a379fa1c23297eb54855519f32a05e9ef4f8448f0203f9db3e3f1cac62db70e0231f5a80c7b8c51d4ccbfefdec8ffe09c951e920b488e94b204098dfd90b001990664ca5c6f131ce3d0818580b039386d8f177114e6cff34f79be3563aee995943781225f0cc61538e8c03c723d1f7637ca9fa14e6c01cc75b6aee6782360dad93fed2d489d875ce097cf7575864a5a6f1985f0c448044e75faefa975e7f12a2fb2426a1074c000a516138d0b7be2ec85135636e1888e56bb1c4497577e427ac093aafc330aebdbd4ed51f264ebf198f403d70654c6b510adbbdea4c1d89319f7cd85785928bc6f38318ba4abd46838cf0c0a025a8deb84d2ac7a94851e1671cd0b0beaf8db2220166322ac7b6661f051c2fc3612407e3f2c52549fdbbcec6b4f5c474c85cb07e1285d2e8dbf69bdc2f5fbe0fe8d3ffc0524c51098c96e3a3e24f1f57efc266d2ecd74e8c0a65e0e8674d31
+# (C) Tenable Network Security, Inc.
+
+# Revision: 1.1
+
+##
+# callback for systems with "Sourcefire Linux" or "Fire Linux" in /etc/redhat-release or /etc/slackware-version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "cat /etc/redhat-release" or
+#                             "cat /etc/slackware-version"
+# @param <distro>             The distro that was detected, either slackware or redhat
+#
+# @return @Returns TRUE if this is Cisco FMC, FALSE otherwise
+##
+function handle_cisco_fmc(session, use_shell_handler, &channel, cmd_res, distro)
+{
+  if (distro == 'slackware')
+  {
+    set_kb_item(name: "Host/etc/slackware-version", value: cmd_res);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_fmc.static', value: 24);
+    return TRUE;
+  }
+  else if (distro == 'redhat')
+  {
+    set_kb_item(name: "Host/etc/redhat-release", value: cmd_res);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_fmc.static', value: 31);
+    return TRUE;
+  }
+
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+  return FALSE;
+}

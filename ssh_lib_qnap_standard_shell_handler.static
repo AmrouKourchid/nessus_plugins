@@ -1,0 +1,516 @@
+#TRUSTED a271daf6ec03ac613c89ca6863223413758098dc86f550fe15b296766d79f3055646ce0e96c82b6b6469bc759a0b09829564835e04f55bceb789de8fb7a9780432a73770f3a80a5cd34d98abff5b3608b6225ed05c98c88cc274e363408d46479844f25bdf26e75f7f7176cba4152496e37e00cff0267da9ffe1d477ae177cf21e753180d7f8ea41427f1cbc14e69951824e507441d593d9828351452b254edb6ad36afd3cf0780003f4134e4a44cfd5ce5735c507058d0d271ef8a61a463300f8db0441a94b9666456f30b7b538d6180667fbf297ef43915bd8d572951658cc4ffed9d59b475f74e3b0556e3a7c7761a7002a3355bc607762c6e394bc17ae22f169d57ff806c90bd017896c9985d0776201bd2a2c0182567e1b617435749ec9745f37d5f16b91a07dfe22b2c843b029c9b1300e581552bf461a97df24549a85f1128f1649b923967609247531bf0d9ce765b5d136b9ba9abf101c0d0e8bc8059a886185c1e24713680be2db9565043c51009205c8944bee9eea0c03229a8011cc3bca4f720d25c3f72ce7e7e0a5bf4a90ab2c135e1743541946a76bcbe0a201f071e8d6d850e671b45bf5e2900fa2b025947298cc053c00cdbe7542017cd30adbc4e52bf2e684e3ff066ef17f6b69dac3c9439c3884132da51758a9040b1ba88fd5415388e7dba2febd8e5348005f2917de76a1a3f5582edd46151b516348f7
+#TRUST-RSA-SHA256 3a8a6242efaa7f2a40c4a60eb2cda45f64f4fb5d99cf9e220c5ce252314128a0a267100531f42f03752cdf69be41b496a3dd07e78c9a3e40d872b9c20afa38e187f3b7e518b9e6b51127952098ba281c4db12ee35bca111a7431c518e23463bb4ee6721a0e8e4d16d0f6a0fd3abe19fe14a7c6766933033f9329544707a079f23c2bae7d19ff556424b53e953f83d41e85d7afb890fb402ce79d23fcdb5ff047b10f8d7ba6f49c403849b62530fb1c3534ba35121fa225f75d349e471ba1d0df8392785d4566c017a86cb11da06611efacec83ac42b01dd1c880bd4f51ea942a1af7ca5dbfd42d6c8a680901af10dd8c4b0b962465234a8a56b88bdb3d84c6210f014fa33cb1755dc3e3dfa359a1887201955b63d1849357fb83eb69a20a2079ee4b26d60dcdb13cbf5084aa606f2545fc1cea27a1700a682d7d23590e86dc198a72d630692536de96db76a88eabf7886f6d14f8aad58d0a43312e094bbfb90a3d4d2e344d6b85c3144f8966f592844f030fbfab92ec42f8bb4c9f8b7a915cbf92f0d9e09b30ae2eb91d72d54330296195818cae94b9d2189c26a36f72b15850ddd441e2ffeec50add307963feae1d17dc8e028e45c7d085cf9c1a9ba0c5d576d273a6fe7464b2de8835c53a258586724386bc516ddc63353162161b7b3f9e8568e753b3250530fa872b8d52e7d58e60113135abf8954ecde46c68b972e0f4b1
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not be used from within scripts released under another license without
+# the authorization from Tenable Network Security Inc.
+#
+###
+
+##
+#  QNAP standard shell handler
+##
+namespace sshlib
+{
+  # Qll timeouts are controlled by a timer with 1s resolution, for that reason keep the shell timeout sufficiently beyond
+  # the timer resolution (10s = 10x resolution)
+  global_var _QNAP_STANDARD_DEFAULT_CMD_TIMEOUT = 60;
+  global_var _QNAP_STANDARD_DEFAULT_INACTIVITY_TIMEOUT = 45;
+  global_var _QNAP_STANDARD_INITIAL_INACTIVITY_TIMEOUT = 2;
+
+  # a space is included in shell prompt
+  global_var _QNAP_STANDARD_MENU_PROMPT = '>> ';
+  global_var _QNAP_STANDARD_SHELL_PROMPT = '# ';
+
+  # cmd_states
+  global_var _QNAP_STANDARD_CMD_STATE_SEND_REQ = 0;
+  global_var _QNAP_STANDARD_CMD_STATE_RECV_RSP = 1;
+  global_var _QNAP_STANDARD_CMD_STATE_INIT = 2;
+  global_var _QNAP_STANDARD_CMD_STATE_AT_MENU_PROMPT = 3;
+  global_var _QNAP_STANDARD_CMD_STATE_AT_EXIT_MENU_CONFIRMATION = 4;
+  global_var _QNAP_STANDARD_CMD_STATE_AT_SHELL_PROMPT = 5;
+
+  ##
+  # callback function that checks for either a timeout or buffer update
+  #
+  # @param  session   Session handle for ssh session
+  # @param  channel   Channel for ssh session
+  #
+  # @return TRUE if timeout reached
+  # @category SSH
+  ##
+  function qnap_standard_shell_handler_incoming_data_timeout_cb(session, &channel)
+  {
+    var fn = 'qnap_standard_shell_handler::' + FUNCTION_NAME;
+    var sh = channel.shell_handler;
+    var obj_ch_id = 'qnap_standard_shell_handler [channel ' + channel.local_channel + ']: ';
+
+    if (!channel)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:'Channel does not exist');
+      return TRUE;
+    }
+    if (channel.state == sshlib::CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + 'Channel is closed.');
+      return TRUE;
+    }
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + '_QNAP_STANDARD_STATE : ' + sh.cmd_state);
+    return sh.check_inactivity_timeout(channel:channel);
+  }
+
+  ##
+  # callback function that checks for buffer update, timeout or shell prompt
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if found
+  # @category SSH
+  ##
+  function qnap_standard_shell_handler_incoming_data_timeout_or_prompt_cb(session, &channel)
+  {
+    var fn = 'qnap_standard_shell_handler_incoming_data_timeout_or_prompt_cb';
+    var obj_ch_id = 'qnap_standard_shell_handler [channel ' + channel.local_channel + ']: ';
+    # does a channel exist?
+    if (isnull(channel))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:'Channel does not exist');
+      return TRUE;
+    }
+    if (channel.state == sshlib::CHANNEL_STATE_CLOSED)
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + 'Channel is closed.');
+      return TRUE;
+    }
+    # does channel have a valid data buffer?
+    if (isnull(channel.data_buf))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + 'channel.data_buf does not exist');
+      return TRUE;
+    }
+    if (isnull(channel.shell_handler))
+    {
+      dbg::detailed_log(lvl:1, src:fn, msg:obj_ch_id + 'Shell handler does not exist');
+      return TRUE;
+    }
+    var sh = channel.shell_handler;
+    dbg::detailed_log(lvl:3, src:fn, msg:obj_ch_id + '_QNAP_STANDARD_STATE : ' + sh.cmd_state);
+
+    return sh.at_prompt_or_timeout(channel:channel);
+  }
+
+  object qnap_standard_shell_handler
+  {
+    var settings;
+    var cmd_state;
+    var cmd_last;
+    var cmd_prompt;
+    var cmd_timeout;
+    var inactivity_timeout;
+    var last_md5;
+    var last_buffer_update_ts;
+    var last_cmd_error = FALSE;
+    var timed_out = FALSE;
+    var previous_prompt;
+
+    ##
+    # Shell handler constructor
+    #
+    # @anonparam <first> Shell handler settings array
+    # @category SSH
+    ##
+    function qnap_standard_shell_handler()
+    {
+      settings = _FCT_ANON_ARGS[0];
+      this.init(settings:settings);
+    }
+
+    ##
+    # Returns terminal options
+    #
+    # @no53   If true don't populate flag 53 with any value - flag 53 (PTY_OPT_ECHO)
+    #         reputedly breaks Palo Alto's SSH implementation. (optional)
+    # @return Returns an array with a terminal carriage return Opcode
+    ##
+    public function get_pty_opts(no53)
+    {
+      if (isnull(no53)) no53 = FALSE;
+      return make_array(PTY_OPT_OCRNL, 0);
+    }
+
+    ##
+    # Sets the shell command prompt
+    #
+    # @anonparam <first> The prompt
+    # @return Returns NULL
+    # @category SSH
+    ##
+    public function set_cmd_prompt()
+    {
+      this.previous_prompt = this.cmd_prompt;
+      this.cmd_prompt = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Gets the shell command prompt
+    #
+    # @return Returns the command prompt
+    # @category SSH
+    ##
+    public function get_cmd_prompt()
+    {
+      return this.cmd_prompt;
+    }
+
+    ##
+    # Gets the command state
+    #
+    # @return Returns the command state
+    ##
+    public function get_cmd_state()
+    {
+      return this.cmd_state;
+    }
+
+    ##
+    # Dummy function. Required on all shell handlers,
+    # unused on qnap_standard.
+    #
+    # @param [type:string]  Escalation type (i.e. su, cisco-enable)
+    # @param [extra:string] Escalation password
+    #
+    # @return NULL
+    ##
+    public function set_priv_escalation(type, extra)
+    {
+      return NULL;
+    }
+
+    ##
+    # Dummy function. Required on all shell handlers,
+    # unused on qnap_standard.
+    #
+    # @param [type:string]  Escalation type (i.e. su, cisco-enable)
+    # @param [extra:string] Escalation password
+    #
+    # @return NULL
+    ##
+    public function unset_priv_escalation()
+    {
+      return NULL;
+    }
+
+    ##
+    # get default PTY size in characters
+    #
+    # @return default PTY size in characters
+    # @category SSH
+    ##
+    public function get_pty_size_chars()
+    {
+      # Make the default pty size large to avoid issues with truncation
+      return make_list(200, 200);
+    }
+
+    ##
+    # get default PTY size in pixels
+    #
+    # @return default PTY size in pixels
+    # @category SSH
+    ##
+    public function get_pty_size_pixels()
+    {
+      return DEFAULT_PTY_SIZE_PIXELS;
+    }
+
+    ##
+    # get PTY terminal
+    #
+    # @return default PTY terminal
+    # @category SSH
+    ##
+    public function get_pty_term()
+    {
+      return DEFAULT_PTY_TERM;
+    }
+
+    ##
+    # Should we send / recv data to device without setting up a channel?
+    #
+    # @return FALSE
+    # @category SSH
+    ##
+    public function is_nosetup()
+    {
+      return FALSE;
+    }
+
+    ##
+    # do we want to request a PTY on this device?
+    #
+    # @return TRUE
+    # @category SSH
+    ##
+    public function send_pty_req()
+    {
+      return TRUE;
+    }
+
+    ##
+    # do we want to handle the "shell" channel request?
+    #
+    # @category SSH
+    ##
+    public function get_shell_channel_request_cb()
+    {
+      return NULL;
+    }
+
+    ##
+    # Sets the last command error.
+    #
+    # @anonparam <first> The last command error message.
+    # @category SSH
+    ##
+    public function set_last_cmd_error()
+    {
+      this.last_cmd_error = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Sets the shell command handling state
+    #
+    # @anonparam <first> Command state
+    # @category SSH
+    ##
+    public function set_cmd_state(new_cmd_state)
+    {
+      var channel = _FCT_ANON_ARGS[0];
+      if (!isnull(channel))
+      {
+        var obj_ch_id = 'qnap_standard_shell_handler [channel ' + channel.local_channel + ']: ';
+        dbg::detailed_log(lvl:3, src:'qnap_standard_shell_handler.set_cmd_state',
+          msg:obj_ch_id + ' updating from state ' + this.cmd_state + ' to state ' + new_cmd_state);
+      }
+      this.cmd_state = new_cmd_state;
+    }
+
+    ##
+    # Receives data
+    #
+    # @param  channel   Channel for ssh session
+    # @param  timeout   Timeout to use when receiving.
+    #
+    # @return the received data if succesful, NULL otherwise
+    ##
+    public function receive_data(&channel, timeout)
+    {
+      if (isnull(channel)) return NULL;
+      var tout = this.cmd_timeout;
+      if (!isnull(timeout)) tout = timeout;
+
+      var obj_ch_id = '[channel ' + channel.local_channel + ']: ';
+      channel.clear_data_buf();
+      channel.session.sshrecv_until(
+        end_states     : make_list('SOC_CLOSED'),
+        check_callback : @qnap_standard_shell_handler_incoming_data_timeout_or_prompt_cb,
+        channel        : channel,
+        timeout        : timeout
+      );
+
+      if (empty_or_null(channel.data_buf))
+      {
+        if (this.timed_out)
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:obj_ch_id + 'Timed out waiting for data from server after opening shell.');
+        else
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:obj_ch_id + 'No data received from server after opening shell.');
+        return NULL;
+      }
+      if (channel.state == sshlib::CHANNEL_STATE_CLOSED)
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:obj_ch_id + 'Channel is closed.');
+        return NULL;
+      }
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Received: ' + obj_rep(channel.data_buf));
+      return channel.data_buf;
+    }
+
+    ##
+    # Shell handler initialization
+    #
+    # @param settings Shell handler settings array
+    # @category SSH
+    ##
+    public function init(settings)
+    {
+      this.cmd_last = '';
+      this.cmd_prompt = _QNAP_STANDARD_MENU_PROMPT;
+      this.cmd_timeout = _QNAP_STANDARD_DEFAULT_CMD_TIMEOUT;
+      this.inactivity_timeout = _QNAP_STANDARD_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_state = _QNAP_STANDARD_CMD_STATE_INIT;
+      this.last_cmd_error = FALSE;
+      this.last_buffer_update_ts = unixtime();
+
+      if (!isnull(settings))
+      {
+        this.settings = settings;
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.cmd_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_prompt']) )
+          this.previous_prompt = this.settings['cmd_prompt'];
+        if ( !isnull(this.settings['cmd_timeout']) )
+          this.cmd_timeout = this.settings['cmd_timeout'];
+      }
+      else this.settings = make_array();
+    }
+
+    ##
+    # Runs a given command.
+    # If the ssh session is at a menu prompt it first sends the character 'q' to exit the menu, followed by character 'y'
+    # to confirm exiting the menu prior to running the command. Otherwise, it directly attempts to run the command. 
+    #
+    # @param  channel                 Channel for ssh session
+    # @param  command                 Cmd to run
+    # @param  force_priv_escl         Force priv escalation flag
+    # @param  cmd_timeout_min         The total number of seconds that may elapse waiting for the command response. (optional)
+    # @param  inactivity_timeout_min  The number of seconds that may elapse with no data received from the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&channel, command, force_priv_escl, cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = 'qnap_standard_shell_handler::' + FUNCTION_NAME;
+      if (isnull(channel.session)) return NULL;
+      var session = channel.session;
+      var obj_ch_id = '[channel ' + channel.local_channel + ']: ';
+      var cmd_logger = new('sshlib::cmd_logger');
+      var kb_id = session.get_kb_connection_id();
+      var kb_base = SSH_LIB_KB_PREFIX + kb_id;
+      var initial_recv_timeout = _QNAP_STANDARD_INITIAL_INACTIVITY_TIMEOUT;
+      if(isnull(force_priv_escl)) force_priv_escl = FALSE;
+      if (this.last_cmd_error)
+        return session.set_error(obj_ch_id + 'ERROR - shell is in unknown state from last interaction, no additional commands via this shell will be executed.');
+      # Reset default timeouts
+      this.inactivity_timeout = _QNAP_STANDARD_DEFAULT_INACTIVITY_TIMEOUT;
+      this.cmd_timeout = _QNAP_STANDARD_DEFAULT_CMD_TIMEOUT;
+      # If custom inactivity_timeout and cmd_timeout values are passed,
+      # ensure the values in use meet or exceed passed values
+      if (inactivity_timeout_min && this.inactivity_timeout < inactivity_timeout_min) this.inactivity_timeout = inactivity_timeout_min;
+      if (cmd_timeout_min && this.cmd_timeout < cmd_timeout_min) this.cmd_timeout = cmd_timeout_min;
+
+      # On initial connection we must first exit the cli custom menu by sending 'Q' followed by 'Y'
+      if (this.get_cmd_state() == _QNAP_STANDARD_CMD_STATE_INIT)
+      {
+        # Check post login buffer
+        var post_login_buffer = receive_data(channel:channel, timeout:initial_recv_timeout);
+        if (!post_login_buffer || '|  Q: Quit (return to normal shell environment)' >!< post_login_buffer)
+          return session.set_error(obj_ch_id + 'ERROR - shell is in unknown state from last interaction, no additional commands via this shell will be executed.');
+        this.set_cmd_state(new_cmd_state:_QNAP_STANDARD_CMD_STATE_AT_MENU_PROMPT, channel);
+        # Sending Q to enter shell
+        this.last_buffer_update_ts = unixtime();
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Sending command: Q');
+        channel.window_send_data(data:'Q\n');
+        var recv_data = receive_data(channel:channel, timeout:this.cmd_timeout);
+        if (!recv_data || '|  Are you sure you want to exit the console menu and return to normal shell environment? (Y/N)' >!< recv_data)
+          return session.set_error(obj_ch_id + 'ERROR - shell is in unknown state from last interaction, no additional commands via this shell will be executed.');
+        this.set_cmd_state(new_cmd_state:_QNAP_STANDARD_CMD_STATE_AT_EXIT_MENU_CONFIRMATION, channel);
+
+        # Sending Y to confirm entering the shell
+        set_cmd_prompt(_QNAP_STANDARD_SHELL_PROMPT);
+        this.last_buffer_update_ts = unixtime();
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Sending command: Y');
+        channel.window_send_data(data:'Y\n');
+        if (!receive_data(channel:channel, timeout:this.cmd_timeout))
+          return session.set_error(obj_ch_id + 'ERROR - shell is in unknown state from last interaction, no additional commands via this shell will be executed.');
+        this.set_cmd_state(new_cmd_state:_QNAP_STANDARD_CMD_STATE_AT_SHELL_PROMPT, channel);
+      }
+
+      if (this.get_cmd_state() == _QNAP_STANDARD_CMD_STATE_AT_SHELL_PROMPT)
+      {
+        # Sending passed command
+        this.last_buffer_update_ts = unixtime();
+        channel.clear_data_buf();
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Sending command: ' + command);
+        channel.window_send_data(data:command + '\n');
+        recv_data = receive_data(channel:channel, timeout:this.cmd_timeout);
+        # remove the command and prompts from the response by extracting the data between the first and last set of "\r\n" characters
+        recv_data = preg_replace(pattern:"^.*?\r\n(.*)\r\n.*", replace:"\1", string:recv_data);
+
+        cmd_logger.add(
+          cmd                : this.cmd_last,
+          response           : recv_data,
+          error              : session.cmd_error,
+          priv_escl_failed   : FALSE,
+          user               : session.user
+        );
+        return recv_data;
+      }
+      return session.set_error(obj_ch_id + 'ERROR - shell is in unknown state from last interaction, no additional commands via this shell will be executed.');
+    }
+
+    ##
+    # Determines if the shell is back at the command prompt. 
+    #
+    # @param      buf     The incoming data buffer
+    # @anonparam  First   The channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt, otherwise NULL
+    ##
+    function at_cmd_prompt(buf)
+    {
+      if (isnull(buf)) return FALSE;
+      var channel = _FCT_ANON_ARGS[0];
+      var lines = split(buf, sep:'\n', keep:FALSE);
+      var last_line = lines[max_index(lines)-1];
+      if (this.cmd_prompt && last_line =~ this.cmd_prompt + "$") return TRUE;
+      return FALSE;
+    }
+
+    ##
+    # Determines if the shell is at the prompt or a timeout has occurred
+    #
+    # @param channel the channel belonging to the shell handler
+    #
+    # @return TRUE if at prompt or timed out, otherwise FALSE
+    ##
+    public function at_prompt_or_timeout(&channel)
+    {
+      if (!channel) return NULL;
+      if (at_cmd_prompt(buf:channel.data_buf, channel)) return TRUE;
+      return check_inactivity_timeout(channel:channel);
+    }
+    ##
+    # Determines if there has been a timeout to inactivity
+    #
+    # @param channel the channel belonging to the shell handler
+    #
+    # @return TRUE if timeout reached, otherwise FALSE
+    ##
+    function check_inactivity_timeout(&channel)
+    {
+      var fn = 'qnap_standard_shell_handler.check_inactivity_timeout';
+      if (channel && channel.data_buf && strlen(channel.data_buf) > 0)
+      {
+        var new_md5 = MD5(channel.data_buf);
+        if (this.last_md5 != new_md5)
+        {
+          if (!isnull(channel) && !isnull(channel.session)) dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"New data found, updating last_buffer_update_ts");
+          this.last_md5 = new_md5;
+          this.last_buffer_update_ts = unixtime();
+          return FALSE;
+        }
+      }
+      if (channel && (unixtime() - this.last_buffer_update_ts) >= this.inactivity_timeout)
+      {
+        if (channel.session) dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Inactivity timeout.");
+        this.timed_out = TRUE;
+        return TRUE;
+      }
+      else if (!channel) return TRUE;
+      return FALSE;
+    }
+  }
+}

@@ -1,0 +1,24 @@
+#TRUSTED 6b19033a419e86f86707000d029339187c00dcd59e4508ecde60e2b81040357591625b3efbcbaa4c782d8ebcc09f6d4a877fd2a0c89bdff0599230177991e109b24289308cf8a6be9754a7543d81148a633ba1938255d6b0742a9dab4cbb7a87f4564f6ca9e0cb1d9cf1db161653f1828f654b08e855e08f4feee80c5dca9f6b839fd5cf2bdceec9a4ef19f66c7d8d5d4d1eab39a4c9d85e153a597f966de616da72c69d587133b490ae1edd34ad8c93310d4e4cc09d223a2ac3364e33d229e7d4010e1167a78e1643147069d00f25f978c05fd38cbe9ff4cc5c88f15ae832aef3f376b5b455f02344b9220855099e3e503e1e0a4539abef6a1c35f15eac2f630c6eaeeda47d18ff65e60f86fd7e565ad609466bd93f97e5f6a85791f33c1eae578cd4bf7202b195c5f5f5faf4cb62975cb24b81fe7bd88174ecb84fca2edcb7dcf8633e6d1dc70ca766b70bb80a0f416d520041e88669b2943e766eaad9b19d89b10b965689eb3ee256d50bdc1c8a2d3bbae0f513eff698c52f0a14398c76f2d92462ed22c56e27d6fb29260d6a2d51d36c6d1d33abc759796ae53a9c0e4f2f8645ee7bbd0ce5f84307e67d8cc67e97e1f723d535546f975689eb2fc7cad2f529805bce93acab5bfdcca809b1acd1db409c79a8125cb6a3acc3d365a3e40bf9abcde6a9321575d396258a62b9b8383d111d7f165469c62b87571e8bae23ab01
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# @NOGPL@
+#
+# x509_func.inc
+#
+# Revision: 1.43
+#
+
+include("compat_shared.inc");
+include("ssl_funcs.inc");
+include("der_funcs.inc");
+include("byte_func.inc");
+include("ecc.inc");
+
+#pragma static(include)
+include("x509_func.static");
+#pragma static(include:false)

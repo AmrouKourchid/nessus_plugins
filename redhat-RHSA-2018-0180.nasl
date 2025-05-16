@@ -1,0 +1,312 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The descriptive text and package checks in this plugin were
+# extracted from Red Hat Security Advisory RHSA-2018:0180. The text
+# itself is copyright (C) Red Hat, Inc.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(234376);
+  script_version("1.1");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2025/04/15");
+
+  script_cve_id("CVE-2017-1000405");
+  script_xref(name:"RHSA", value:"2018:0180");
+
+  script_name(english:"RHEL 7 : kernel-alt (RHSA-2018:0180)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote Red Hat host is missing a security update for kernel-alt.");
+  script_set_attribute(attribute:"description", value:
+"The remote Redhat Enterprise Linux 7 host has packages installed that are affected by a vulnerability as referenced in
+the RHSA-2018:0180 advisory.
+
+    The kernel-alt packages provide the Linux kernel version 4.x.
+
+    Security Fix(es):
+
+    * A flaw was found in the patches used to fix the 'dirtycow' vulnerability (CVE-2016-5195). An attacker,
+    able to run local code, can exploit a race condition in transparent huge pages to modify usually read-only
+    huge pages. (CVE-2017-1000405)
+
+    Red Hat would like to thank Eylon Ben Yaakov and Daniel Shapiro for reporting this issue.
+
+    Bug Fix(es):
+
+    * Previously, Red Hat Enterprise Linux 7.4 with the kernel version provided by the kernel-alt package, did
+    not support turning off transactional memory (TM) on the POWER9 systems. With this update it is now
+    possible to turn off TM on the POWER9 systems. (BZ#1509974)
+
+    * Due to a bug in the ixgbe and i40e drivers, the socket buffer list (skb list) in some cases got
+    corrupted when running Red Hat Enterprise Linux 7.4 with the kernel version provided by the kernel-alt
+    package on the POWER9 systems. Consequently, a kernel panic occurred. This update fixes ixgbe and i40e,
+    and the kernel no longer panics due to this behavior. (BZ#1518412)
+
+    * Users can lower the max_sectors_kb setting in the sysfs file system to accommodate certain workloads.
+    Previously, users needed to set the maximum I/O size to either the block layer default or the optional
+    preferred I/O size reported by the device. This update fixes the scsi driver to keep the current heuristic
+    function for the initial setting of max_sectors_kb. As a result, for subsequent invocations, the driver
+    now only updates the current queue limit if it exceeds the capabilities of the hardware. (BZ#1518432)
+
+    * When performing full-bootme tests on Boston ESS systems running Red Hat Enterprise Linux 7.4 with the
+    kernel version provided in the kernel-alt package, a kernel panic occurred and the operating system
+    dropped into the XMON software. This update fixes the Multi-Queue Block IO Queueing Mechanism (blk-mq),
+    and the kernel no longer panics in these circumstances. (BZ#1518433)
+
+    * When running the stress test on the file system with the gssstress command, and pulling one disk from
+    one recovery group, kernel I/O error was reported, and gssstress became unresponsive. Gssstress now
+    works as expected under the described circumstances. (BZ#1522645)
+
+    * When using the fwupdate_xl710 utility to apply updates for NVM Intel Ethernet Converged Network Adapter
+    XL710 on machines running Red Hat Enterpise Linux 7.4 with the kernel version provided in the kernel-alt
+    package, a deadlock sometimes occurred when the i40e driver was acquiring access to the Non-Volatile
+    Memory (NVM) of the device. Consequently, NVM acquire timeouts occurred, the firmware update failed with
+    the following error message: Failed Acquiring NVM resource for read err=-53 status=0xa, and left the
+    device's memory in a corrupted state. This update fixes the i40e driver, and the firmware updates no
+    longer fail due to this behavior. (BZ#1522843)
+
+    * Previously, on POWER9 systems with more than 100 Pstates, the cpufreq driver did not handle the cases
+    when the NxN matrix denominated transition table (trans_table) overflowed beyond the PAGE_SIZE boundary
+    correctly. Consequently, reading trans_table for any of the CPUs failed with the following error:
+
+    fill_read_buffer: show+0x0/0xa0 returned bad count
+
+    With this update reading trans_table for any of the CPUs now proceeds as expected under the described
+    circumstances. (BZ#1522844)
+
+    * Previously, the /sys/firmware/opal/exports directory did not contain an export node. Consequently, a
+    range of memory in the Open Power Abstraction Layer (OPAL) that the operating system attempted to export
+    to user space for debugging purposes was not available. With this update the sysfs file under
+    /sys/firmware/opal/exports is now available for each property found there, and this file can be used for
+    debugging purposes. (BZ#1522845)
+
+Tenable has extracted the preceding description block directly from the Red Hat Enterprise Linux security advisory.
+
+Note that Nessus has not tested for this issue but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://access.redhat.com/security/updates/classification/#important");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.redhat.com/show_bug.cgi?id=1516514");
+  # https://security.access.redhat.com/data/csaf/v2/advisories/2018/rhsa-2018_0180.json
+  script_set_attribute(attribute:"see_also", value:"http://www.nessus.org/u?8c7e43d5");
+  script_set_attribute(attribute:"see_also", value:"https://access.redhat.com/errata/RHSA-2018:0180");
+  script_set_attribute(attribute:"solution", value:
+"Update the RHEL kernel-alt package based on the guidance in RHSA-2018:0180.");
+  script_set_cvss_base_vector("CVSS2#AV:L/AC:M/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:H/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:H/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2017-1000405");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+  script_cwe_id(362);
+  script_set_attribute(attribute:"vendor_severity", value:"Important");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2017/11/30");
+  script_set_attribute(attribute:"patch_publication_date", value:"2018/01/25");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2025/04/15");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:redhat:enterprise_linux:7");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-alt");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-bootwrapper");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-debug");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-debug-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-headers");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-tools");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-tools-libs");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:kernel-tools-libs-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:perf");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:redhat:enterprise_linux:python-perf");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"Red Hat Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2025 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl", "redhat_repos.nasl", "linux_alt_patch_detect.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/RedHat/release", "Host/RedHat/rpm-list", "Host/cpu");
+
+  exit(0);
+}
+
+
+include('rpm.inc');
+include('rhel.inc');
+include('ksplice.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+var os_release = get_kb_item('Host/RedHat/release');
+if (isnull(os_release) || 'Red Hat' >!< os_release) audit(AUDIT_OS_NOT, 'Red Hat');
+var os_ver = pregmatch(pattern: "Red Hat Enterprise Linux.*release ([0-9]+(\.[0-9]+)?)", string:os_release);
+if (isnull(os_ver)) audit(AUDIT_UNKNOWN_APP_VER, 'Red Hat');
+os_ver = os_ver[1];
+if (!rhel_check_release(operator: 'ge', os_version: os_ver, rhel_version: '7')) audit(AUDIT_OS_NOT, 'Red Hat 7.x', 'Red Hat ' + os_ver);
+
+if (!get_kb_item('Host/RedHat/rpm-list')) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 's390' >!< cpu && 'aarch64' >!< cpu && 'ppc' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'Red Hat', cpu);
+
+if (get_one_kb_item('Host/ksplice/kernel-cves'))
+{
+  rm_kb_item(name:'Host/uptrack-uname-r');
+  var cve_list = make_list('CVE-2017-1000405');
+  if (ksplice_cves_check(cve_list))
+  {
+    audit(AUDIT_PATCH_INSTALLED, 'KSplice hotfix for RHSA-2018:0180');
+  }
+  else
+  {
+    __rpm_report = ksplice_reporting_text();
+  }
+}
+
+var constraints = [
+  {
+    'repo_relative_urls': [
+      'content/dist/rhel-alt/server/7/7Server/armv8-a/aarch64/debug',
+      'content/dist/rhel-alt/server/7/7Server/armv8-a/aarch64/optional/debug',
+      'content/dist/rhel-alt/server/7/7Server/armv8-a/aarch64/optional/os',
+      'content/dist/rhel-alt/server/7/7Server/armv8-a/aarch64/optional/source/SRPMS',
+      'content/dist/rhel-alt/server/7/7Server/armv8-a/aarch64/os',
+      'content/dist/rhel-alt/server/7/7Server/armv8-a/aarch64/source/SRPMS',
+      'content/dist/rhel-alt/server/7/7Server/power9/ppc64le/debug',
+      'content/dist/rhel-alt/server/7/7Server/power9/ppc64le/optional/debug',
+      'content/dist/rhel-alt/server/7/7Server/power9/ppc64le/optional/os',
+      'content/dist/rhel-alt/server/7/7Server/power9/ppc64le/optional/source/SRPMS',
+      'content/dist/rhel-alt/server/7/7Server/power9/ppc64le/os',
+      'content/dist/rhel-alt/server/7/7Server/power9/ppc64le/source/SRPMS',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/debug',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/highavailability/debug',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/highavailability/os',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/highavailability/source/SRPMS',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/optional/debug',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/optional/os',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/optional/source/SRPMS',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/os',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/resilientstorage/debug',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/resilientstorage/os',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/resilientstorage/source/SRPMS',
+      'content/dist/rhel/power-le/7/7.9/ppc64le/source/SRPMS',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/debug',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/highavailability/debug',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/highavailability/os',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/highavailability/source/SRPMS',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/optional/debug',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/optional/os',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/optional/source/SRPMS',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/os',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/resilientstorage/debug',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/resilientstorage/os',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/resilientstorage/source/SRPMS',
+      'content/dist/rhel/power-le/7/7Server/ppc64le/source/SRPMS',
+      'content/dist/rhel/power/7/7.9/ppc64/debug',
+      'content/dist/rhel/power/7/7.9/ppc64/optional/debug',
+      'content/dist/rhel/power/7/7.9/ppc64/optional/os',
+      'content/dist/rhel/power/7/7.9/ppc64/optional/source/SRPMS',
+      'content/dist/rhel/power/7/7.9/ppc64/os',
+      'content/dist/rhel/power/7/7.9/ppc64/source/SRPMS',
+      'content/dist/rhel/power/7/7Server/ppc64/debug',
+      'content/dist/rhel/power/7/7Server/ppc64/optional/debug',
+      'content/dist/rhel/power/7/7Server/ppc64/optional/os',
+      'content/dist/rhel/power/7/7Server/ppc64/optional/source/SRPMS',
+      'content/dist/rhel/power/7/7Server/ppc64/os',
+      'content/dist/rhel/power/7/7Server/ppc64/source/SRPMS',
+      'content/fastrack/rhel/power/7/ppc64/debug',
+      'content/fastrack/rhel/power/7/ppc64/optional/debug',
+      'content/fastrack/rhel/power/7/ppc64/optional/os',
+      'content/fastrack/rhel/power/7/ppc64/optional/source/SRPMS',
+      'content/fastrack/rhel/power/7/ppc64/os',
+      'content/fastrack/rhel/power/7/ppc64/source/SRPMS'
+    ],
+    'pkgs': [
+      {'reference':'kernel-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-bootwrapper-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-debug-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-debug-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-debug-devel-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-debug-devel-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-devel-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-devel-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-headers-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-headers-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-tools-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-tools-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-tools-libs-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-tools-libs-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-tools-libs-devel-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'kernel-tools-libs-devel-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'perf-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'perf-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'python-perf-4.11.0-44.4.1.el7a', 'cpu':'aarch64', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE},
+      {'reference':'python-perf-4.11.0-44.4.1.el7a', 'cpu':'ppc64le', 'release':'7', 'el_string':'el7a', 'rpm_spec_vers_cmp':TRUE}
+    ]
+  }
+];
+
+var applicable_repo_urls = rhel_determine_applicable_repository_urls(constraints:constraints);
+if(applicable_repo_urls == RHEL_REPOS_NO_OVERLAP_MESSAGE) exit(0, RHEL_REPO_NOT_ENABLED);
+
+var flag = 0;
+foreach var constraint_array ( constraints ) {
+  var repo_relative_urls = NULL;
+  if (!empty_or_null(constraint_array['repo_relative_urls'])) repo_relative_urls = constraint_array['repo_relative_urls'];
+  foreach var pkg ( constraint_array['pkgs'] ) {
+    var reference = NULL;
+    var _release = NULL;
+    var sp = NULL;
+    var _cpu = NULL;
+    var el_string = NULL;
+    var rpm_spec_vers_cmp = NULL;
+    var epoch = NULL;
+    var allowmaj = NULL;
+    var exists_check = NULL;
+    var cves = NULL;
+    if (!empty_or_null(pkg['reference'])) reference = pkg['reference'];
+    if (!empty_or_null(pkg['release'])) _release = 'RHEL' + pkg['release'];
+    if (!empty_or_null(pkg['sp'])) sp = pkg['sp'];
+    if (!empty_or_null(pkg['cpu'])) _cpu = pkg['cpu'];
+    if (!empty_or_null(pkg['el_string'])) el_string = pkg['el_string'];
+    if (!empty_or_null(pkg['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = pkg['rpm_spec_vers_cmp'];
+    if (!empty_or_null(pkg['epoch'])) epoch = pkg['epoch'];
+    if (!empty_or_null(pkg['allowmaj'])) allowmaj = pkg['allowmaj'];
+    if (!empty_or_null(pkg['exists_check'])) exists_check = pkg['exists_check'];
+    if (!empty_or_null(pkg['cves'])) cves = pkg['cves'];
+    if (reference &&
+        _release &&
+        rhel_decide_repo_relative_url_check(required_repo_url_list:repo_relative_urls) &&
+        (applicable_repo_urls || (!exists_check || rpm_exists(release:_release, rpm:exists_check))) &&
+        rpm_check(release:_release, sp:sp, cpu:_cpu, reference:reference, epoch:epoch, el_string:el_string, rpm_spec_vers_cmp:rpm_spec_vers_cmp, allowmaj:allowmaj, cves:cves)) flag++;
+  }
+}
+
+if (flag)
+{
+  var extra = NULL;
+  if (isnull(applicable_repo_urls) || !applicable_repo_urls) extra = rpm_report_get() + redhat_report_repo_caveat();
+  else extra = rpm_report_get();
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_WARNING,
+      extra      : extra
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'kernel / kernel-bootwrapper / kernel-debug / kernel-debug-devel / etc');
+}

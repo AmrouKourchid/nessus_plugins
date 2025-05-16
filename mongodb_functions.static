@@ -1,0 +1,225 @@
+##
+#
+#  Namespace mongodb
+#    Provides an encapsulated naming scope for mongodb functions and objects
+#
+##
+namespace mongodb
+{
+  function single_user_databases()
+  {
+    var all_users = _FCT_ANON_ARGS[0];
+    return just_singles(users_per_database(all_users));
+  }
+
+  function users_per_database()
+  {
+    var all_users = _FCT_ANON_ARGS[0];
+    var databases = {};
+
+    var user;
+    var db;
+    foreach (user in all_users)
+    {
+      db = user['db'];
+      if (isnull(db))
+      {
+        dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:
+          'WARNING: User has no associated db: ' + user['_id']);
+        continue;
+      }
+      if (isnull(databases[db]))
+      {
+        databases[db] = 0;
+      }
+      databases[db] += 1;
+    }
+
+    return databases;
+  }
+
+  function just_singles()
+  {
+    var array = _FCT_ANON_ARGS[0];
+    var filtered = [];
+    var key;
+    foreach (key in keys(array))
+    {
+      if (array[key] == 1)
+      {
+        append_element(var:filtered, value:key);
+      }
+    }
+    return filtered;
+  }
+
+  function matching_hashes()
+  {
+    var all_users = _FCT_ANON_ARGS[0];
+
+    return more_than_one(group_hashes(all_users));
+  }
+
+  function group_hashes()
+  {
+    var all_users = _FCT_ANON_ARGS[0];
+
+    var hashes = {};
+    var user, id, hash;
+    foreach (user in all_users)
+    {
+      id = user['_id'];
+      hash = get_hash(user:user);
+      if (isnull(hashes[hash]))
+      {
+        hashes[hash] = [];
+      }
+      hashes[hash][max_index(hashes[hash])] = id;
+    }
+    return hashes;
+  }
+
+  function get_hash(user)
+  {
+    if (!isnull(user.pwd))
+    {
+      return user.pwd;  # for mongodb 2.4
+    }
+    else
+    {
+      if (!isnull(user.credentials['SCRAM-SHA-1']))
+      {
+        # SCRAM-SHA-1 has the following values available
+        # user.credentials['SCRAM-SHA-1'].salt
+        # user.credentials['SCRAM-SHA-1'].serverKey
+        # user.credentials['SCRAM-SHA-1'].storedKey
+        # user.credentials['SCRAM-SHA-1'].iterationCount
+        # hash on the storedKey value, ensure it is unique, the others are based on random salt
+        return user.credentials['SCRAM-SHA-1'].storedKey;  # for mongodb 3.x
+      }
+      return user.credentials['MONGODB-CR'];  # for mongodb 2.6
+    }
+  }
+
+  function more_than_one()
+  {
+    var array = _FCT_ANON_ARGS[0];
+    var filtered = [];
+    var key;
+    foreach (key in keys(array))
+    {
+      if (max_index(array[key]) > 1)
+      {
+        append_element(var:filtered, value:array[key]);
+      }
+    }
+    return filtered;
+  }
+
+  function user_can_eval()
+  {
+    var all_users = _FCT_ANON_ARGS[0];
+    var custom_roles = _FCT_ANON_ARGS[1];
+    var eval_users = [];
+    var user, role;
+
+    var eval_roles = custom_roles_which_contain_anyAction_on_anyResource(custom_roles);
+    foreach (user in all_users)
+    {
+      if (user_can_eval_2_4(user))
+      {
+        append_element(var:eval_users, value:user._id);
+      }
+
+      if (user_can_eval_2_6(user, eval_roles))
+      {
+        append_element(var:eval_users, value:user._id);
+      }
+    }
+    return eval_users;
+  }
+
+  function user_can_eval_2_4()
+  {
+    var user = _FCT_ANON_ARGS[0];
+    return collib::is_superlist(user.roles, [
+        "readWriteAnyDatabase",
+        "userAdminAnyDatabase",
+        "dbAdminAnyDatabase",
+        "clusterAdmin"]);
+  }
+
+  function user_can_eval_2_6()
+  {
+    var user = _FCT_ANON_ARGS[0];
+    var eval_roles = _FCT_ANON_ARGS[1];
+
+    return user_has_one_of_these_roles(user, eval_roles);
+  }
+
+  function custom_roles_which_contain_anyAction_on_anyResource()
+  {
+    var custom_roles = _FCT_ANON_ARGS[0];
+
+    var eval_roles = [];
+
+    var role;
+    foreach (role in custom_roles)
+    {
+      var privileges_list = role.privileges;
+      var privilege;
+      foreach (privilege in privileges_list)
+      {
+        if (!isnull(privilege.resource.anyResource))
+        {
+          if (collib::contains(privilege.actions, 'anyAction'))
+          {
+            append_element(var:eval_roles, value:role.role);
+          }
+        }
+      }
+    }
+    return eval_roles;
+  }
+
+  function user_has_one_of_these_roles()
+  {
+    var user = _FCT_ANON_ARGS[0];
+    var roles = _FCT_ANON_ARGS[1];
+
+    var role;
+    foreach (role in user.roles)
+    {
+      if (collib::contains(roles, role.role))
+      {
+        return TRUE;
+      }
+    }
+    return FALSE;
+  }
+
+  ##
+  # Checks the return object for MongoDB error messages
+  #
+  # @anonparam  <result> MongoDB message object, parsed by our BSON handlers
+  # @return  the values of the first list index's $err or errmsg arrays, if they exist, else ''
+  # @category mongodb
+  ##
+  function mongo_error()
+  {
+    var command_result = _FCT_ANON_ARGS[0];
+    var error = '';
+
+    if (!isnull(command_result) && !isnull(command_result[0]) && !isnull(command_result[0]['$err']))
+    {
+      error = command_result[0]['$err'];
+    }
+
+    if (!isnull(command_result) && !isnull(command_result[0]) && !isnull(command_result[0]['errmsg']))
+    {
+      error = command_result[0]['errmsg'];
+    }
+
+    return error;
+  }
+}

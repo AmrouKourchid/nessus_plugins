@@ -1,0 +1,22 @@
+#TRUSTED 04d59ff28a23b17a825d9c0b9dab2c558588c9e6ae0280a768fbbbfb180e6900f23102c21aaeb00eee64d977231f0a2b0ec1783def8e29309d29894ca8ea64bedb08f105670ce191237e2b57f74ff84140e612120a69a4643b4d152af85c05e2b596dbbadb0726806e066710067061604a1acee86b483b6a9bdff12d25b38e287943bbffbe034a59811aac1ae92fe6312c0b0277e172afbad88218f6489e6c18f32c9c56b323a3131dd1d64df115a3b216609463e3a379309d12ac4f82963f989d0f2c0827921b372865a1997e9c1c17c1096880e7fd50d72e37f3b63f546f09243d41715537431298343daec7663e914a575186a9fb9c990fb5b530887cfefe70b1679f122dabc4d0b5655094e6115ad6481abf19a2d9017b1685685ac9362b4ec870804d66a2220e5e50a8932155e00bd94e28a9f35f09c303d2cc868738a3a28c859214b426abab7da854fb5cbafecceb5f077bf9bdb112bcf1a9654c6e3e850cc3c2dd59b9c614eb4b44803a997a0e1762b2ac08a994554c40aff2e2d909c8e265410af8ea29facc8cb5e9f60625d5821ee9ff384ad6a98b2a48f1e11a534136e5d54735292eab60aff6a990119e6922d4bf68721654e0a36e1d5236bb5fe2df901f73b9c0644095213202527fc84fe6670e983af283811de75ff19e333a33e1b20e5a9968af3f8ac67797e6aa8d7a190735ec4d1eb487e38cde3678971f
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision:1.1
+###
+
+include("compat_shared.inc");
+include("json.inc");
+include("path.inc");
+include("spad_log_func.inc");
+include("http.inc");
+include("ssl_funcs.inc");
+
+#pragma static(include)
+include("pam_helpers.static");
+#pragma static(include:false)
+

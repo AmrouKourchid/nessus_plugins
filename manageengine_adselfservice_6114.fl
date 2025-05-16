@@ -1,0 +1,21 @@
+test app is not detected on a given http port
+kb installed_sw/ManageEngine ADSelfService Plus=1
+get_http_port() returns 8888
+check output expects not detected on port 8888
+
+test vulnerable build
+kb installed_sw/ManageEngine ADSelfService Plus=1
+get_http_port() returns 8888
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/ProductVersion=6.1
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/version=6101
+check output expects:
+    URL               : http://localhost:8888/
+    Installed version : 6101
+    Fixed version     : build 6114
+
+test fixed build
+kb installed_sw/ManageEngine ADSelfService Plus=1
+get_http_port() returns 8888
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/ProductVersion=6.1
+kb installed_sw/8888/ManageEngine ADSelfService Plus/Lw$$/version=6114
+check output expects The ManageEngine ADSelfService Plus install at http://localhost:8888/ is version 6114 and, therefore, is not affected.

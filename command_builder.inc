@@ -1,0 +1,30 @@
+#TRUSTED 0f99c7e0ccd3806448189df925ec1b661022f93e362690952b28ef4c1f8e6b185052cb671d5f93a323a30b7d16e9e017eba263d61de50a2bfa0ceaa21693cc576eb043416b496017c32d86c967e3ae665d9aca007dd8681e96a6db6dc609bafde6278e1ffb5a7cff6348a8bc94360fe302e6afce33a70dde80000cc315a917b76ebbc89867d15915866f363ad58ba8b7f9b1cf0d59e11bdeb0d7dc68ef5d4165cf6c82c9d5f15005e4b39fab13df3decd6e474b7859b2ad67fe0da238e0992febb38af379bb6badd8217630e01c6fb017531848243c1bc4130d75fecae3472f6a82b9a99719e9eb07b728976787344a2e35ba70dcc82f9032b0387e62cd4594334d63a36a048954d3aa0aa806eba91f5bd47bca88755631e52d01b83821c6cd2039b0f306eed99104f5f9e7742b3037bcbcee68a6e8a7a8e30f68ee979a6dae734eeb6b150d50dc48ff7c9108488b1e853de3f93ee54fe57f1217a2b8d6d9e94093d8ff6ac4a94ca2e7d37b025c2af2e31be3e8e101de8f77391b85061395ba749e6c77a79772cd6bccee8d3eb4d5efba9919e79eba6d9ae02a74997f3307b6f3ed43730d4cac3447d9bf26dc6160b126bb7f0f870d6bced16723e17ed8af9ca859226e4d0906731e8c8a425c28f16a04194a5afe75ae79314e8c3be6ed85213031ae5ec06db885b7dd926e6510f770d582fc8bcc8676d6ddee542c67cd0e16e
+#TRUST-RSA-SHA256 78e30c6d1f20eb1793bffbb0535bacd89b54f514e76f6d1b3fe6245483f2b92a7b5ac1b8667459e22bca5edc37d0472ce47dc670a91d6fb7dfa9217cd45cf67ca034aab3c3b3fc2d1a99bc71dda56672403f890eefcebdc7db73d678dc81936e2ed7139f328bf032493e97b1e6c757a4dff9ca59008f6aec0c982394fdceaf722cb3922a2d543bcb5dfd5eceb1cebb96847c3a94e8b21a3bb6065cb592ce75f3f7889ab99afe9a4d8a8f1beb831a7fb28edea0ae51be33951060427e8b4be607003281854a7ad5a336420f02e69b6cab01d95c578df61e6626faa8f5e56a8c57c9d31e75b2cf4434976670af6fa903bee44fddf17ef9add64bbd46626ce9838fd144df23f2dbad9b7cffefbbe864b46d2e8ad8d99544e23af35cf2e5b13a107dd7a758c2cfc6e936201cfc01f303b1074d16c00d24e179ed3ccbff16ce9afc9a9c23f8e385c78a0b0ffc35d74335c5a1b98077440e119aa93dee0a3056ecf0466f92249c6cfa5a0034fb4a11ea85b62fbdd9e94f728756337d4a94e824f4a10814b925ec7c32358d6b1780ed08f8b5d07364f3fc2b010061afa242b3a86364ab65431909593803f2bb915419738bc820d1f8d9a287ca6a42c97c593ece6f43f7c9c02784c43b7430770d53f59936d0a62199930904c3ce8069fb11c8c9ff628b52dafc14912c3e6ee6a61283696283ab098c5144bce6b2093d736efaca12a6a6
+#------------------------------------------------------------------------------
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# command_builder.inc
+#
+# Revision: 1.9
+
+include('compat_shared.inc');
+include('nessusd_product_info.inc');
+include('hostlevel_funcs.inc');
+include('spad_log_func.inc');
+include('ssh_func.inc');
+include('ssh_lib.inc');
+include('ssh_globals.inc');
+include('lcx.inc');
+include('debug.inc');
+
+#pragma static(include)
+include('command_builder.static');
+#pragma static(include:false)
+

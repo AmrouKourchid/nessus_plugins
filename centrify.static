@@ -1,0 +1,383 @@
+#TRUSTED 19c63a5b763090e2b5c8d6b8cf70a99a1f6e39a01d013b050191149edaeeacba241d2065df9a915dda7561e95fd24d19b6d3cd96646afdf3a5e043e99042242ffa1f6ac2fdd258e14fb36db187576d87ddfcd33863d9090dd5c6214f7a209b4c452a6007509d0efdecff32497045022a2e88a06306c24596184d803153cc0f413d04b711d0b094bc637f2cb3799a6a9ca62cc0d3864f5d7fd277634bd575214599aaeeb52f44c8ae5c47c3853eb3316fb227d1c76b90b89517233afe53f474fe058069c2506e7f478b25f30e346571ca3f156a5e7739bdd2e0584a67b5bbb5ddcef8803b5d3f943c8cdfa71db9dcd3f640d6cf33a79c679d0eaf91a3840d13897d248bc70650eae349b3d1ae244749d18afa45265a9d540804574a2d401fe5060732233742026dd133a5d0763d39b548bc657bc08e3befafd3c763a35c2b93407a0e7907e956392a060deb4ed97fb5d4df07ec8576d6b69e39d1751bc34cf6ec12004ce09a4848ed6a14376d6aab1299e019369f0f36d03d3b98732512a0b25da5badd5775060165243f250d68d123befb5f9492fbb8ff7798b45c05b3c53fec296a0db815f0abe57c64c96a5989c2fa6fc4e81b4de396cbe0c31e336e20ea540ba000e83c230985d8c8dbdd97155e3f2a6ae239172f3f0e8aad5f2c29828b0f86e1a96e729324ec1acb000908da0e43decf3e07d18128cb9828815f4ba064f1
+#TRUST-RSA-SHA256 15ccefd58700ffb2341d24136ee138aee14ee937861151b7828583656d86a1ef49739e1e3d87f4ddfe171306a1e6976ea1268997722e5b415f35520682127ceab9bb39443c6fe832bf15d712a73d36266395400e9641b1a40160aedcf078b4167693adcd720c35b5841428207c4528496d5f394a4030356853e2a0b867d3b4a7818908c6ab71ce37fa670a7fa62074139c512e554cbc72bedbaf2450e926265b115b6d8dee3c5079991d84097d36a5c961640c1a4abd10c39fa8c9f98f8c248ea951d8df8fa5c209a3d8fca7b5e509afa79a819919dbccd38f7a0d42033e398b34364a6c5f4be7eddda05f62a878c95b00c3e1979250449e7a4709a611553379cb90c5d335c290c0b523953fe8c0104d2482d747f376614a63c599e4942d5a0357cb134465b2d4f64472514a3de5cb445036a9d50daa6590034c4de482a4ed6e456d69cb6fa28507f2556430d1f4c21a6e128f67563bbc1ddcde4377077de1d18c8eb0964a656762f03e744982d218a5fbd7e065ebefabf266d5dfc663f7be8dd06d454770f3dd5dc9259ca2c2e640c7bb982fefbab5b6836bd1e29ee74c62ec8218eb5d152594ea08f38e9f8068b8bbeda4ba3b16c7e62287a10887707f29dce10cec3cea25cd4a1a48e131b9967bdf42aba19541bbed7cc19b83a93ec6abbbbeb1b22b83c79a7fa299455b0fa2dd6a8418208d0488c82b6ef7f638b08eb1ea
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1
+#
+###
+
+##
+# Filters sensitive data. Sends the rest to detailed_log
+#
+# @remark Add a display(msg) for debug testing in command line
+#
+# @param [msg:string] message to be filtered and passed to detailed_log()
+# @param [lvl:integer] debug level integer to be passed to detailed_log() (optional, defaults to 3)
+# @param [report:boolean] determines if this message should be sent to the UI
+###
+function centrify_debug_message(msg, lvl, report)
+{
+    if (empty_or_null(lvl))
+        lvl = 3;
+
+    msg = ereg_replace(icase: TRUE, pattern: '("Password":)"(?:.)*"}', replace: '\\1"***REMOVED***"}', string: msg);
+    msg = ereg_replace(icase: TRUE, pattern: '("data":)"(?:[^}])*"}', replace: '\\1"***REMOVED***"}', string: msg);
+    msg = ereg_replace(icase: TRUE, pattern: '("ID":)"(?:[^"])*"', replace: '\\1"***REMOVED***"', string: msg);
+    msg = ereg_replace(icase: TRUE, pattern: '("Auth":)"(?:[^"])*"', replace: '\\1"***REMOVED***"', string: msg);
+    msg = msg+'\n';
+    dbg::detailed_log(name:SCRIPT_NAME + "~Centrify", lvl:lvl, src:FUNCTION_NAME, msg:msg);
+    if (!isnull(report) && report)
+    {
+        report_error(title:"Centrify", message:msg, severity:1);
+    }
+    //display(msg);
+}
+
+##
+# Make a Centrify API Call
+#
+# @param [config:array] A config object as returned by _centrify_login
+# @param [method:string] The type of call Post/Get/etc
+# @param [command:string] The API call to make, e.g. "login"
+# @param [headers:array] Any headers required on the call
+# @param [data:string] JSON body for the request
+#
+# @return an object with {header: http header, success: TRUE | FALSE, body: the json response}
+##
+function _centrify_api_call(config, method, command, headers, data) 
+{
+    local_var res, body, cookies;
+    if (!empty_or_null(data))
+    {
+        data = json_write(path_store(data));
+    }
+    centrify_debug_message(msg: "Request ~ "+command, lvl:2);
+    centrify_debug_message(msg: "Request Data ~ "+data, lvl:3);
+    res =  http_send_recv3(
+        target       : config['host'],
+        method       : method,
+        item         : command,
+        username     : config['api_user'],
+        password     : config['api_key'],
+        port         : config['port'],
+        data         : data,
+        add_headers  : headers,
+        transport    : ssl_transport(ssl:config['ssl'], verify:config['verify']),
+        exit_on_fail : FALSE
+    );
+    local_var transport = ssl_transport(ssl:config['ssl'], verify:config['verify']);
+    if (isnull(res))
+    {
+        return {success: FALSE, message: "Centrify did not respond to request."};
+    }
+    centrify_debug_message(msg: "Response ~ "+res[0], lvl:3);
+    centrify_debug_message(msg: "Headers ~ "+res[1], lvl:3);
+    centrify_debug_message(msg: "Body ~ "+res[2], lvl:3);
+    if ("200" >< res[0])
+    {
+        if (res[1] =~ "Content-Type: application/json")
+        { //=~ also means 'contains'
+            body = json_read(res[2]);
+            body = body[0];
+        }
+        cookies = parse_http_headers(headers:res[1], sep:":");
+        return {header: pam_parse_header(header: res[0]), body: body, success: TRUE, cookies : cookies["set-cookie"]};
+    }
+    else if ("404" >< res[0])
+    {
+        return {success: FALSE, message:"URL not found!"};
+    } 
+    else
+    {
+        body = res[2];
+        if ("errors"><res[2])
+        { //>< means 'contains'
+            body = json_read(res[2]);
+            body = body[0];
+            body = body.errors[0];
+        }
+        return {success: FALSE, message:body};
+    }
+}
+
+##
+# Login to Centrify API and get a AuthToken
+# @param [config:array] array of config items
+# @return an object with {success: TRUE | FALSE, token: the auth token}
+##
+function _centrify_login(config)
+{
+    local_var success_bool, result, data, headers;
+    headers['X-CENTRIFY-NATIVE-CLIENT'] = TRUE;
+    centrify_debug_message(msg:
+        'Centrify Settings ~' +
+        '\nHOST : ' + config.host +
+        '\nPORT : ' + config.port +
+        '\nFORCE_SSL : ' + config.ssl +
+        '\nSSL_VERIFY : ' + config.verify,
+        lvl:3
+    );
+    centrify_debug_message(msg:"Sending Start Authentication request", lvl:2);
+    data =  {"TenantId": config.tenant,"User": config.api_user, "Version": "1.0"}; 
+    result = _centrify_api_call(config: config, method: "POST", command: config.auth_url + "/StartAuthentication", data: data, headers: headers);
+    if (!result.success)
+    {
+        return result;
+    }
+    data =  {"TenantID": config.tenant,
+             "SessionId": result.body.Result.SessionId, 
+             "MechanismId": result.body.Result.Challenges[0].Mechanisms[0].MechanismId, 
+             "Action": "Answer", 
+             "Answer": config.api_key
+    };
+    result = _centrify_api_call(config: config, method: "POST", command: config.auth_url + "/AdvanceAuthentication", data: data, headers: headers);
+    if (!result.success)
+    {
+        return result;
+    }
+    if(result.body.Result.Summary == 'StartNextChallenge')
+    {
+        success_bool = FALSE;
+        return {success: success_bool, message:"Security challenge not completed."};
+    } 
+    if(result.body.Result.Summary == 'Failure')
+    {
+        success_bool = FALSE;
+        return {success: success_bool, message:"Error: "+ result.body.Message};
+    }
+    success_bool = result.header.code == 200;
+    if(empty_or_null(result.body.Result.Auth))
+    {
+        centrify_debug_message(msg:"Login request failed. "+result.body.Message, lvl:1);
+        success_bool = FALSE;
+        return {success: success_bool, message:"Login request failed."};
+    }
+    else
+    {
+        return {success: success_bool, token: result.cookies};
+    }
+}
+
+##
+# Build config object
+# @param [prefix:string] string to append to the beginning of a preference key
+# @param [postfix:string] string to append to the end of a preference key
+# @return a config object with all settings within it
+##
+function _centrify_init(prefix,postfix)
+{
+    local_var config, result, tmp_file;
+    prefix = prefix + "PAM ";
+    config['api_user'] = script_get_preference(prefix+"API User"+postfix);
+    config['api_key'] = script_get_preference(prefix+"API Key"+postfix);
+    config['auth_url'] = script_get_preference(prefix+"Authentication URL"+postfix);
+    config['auth_adv_url'] = script_get_preference(prefix+"Authentication URL"+postfix);
+    config['query_url'] = script_get_preference(prefix+"Query URL"+postfix);
+    config['tenant'] = script_get_preference(prefix+"Namespace"+postfix);
+    config['host'] = script_get_preference(prefix+"Host"+postfix);
+    config['port'] = script_get_preference(prefix+"Port"+postfix);
+    config['ssl'] = pam_from_boolean(script_get_preference(prefix+"SSL"+postfix));
+    config['verify'] = pam_from_boolean(script_get_preference(prefix+"Verify SSL Certificate"+postfix));
+    config['engine_url'] = script_get_preference(prefix+"Engine URL"+postfix); //we probably don't need this if it's static?
+    config['duration'] = int(script_get_preference(prefix+"Checkout Duration"+postfix));
+    return config;
+}
+
+##
+# Checkout Credential
+# @param [config:array] centrify config data
+# @param [username:string] username to retrieve creds for
+# @param [target:string] machine to retrieve creds for
+# @return an object with {success: TRUE | FALSE, credential: the full retrieved credential}
+##
+function _centrify_checkout_password(config, username, target)
+{
+    local_var result, headers, verbose, data;
+    result['cached'] = FALSE;
+    if (empty_or_null(username) || empty_or_null(target))
+    {
+        if(empty_or_null(username))
+        {
+            centrify_debug_message(msg:"No username specified for request.", lvl:1);
+        }
+        if(empty_or_null(target))
+        {
+            centrify_debug_message(msg:"No target specified for request.", lvl:1);
+        }
+        return {success: FALSE};
+    }
+    headers['X-CENTRIFY-NATIVE-CLIENT'] = TRUE;
+    headers['Cookie'] = config.token; 
+    data =  {"Script" : "Select ID from VaultAccount where User = '" + username + "' and FQDN='" + target + "'"};
+    result = _centrify_api_call(config: config, method: "POST", command: config.query_url + "/Query", data: data, headers: headers);
+    //check to see if an ID was returned
+    if (empty_or_null(result.body.Result.Results[0]) || empty_or_null(result.body.Result.Results[0].Entities[0]))
+    {
+        verbose = pam_verbose_output();
+        centrify_debug_message(msg:"Failed to retreive credentials. Error: Password does not exist for '"+username+"' on '"+target+"'.", lvl:1,report:verbose);
+        return {success: FALSE};
+    }
+    data =  {
+        "ID":result.body.Result.Results[0].Entities[0].Key, //the user ID
+        "Lifetime": config.duration, //this is in minutes
+        "Description":"Nessus checkout."
+    };      
+    result = _centrify_api_call(config: config, method: "POST", command: config.engine_url+'/CheckoutPassword', data: data, headers: headers);
+    if (result.success)
+    {
+        if (result.header.code == 200)
+        {
+            local_var result_test;
+            local_var empty_data = {"default":"nothing"};
+            result_test = _centrify_api_call(config: config, method: "POST", command: '/Security/logout', data: empty_data, headers: headers);
+                
+            return {success:TRUE, cred:result.body.Result};
+        }
+        else
+        {
+            return {success:FALSE, message:result.body.Message};
+        }
+    }
+    else
+    {
+        return result;
+    }
+}
+
+##
+# Set Cred Cache
+# This will loop all kv keys and store each individually for future reference. Completely dynamic.
+# @param [username:string] the username for the cred item. Used as a partial key.
+# @param [target:string] the target for the cred item. Used as a partial key.
+# @param [cred:array] Object containing all the keys from Centrify. Looped and stored.
+##
+function _centrify_set_cred_cache(username,target,cred)
+{
+    local_var key;
+    set_global_kb_item(name:"centrify/global/"+username+"/"+target+"/status", value:"success");
+    foreach key(keys(cred))
+    {
+        if (!empty_or_null(cred[key]))
+        {
+            set_global_kb_item(name:"Secret/centrify/global/"+username+"/"+target+"/cred/"+key, value:cred[key]);
+        }
+    }
+}
+
+##
+# Get Cred Cache
+# This will loop all available keys for a credential and rebuild a cred item from them.
+# @param [username:string] the username for the cred item. Used as a partial key.
+# @param [target:string] the target for the cred item. Used as a partial key.
+# @return an object with {success:TRUE, cached:TRUE, cred:the cached keys}
+##
+function _centrify_get_cred_cache(username,target)
+{
+    local_var cached_password_status, cached_key_list, creds, key, keyname;
+    cached_password_status = get_global_kb_item("centrify/global/"+username+"/"+target+"/status");
+    if (!isnull(cached_password_status))
+    {
+        centrify_debug_message(msg:"Found cached credential for "+username, lvl:2);
+        cached_key_list = get_global_kb_list("Secret/centrify/global/"+username+"/"+target+"/cred/*");
+        foreach key (keys(cached_key_list))
+        {
+            keyname = pregmatch(string:key, pattern: '([^/]+$)');
+            if(!isnull(keyname))
+            {
+                creds['cred'][keyname[0]] = get_global_kb_item(key);
+            }
+        }
+        creds['cached'] = TRUE;
+        creds['success'] = TRUE;
+        return creds;
+    }
+}
+
+##
+# Gets Credentials.
+# Intializes, then authenticates and queries from Centrify.
+#
+# @param [username:string] username to retrieve creds for
+# @param [target:string] machine to retrieve creds for
+# @param [prefix:string] string to append to the beginning of a preference key
+# @param [postfix:string] string to append to the end of a preference key
+# @param [config:array] optional centrify config data for testing
+#
+# @return an object with {success: TRUE | FALSE, username: the username from KV or supplied, password: the password from KV}
+##
+function centrify_get_credential(username, target, prefix, postfix, config)
+{ 
+    //target = FQDN
+    local_var login_result,cred_result,verbose;
+    if (isnull(config))
+    {
+        config = _centrify_init(prefix:prefix, postfix:postfix);
+    }  
+    if (isnull(config.duration)) 
+    {
+        centrify_debug_message(msg:"Failed to retreive credentials. Error: Checkout Duration was not entered by user. An acceptable value from 1 to 60 must be entered.", lvl:1, report:TRUE);
+        return {success:FALSE};
+    } 
+    # Settings checkout duration to min of 1 and max of 60 if the user enters an unacceptable value and provides a warming message.
+    if (config.duration < 1)
+    {
+        centrify_debug_message(msg:"Warning: Checkout Duration, user entered " + config.duration + ", which is less than the min duration of 1. Duration automatically set to 1 minute for this scan.", lvl:1, report:TRUE);
+        config.duration = int(1);
+    }
+    if (config.duration > 60)
+    {
+        centrify_debug_message(msg:"Warning: Checkout Duration, user entered " + config.duration + ", which is greater than the max duration of 60. Duration automatically set to 60 minutes for this scan.", lvl:1, report:TRUE);
+        config.duration = int(60);
+    }
+    if (isnull(target))
+    {
+        target = get_host_ip();
+    }
+    cred_result = _centrify_get_cred_cache(username:username,target:target);
+    if (isnull(cred_result))
+    {
+        login_result = _centrify_login(config:config);
+        if(login_result.success)
+        {
+            config['token'] = login_result.token;
+        }
+        else
+        {
+            centrify_debug_message(msg:"Failed to retreive credentials. Error: "+login_result.message, lvl:1, report:TRUE);
+            return login_result;
+        }
+        cred_result = _centrify_checkout_password(config: config, username:username, target:target);
+    }
+    if (cred_result.success)
+    {
+        if (!cred_result.cached)
+        {
+            _centrify_set_cred_cache(username:username,target:target,cred:cred_result.cred);
+        }
+        if (empty_or_null(cred_result.cred.Password))
+        {
+            verbose = pam_verbose_output();
+            centrify_debug_message(msg:"Failed to retreive credentials. Error: Password does not exist for '"+username+"' on '"+target+"'.", lvl:1,report:verbose);
+            return {success:FALSE};
+        }
+        else
+        {
+            return {success: TRUE, password: cred_result.cred.Password, username: username};
+        }
+    }
+    else
+    {
+        if (!isnull(cred_result.message))
+        {
+            centrify_debug_message(msg:"Failed to retreive credentials. Error: "+cred_result.message, lvl:1,report:FALSE);
+        }
+        return {success:FALSE};
+    }
+}

@@ -1,0 +1,190 @@
+#TRUSTED 81e72a53c38235a287789c604d41fa5ad62767c1941bcb817df629ec50d34185d8ef29e72439dd6136f5937bfa42c60eca47c4fac800c46e83f8ac0c389b879b1c6fb1888b6eb529bf26827969a0c7996a669d21888ecf43c5d5ca3c10c9a536a028dd8162d63c037eeb7f95ad71d84a6c69aeed30dd71d8c35ae1d4db35cef1c81f1aead4ca8bb2934648fcaa4581b4de77be583ef560cd084a3d5b8ef5bfedec2ff14c9cc69ba4e81ca055243d4dc5f2c212179632e72b85a8665a5065da0c212d01527fe619d4d91494857f8e6e757758e5b39287ae66fc7a7b822b37bdd576c519312c260e678f586e18a5d84978e819ed85cfc17366e46241417725c53443595dd7f041cc6cb387615a9ec717e68a068707348b41c21f86eef2fe72f49174a94e27366b0122e7f8e78f806a4581238b2e2aa0b8fd22e60f66a9c0ec2ee4ec60c2fcf9ddba1d48d9ade9d4d494f58c9809a70dc063a743db8d5a96429b653e79a4cc83b5dc2a7f86e3a8eac8fdd329f87f31c8900bce3d7ac1456d0dcfa584cae784cc26eff486a73ffbaa1bd4a2ab5862a44d815fd228fe7d3b00ae4d9520c09041d1961e6ccd7df9ec5490eb3ae6901821c640663424a843b661e0f4a3939a123a45e440181651200a033ea4917b435c1fcb1593ba22eab64505e728231c677644fed46507fe7f66aaf1f3e0edfb90b79eef27ab81f11838fdb0549248
+#TRUST-RSA-SHA256 8b4a0345ea5ed373876c651f8bbe41413a2c2dab9e1e9fa78c1fd798b80194fb41059799e203e99472f57b68d736f5d87a5de4a32907299413543b91c9f9694cfd6878d5dc59897fb5b08155b3f465894da83ef910fd321b63b27646fe4dc86eca7011dc916a6448a20969334578cb1e0fe4ec36fe9916598951da9e37ad2d762a8b9cb70b5fccb74c70ea515e99acc3d7a20cb3045e7bb4009f048a73d6ea10f071c1c567210fb6a30d16b8716a7c610a281881c9796f56fcf8e0cc6f443c48c4734b695cdae462e89c6df0e27d24c2c6fbe88dba61bee6365a8bff28f11fcde0871a49d03eede146e354a510382a76214393c7f6aa9b792893d019e96cf038b06f1345c7270ce5742b3cad45d53e9951360dc35dc8379bc2f4e7cc2e68176791c5dc1a218c302b89ea8263b39e4c7b85a305387d54b30415dc18f4ae3dc5fa58e07c4668cd5ef4f8943c896b275d7e171405780542b08f077112c2553f0f13ae0632c84d8363100d6ecf9ae5aa61cd023e25c57e868a8db49ceea4046ea7c3bb3d88bbdb0121725a926fd5b7330f17311e1358df80fecab117141705e6ddeb6195010d4b65ae6d496ec0afea1d640a06eaa18355d4356c05869c96646e0bdc4d82ca8055b1f2a3a8363f2cd9f8e3b735abc52c9407759a0fc4eab5ad099b00fccee17298374461e6c5ebc4efb00efe101e8a292aba7ce7c32e90af2faa2036
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.10
+
+function hpux_pre_check_fail()
+{
+  # we've already checked that the host is not HPUX previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_hpux'])
+    return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not HPUX if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:hpux_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+# callback for systems with "HP-UX..." in uname
+function handle_hpux(session, use_shell_handler, &channel, cmd_res)
+{
+  var hpux_version_pattern, hardware;
+  if (empty_or_null(host_info_key_val['uname-a_reported'])) {
+    report += '\nThe output of "uname -a" is :\n' + cmd_res;
+    host_info_key_val['uname-a_reported'] = TRUE;
+  }
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+  hpux_version_pattern = ".*HP-UX[ ]+.*[ ]+B\.([0-9]+\.[0-9]+)[ ]+.*";
+
+  release = ereg_replace(pattern:hpux_version_pattern, replace:"\1", string:cmd_res);
+  set_kb_item(name:"Host/HP-UX/version", value:release);
+
+  if ("ia64" >< cmd_res) {
+    hardware = ereg_replace(pattern:".*HP-UX[ ]+.*[ ]+B\.[0-9]+\.[0-9]+[ ]+.[ ]+ia64.*", replace:"800", string:cmd_res);
+    set_kb_item(name:"Host/HP-UX/processor", value: "ia64");
+  } else {
+    hardware = ereg_replace(pattern:".*HP-UX[ ]+.*[ ]+B\.[0-9]+\.[0-9]+[ ]+.[ ]+[0-9]+/(7|8)[0-9]+.*", replace:"\100", string:cmd_res);
+    set_kb_item(name:"Host/HP-UX/processor", value: "parisc");
+  }
+  set_kb_item(name:"Host/HP-UX/hardware", value:hardware);
+  host_info_key_val['cpu'] = get_kb_item("Host/HP-UX/processor");
+
+  # Gather swlist info
+  var swlist_buf = run_command(
+        cmd:'/usr/sbin/swlist -l fileset -a revision',
+        session:session,
+        use_shell_handler:use_shell_handler,
+        channel:channel);
+
+  if (swlist_buf)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    replace_kb_item(name:"Host/HP-UX/swlist", value:swlist_buf);
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_hpux.static', value: 79);
+    if (! empty_or_null(host_info_key_val['uname-a_unrecognized'])) {
+      delete_element(idx:'uname-a_unrecognized', var:host_info_key_val);
+    }
+    return found_hpux(session:session, use_shell_handler:use_shell_handler, channel:channel);
+  }
+
+  var err_msg;
+  if (session.cmd_error)
+  {
+    err_msg =
+'OS Security Patch Assessment is not available because of the following
+error :
+
+' + session.cmd_error;
+  }
+
+  if (!swlist_buf)
+  {
+    if(!err_msg) err_msg =
+'OS Security Patch Assessment is not available because the command \'swlist -l
+fileset -a revision\' failed to produce any results for some reason.';
+    failure_kb_msg = "'swlist did not return any result";
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    report += err_msg;
+    return TRUE;
+  }
+
+  return NULL;
+}
+
+function found_hpux(session, use_shell_handler, &channel)
+{
+  # misc_calls_and_exit() commands
+  cmd_kb(channel:channel,
+         'Host/NSM/guiSvr/version_src',
+         '/etc/init.d/guiSvr version',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/NSM/devSvr/version_src',
+         '/etc/init.d/devSvr version',
+         session,
+         use_shell_handler);
+
+  # HP-UX IPv4
+  cmd_kb(channel:channel,
+         'Host/netstat-ian',
+         '/usr/bin/netstat -ian',
+         session,
+         use_shell_handler);
+
+  # HP-UX IPv6
+  cmd_kb(channel:channel,
+         'Host/netstat-ianf-inet6',
+         '/usr/bin/netstat -ianf inet6',
+         session,
+         use_shell_handler);
+
+  # nwmgr
+  cmd_kb(channel:channel,
+         'Host/nwmgr',
+         '/usr/sbin/nwmgr',
+         session,
+         use_shell_handler);
+
+  # lanscan
+  cmd_kb(channel:channel,
+         'Host/lanscan-ai',
+         '/usr/sbin/lanscan -ai',
+         session,
+         use_shell_handler);
+
+  if (agent())
+  {
+    var ip_addr = agent_get_ip();
+    if (!isnull(ip_addr))
+      report_xml_tag(tag:"host-ip", value:ip_addr);
+  }
+
+  cmd_kb(channel:channel,
+         'Host/hostname',
+         '/bin/hostname',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/last_reboot',
+         '/usr/bin/last reboot 2>/dev/null',
+         session,
+         use_shell_handler);
+
+  cmd_kb(channel:channel,
+         'Host/uname-r',
+         'uname -r',
+         session,
+         use_shell_handler);
+
+  return NULL;
+}
+
+function handle_not_hpux_os(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  host_info_key_val['host_not_hpux'] = TRUE;
+}

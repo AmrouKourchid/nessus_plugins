@@ -1,0 +1,177 @@
+#TRUSTED 461e8f7f56465ac927ef4630de8844d960d5d82f39c2899ba4adcc83c2fe02b061eaac6ba9081c4ad227cc47bca7a794ae9f93a0c80ae25aea59188c612ccd617347cd21f25ebeaf618211f41308910e5e784f32c4d1fdc6b45450c061fec312795b83b82c72d55bd99be6883f5de764ea569fe8b84888f14c90dae9c1dc74acfad268c2bf95eaa8c36dd660ff280ddaf7dbf1630c67424e76b8b6cb0c649e7743a0a638301854d38bb38a0e34af5525457fe3d0aebdb21fe652da28adf5806562d91e1d2f9109ae737dd497f461075af11889fc469f2901e0bb876116ae4b3cee01af14d4e9596e5b07fae47f200246e8b35051222a4cc2104bf52bd3c645c3091cfa43aa7022d18a0f67f5f74fd875b5404d1674f17d6666b71efe82c6bcfa6f1d85630933bde1e89d44cebc4b7677d6c4d503ba615d130bc2be405eb5f4b6c8d4cd6919eab3893a9340825c1e7e889a3921d34bee1174ddded92208bfb7cbd1a183d9cac342cc9d261e9f4e2e9e4acc5efc34eb9dc39d91a585fe4b566353d815f3722a80014e54eccffff3b5b2a2e9ea79bb6b75c4066ed14bda10a74154ebbfcbeac3e9cd47aa9b58e6b9f335d8289abe491b953fdb3976b007ec186ecef9b91418b826b372ae8392ccda05884576bc051ad9c9a7067e058dd1681db4506e93ca2921c0199633d704623e879fe25e6ab5bfe32932ab6a58866c872ac8ba
+#TRUST-RSA-SHA256 62fd4f1b375ad125507fac891d8d2a4a40ade8999b1839332a5c53be374c34804910cac467c3caf4dd1a5d50b5fc78980dd4791fe4208a383911751c2c0695c7178d1d1516cfb142f9bb630f4ac2dce0431e5b823f989a11d83d1772cc0e4cfccabf147c86bfaa356337e5666bc68d644319f48d99b6e6c025ae22148c9d4c758a414b7987b314a128be196e04c5f73ef1a415d9f09dc4dae281cac1ff126358337ee47fca821b5d7ddcfdbd5828831ae8923daa4f92420780db12d7b5faee944a4451674811f5ee78ff5a504c4d9be7100f748518c3d36cdd1b79702f20c62c0718045db612549d5111924fd3d9594c0775c28ac05f76a22f3dacf6aa5992aebc89abc315b369d4c43eb74eb986b4b5f5eccf8c75c9031f48a553035ea6e85cffb9b0f6f325da9add0ca9c90069a684bca3b8f8b7d204ec747bcba20e6ed089e027f3b437610808f56f09005f614e32fe0565dd5f6b83812ee680afe84b2bead5aed1c369adf952216aeb916cf7d2d3d5b142fdea13b1ad906d451f5b2d908929dc55c9efdb913c88df1a10abcbe42d24a7e897cdf33134f3917df72f9916bd7fde1b1769eb57b34afc8f5818950855b62afbc4125fa87c483b47ef726d699b773e10540782845eb4495fdefe714330fe76fffeebbe0876a2cfbf6a78adbdf24859c60e3bad28d495543f2626d09086ce911ed768199a1603559f15cb6cb14d
+
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.18
+
+#
+# bluecoat_proxysg_pre_check_fail
+# check if this is a BlueCoat ProxySG device based on information collected
+#
+function bluecoat_proxysg_pre_check_fail()
+{
+  # have we already checked that the host is not BlueCoat?
+  if(host_info_key_val['host_not_bluecoat_proxysg'])
+  {
+    # already checked that host is not BlueCoat, no need to check again
+    return TRUE;
+  }
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ bluecoat_proxysg_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not BlueCoat if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+#
+# callback for systems with "Version: SGOS" in show version
+#
+function handle_bluecoat_proxysg(session, use_shell_handler, &channel, cmd_res)
+{
+  var cmd_no_spaces, cmd_set, cmd, commands, cmd_output, secret_prefix;
+  var cmd_prompt, os, i, priv, os_level, os_pattern, err_kbs;
+  var bluecoat_kb_prefix = 'Host/BlueCoat/ProxySG/';
+  replace_kb_item(name:bluecoat_kb_prefix + 'show_version', value:cmd_res);
+  os_pattern = "Version:\s*SGOS\s+(\d+(?:\.\d+)+(?:\(\d+(?:\.\d+)*\))?)\s+Proxy\s+Edition";
+  os_level = pregmatch(string:cmd_res, pattern:os_pattern);
+
+  # if ProxySG doesn't exist; check for the SGOS SWG Edition
+  # target string -- Version: SGOS 7.3.20.4 SWG Edition
+  if (empty_or_null(os_level))
+  {
+    os_pattern = "Version:\s*SGOS\s+(\d+(?:\.\d+)+(?:\(\d+(?:\.\d+)*\))?)\s+SWG\s+Edition";
+    os_level = pregmatch(string:cmd_res, pattern:os_pattern);
+  }
+
+  if(!empty_or_null(os_level) && !empty_or_null(os_level[1]))
+  {
+    os_level = os_level[1];
+    set_kb_item(name:bluecoat_kb_prefix + 'os_level', value:os_level);
+
+  }
+  else
+  {
+    failure_kb_msg =
+      'The remote operating system appears to be a type of BlueCoat ProxySG\n' +
+      'software, however it was not possible to determine the specific OS.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+  report += '\nCommand execution for BlueCoat ProxySG device successful.';
+
+  commands = [
+    {'cmd': 'show configuration expanded noprompts', 'secret': TRUE}
+  ];
+
+  foreach cmd_set (commands)
+  {
+    cmd = NULL;
+    secret_prefix = '';
+    if (!empty_or_null(cmd_set['cmd']))
+    {
+      cmd = cmd_set['cmd'];
+    }
+    else
+    {
+      continue;
+    }
+    if (!empty_or_null(cmd_set['secret']) && cmd_set['secret'])
+    {
+      secret_prefix = 'Secret/';
+    }
+    cmd_no_spaces = str_replace(find:" ", replace:"_", string:cmd);
+
+    cmd_output = run_command(cmd:cmd,
+                   session:session,
+                   use_shell_handler:use_shell_handler,
+                   channel:channel,
+                   force_priv_escl:TRUE,
+                   cmd_timeout_min: 240);
+    if (isnull(cmd_output))
+    {
+      set_kb_item(name:bluecoat_kb_prefix + cmd_no_spaces + '/errmsg', value:'The command failed to produce any output.');
+    }
+    else
+    {
+      if (preg(pattern:"\n% Invalid input ", string:cmd_output, multiline:TRUE))
+      {
+        i = stridx(cmd_output, '\n% Invalid input ');
+        # make sure the ^ error marker appears followed by a series of spaces.
+        if (i > 0 && preg(pattern:"\^ +$", string:substr(cmd_output, 0, i-1), multiline:TRUE))
+        {
+          set_kb_item(name:bluecoat_kb_prefix + cmd_no_spaces + '/errmsg', value:cmd_output);
+        }
+        else set_kb_item(name:bluecoat_kb_prefix + cmd_no_spaces +'/errmsg', value:'An unknown error occurred :' + '\r\n' + cmd_output);
+      }
+      else set_kb_item(name:secret_prefix + bluecoat_kb_prefix + cmd_no_spaces, value:cmd_output);
+    }
+  }
+
+  # If cmd_output doesn't exist here, the errmsg KB is already written.
+
+  err_kbs = get_kb_list('*' + bluecoat_kb_prefix + '*' + '/errmsg');
+  if (!empty_or_null(err_kbs))
+  {
+    failure_kb_msg =
+      'The remote operating system appears to be a type of BlueCoat ProxySG device,\n' +
+      'SGOS, version ' + os_level + '.\n' +
+      'However, at least one command has run into unexpected errors and local checks\n' +
+      'will not be enabled at this time.\n';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+
+  }
+  else
+  {
+    report += '\nOS Security Patch Assessment is available for BlueCoat ProxySG device, SGOS, version ' + os_level + '.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_bluecoat_proxysg.static', value: 149);
+  }
+}
+
+#
+# callback for systems without "Version: SGOS" in show version
+#
+function handle_not_bluecoat_proxysg(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/show_version", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_bluecoat_proxysg'] = TRUE;
+  }
+}

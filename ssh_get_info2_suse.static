@@ -1,0 +1,615 @@
+#TRUSTED 98a2e3edd302c936cb4eaab74336943e49f3f1953f2d8505c975a2db7cc87ed3d4484f1ba3df7e413a72daabee6491d2eeadad36893dcf59f2dd009570622abc729cb114b2eaca5abf2926ca0dd16dbd1bf78fd1da1cd0becc689ad19f788cfe66aae7f3a1af4748643214c9719ca73c573ce040123f7e562bb67c496f849210b0471fec8dcd2e6bad0c8d75d17bf3d447782d38c28371535cc0bf237168f4986dd2ea53cfc4ad87a34b78b89382be2d4748c7ca291f9c80162c96d42852b94bc4c4aa62481305a54435a13f081b30c6bb1b103fa3c822d270f068d4f5515f75181b2b9da686e88e584f89a5249063d20d1137bd982f46a9a122174be526f1636e6747b603b6f54bb42f74510496412456f4092c4f42d53d831e1596d3dc68f1a6ba5580fa07205b512718a83ce934154ad4aeeec9d00295de335f8cbc925cffb5fec7d7e6c38c77077200ff612edb7336c2dbcbaec2f2b55307ec7fd0348c0fb26be0505fb44f693444ff630fa98940951d8a79348916d306010ba8e19882e9d50ab918d20b9c1a0b61062220d83f70d1a70655b3fd2a2c563909f83cf379a3672486a936ae3026db991debe643f8ea6f4e31e06ffb2b8f95249275adb976a9b946e0586082ac84694b8d1ff66c8463f8fe48d3129179840db4fbc596c122c7a4aee01878d0c375827ab0745230e786791da87955428945bb947e6e1bb518c5
+#TRUST-RSA-SHA256 4480d7630b72abb932ae9814528099149694cc1ce0807f101236f1bfd1d64f4d230aed943568e7d2834f88ed31c4dab4cedf9d0fe1b8cc4c29324273e97cdd48bce66a89d6709448f9d4e3c064b1e3263a71dceed323a2308b70ce33a940afccbbd1cd2d6108240287d6ed9ab8b1e45d480c32ca2132cb679dd2a30f504ce19f21b427b6abb9fd7a6887b701033fb0e1f6c2aa2cf2f2b1e7bff96d84816b1327243203d9378812694541522d755021d88a463dd1aa456393167f1e144e38b2b58528cf1a36d307ca4ffd7a833d0dc2ed34111c7fa8aee8ea022e99da756820de1531a72f88af149c1c4ee3ce2a757d492ec35f8b88e8665c834e9e85a1a9b5015d952ba83724a0ecff61d67ed1b4a62397c5171a96ab9ed379d5bd65519a9c12cb9ff3e0ade751f1bc9e75d434c46fb021ca229d4609109a65066fe281c217b0bf91c76ad640b202c70b89c7ebb43b62b307414162d9f67e1034298e04c60723cdd8ebde2dba311d323c80d2a1eb5e70bfea1cdb5e06c783c0fbefdda0baee403c2b5be373e02d55e651681ee5658b432958be1a1c107f52efe2006d2f7fcb40f318fa7286951c7ecebe37efc4c90600b1e4bb014af8ad2e1b74e4973a0819e05fbd9abcac64bbc37f2bf6df5e3c9bd562c6ea25a4c2ee801e919b2f2a701de5618b327defe7b8b2b4ed5ed6268ad2f3822596d4ea37cdead36e1f90db553633
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.16
+
+# SUSE helper functions
+
+function handle_suse_os(session, use_shell_handler, &channel, cmd_res)
+{
+  var suse_label, version, version_preg, err_msg, version_prefix, patchlevel, version_split;
+  var suse_label_pgrep, patchlevel_pgrep, suse_label_pregmatch, patchlevel_pregmatch, alt_res;
+  var sap_found_via_products_d, sap_prod_res, sap_pgrepmatch, emc_version, emc_cpa_ver;
+  var suse_kernel_type = "SuSE";
+  var is_teradata = FALSE;
+  var is_emc = FALSE;
+
+  suse_label = '';
+  suse_label_pgrep = NULL;
+  version = NULL;
+  patchlevel = NULL;
+
+  var kernel = host_info_key_val['kernel'];
+  if(!isnull(kernel) && ".TDC" >< kernel)
+  {
+    is_teradata = TRUE;
+    suse_kernel_type = "Teradata SuSE";
+  }
+
+  ##
+  #  First, check if SuSE SLES OS is base for SAP
+  #
+  #  https://www.suse.com/support/kb/doc/?id=000019341
+  #
+  #  Specifies to check symlink at /etc/products.d/baseproduct to check for
+  #  SAP. The symlink points to SLES_SAP.prod if target is base for SAP.
+  ##
+  sap_found_via_products_d = FALSE;
+
+  sap_prod_res = run_command(cmd:'readlink -e /etc/products.d/baseproduct',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  if (!isnull(sap_prod_res) && strlen(sap_prod_res) &&
+    '/etc/products.d/SLES_SAP.prod' >< sap_prod_res)
+  {
+     sap_prod_res = run_command(cmd:'cat /etc/products.d/SLES_SAP.prod',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+      if (!isnull(sap_prod_res) && strlen(sap_prod_res) &&
+        '<baseversion>' >< sap_prod_res && '<summary>' >< sap_prod_res)
+      {
+        sap_pgrepmatch = pregmatch(pattern:"<baseversion>([0-9]+)<\/baseversion>", string:sap_prod_res);
+        if (!isnull(sap_pgrepmatch) && strlen(sap_pgrepmatch[1]))
+          version = sap_pgrepmatch[1];
+
+        sap_pgrepmatch = pregmatch(pattern:"<patchlevel>([0-9]+)<\/patchlevel>", string:sap_prod_res);
+        if (!isnull(sap_pgrepmatch) && strlen(sap_pgrepmatch[1]))
+          patchlevel = sap_pgrepmatch[1];
+        else
+          patchlevel = 0;
+
+        sap_pgrepmatch = pregmatch(pattern:"<summary>([^<]+)<\/summary>", string:sap_prod_res);
+        if (!isnull(sap_pgrepmatch) && strlen(sap_pgrepmatch[1]))
+          suse_label_pgrep = sap_pgrepmatch[1];
+      }
+
+      if (!isnull(version) && !isnull(patchlevel) && !isnull(suse_label_pgrep))
+      {
+        sap_found_via_products_d = TRUE;
+        replace_kb_item(name:'Host/SuSE/SLES_SAP', value:'1');
+      }
+  }
+
+  ##
+  #  /etc/SuSE-release is deprecated.
+  #  Some products require that we check /etc/os-release for better identification info
+  ##
+
+  if (!sap_found_via_products_d)
+  {
+    suse_label_pgrep = pgrep(pattern:"^(Novell|(Open)?SuSE)", string:cmd_res, icase:TRUE);
+    alt_res = get_kb_item("Host/etc/os-release");
+
+    if (empty_or_null(alt_res))
+    {
+      alt_res = run_command(cmd:"cat /etc/os-release 2>/dev/null",
+                          session:session,
+                          use_shell_handler:use_shell_handler,
+                          channel:channel);
+      if (!isnull(alt_res) && strlen(alt_res))
+      {
+        alt_res = chomp(ereg_replace(pattern: "\r", string: alt_res, replace: ""));
+        replace_kb_item(name:"Host/etc/os-release", value: alt_res);
+      }
+    }
+  }
+
+  if (!isnull(alt_res) && strlen(alt_res) && !sap_found_via_products_d)
+  {
+    ##
+    #  https://www.suse.com/products/sles-for-sap/
+    ##
+    if ("for SAP Applications" >< alt_res)
+    {
+      suse_label_pregmatch = pregmatch(pattern:'PRETTY_NAME="([^"]+)"',string:alt_res);
+      if ( !isnull(suse_label_pregmatch) && !isnull(suse_label_pregmatch[1]) && strlen(suse_label_pregmatch[1]) )
+      {
+        # overwrite previously determined label
+        suse_label_pgrep = suse_label_pregmatch[1];
+      }
+    }
+
+    ##
+    #  Next SuSE-based product that might affect reported 'suse_label'
+    #  goes below this comment block.
+    #  (applications not affecting name should be handled by found_suse_os() below)
+    ##
+  }
+
+  var rsa_res = run_command(cmd:'cat /opt/rsa/am/utils/etc/patchHistory.dat',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  if(rsa_res && '"version":' >< rsa_res)
+  {
+    is_emc = TRUE;
+    var emclastpatch = split(rsa_res, sep:'\n', keep:FALSE);
+    emclastpatch = emclastpatch[max_index(emclastpatch) - 1];
+    emclastpatch = pregmatch(string:emclastpatch,pattern:'"version":"([0-9.]+)-build([0-9]+)"');
+    if(!isnull(emclastpatch))
+    {
+      replace_kb_item(name:"Host/EMC/AM/Patchlist", value:rsa_res);
+      replace_kb_item(name:"Host/EMC/AM/Version", value:emclastpatch[1]);
+      replace_kb_item(name:"Host/EMC/AM/Build", value:emclastpatch[2]);
+      emc_version = emclastpatch[1];
+      var emc_version_buf = pregmatch(string:emclastpatch[1], pattern:"^(\d+\.\d+)\.(\d+)\.(\d+)\.(\d+)$");
+      if(!isnull(emc_version_buf))
+      {
+        emc_version = emc_cpa_ver = emc_version_buf[1];
+        if(emc_version_buf[2] != "0")
+          emc_version += " SP " + emc_version_buf[2];
+        if(emc_version_buf[3] != "0")
+          emc_version += " Patch " + emc_version_buf[3];
+        if(emc_version_buf[4] != "0")
+          emc_version += " Hotfix " + emc_version_buf[4];
+      }
+      emc_version += " (build " + emclastpatch[2] + ")";
+      replace_kb_item(name:"Host/EMC/AM/DisplayVersion", value:emc_version);
+      report += '\nThe remote EMC appliance is:\nEMC RSA Authentication Manager ' + emc_version + '\n';
+    }
+  }
+  else
+  {
+    if ( !isnull(suse_label_pgrep) && strlen(suse_label_pgrep) )
+    {
+      suse_label = suse_label_pgrep;
+    }
+    else
+    {
+      # PRETTY_NAME="openSUSE Leap 42.1 (x86_64)
+      suse_label_pregmatch = pregmatch(pattern:'PRETTY_NAME="([^"]+)"',string:cmd_res);
+      if ( !isnull(suse_label_pregmatch) && !isnull(suse_label_pregmatch[1]) && strlen(suse_label_pregmatch[1]) )
+      {
+        suse_label = suse_label_pregmatch[1];
+      }
+      else
+      {
+        suse_label = 'UNKNOWN';
+      }
+    }
+    report += '\nThe remote ' + suse_kernel_type + ' system is :\n' + chomp(suse_label) + '\n';
+  }
+
+  if(!sap_found_via_products_d)
+  {
+    version = '';
+    version = pgrep(string: cmd_res, pattern: '^VERSION *= *"?[0-9.]+"?$');
+    if (empty_or_null(version))
+    {
+      version = pgrep(string: cmd_res, pattern: '^VERSION_ID *= *"?[0-9.]+"?$');
+    }
+    # preg_replace supposedly still broken as of 20170914, using ereg_replace.
+    version = chomp(ereg_replace(pattern: "^VERSION(_ID)? *= *", string: version, replace: ""));
+    version = ereg_replace(pattern: '"', string: version, replace: "");
+    if (! version)
+    {
+      version_preg = pregmatch(pattern:"SuSE Linux ([0-9]+\.[0-9]) .*",
+                    string:pgrep(string:cmd_res, pattern:"SuSE ", icase:1),
+                    icase:TRUE);
+      if (! isnull(version_preg)) version = version_preg[1];
+    }
+  }
+
+  if(is_emc)
+  {
+    if(!emc_version)
+    {
+      err_msg =
+        '\nThis version of the EMC RSA Authentication Manager Appliance ' +
+        '\ncould not be precisely identified.' +
+        '\nOS Security Patch Assessment is not available.';
+      failure_kb_msg =
+        "Could not identify version from 'cat /opt/rsa/am/utils/etc/patchHistory.dat'";
+      failure_kb_type = lcx::ISSUES_INFO;
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+      report += err_msg;
+      return TRUE;
+    }
+  }
+  else
+  {
+    if(!version)
+    {
+      err_msg =
+        '\nThis version of SuSE Linux could not be precisely identified;' +
+        '\ntherefore, OS Security Patch Assessment is not available.';
+      failure_kb_msg =
+        "Could not identify version from /etc/SuSE-release or /etc/os-release";
+      failure_kb_type = lcx::ISSUES_INFO;
+      sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+      report += err_msg;
+      return TRUE;
+    }
+  }
+
+  if (int(version) <= 9)
+    version_prefix = "SUSE";
+  else if ( "SUSE Linux Enterprise Desktop" >< cmd_res)
+    version_prefix = "SLED";
+  else if ( "SUSE Linux Enterprise Server" >< cmd_res )
+    version_prefix = "SLES";
+  else
+    version_prefix = "SUSE";
+
+  if(is_teradata)
+    version_prefix = "TDC";
+
+  if("SUSE Linux Enterprise Server for SAP Applications" >< alt_res || sap_found_via_products_d)
+    replace_kb_item(name:"Host/SuSE/SLES_SAP", value:1);
+
+  if(sap_found_via_products_d)
+    replace_kb_item(name: "Host/SuSE/patchlevel", value: patchlevel);
+
+  if(!sap_found_via_products_d && !is_emc)
+  {
+    patchlevel = pgrep(string: cmd_res, pattern: "^PATCHLEVEL *= *[0-9]+");
+    if (patchlevel)
+    {
+      patchlevel_pregmatch = pregmatch(string: chomp(patchlevel), pattern: "^PATCHLEVEL *= *([0-9]+)");
+      if (! isnull(patchlevel_pregmatch))
+      {
+        replace_kb_item(name: "Host/SuSE/patchlevel", value: patchlevel_pregmatch[1]);
+        if (version)
+          report += 'PATCHLEVEL = ' + patchlevel_pregmatch[1] + '\n';
+      }
+    }
+    else
+    {
+      # SLES and SLED need version and patchlevel to exist, and be separate.
+      # Having a version of 11.4 and a patchlevel of null won't work.
+      # openSUSE does not require this.
+      if ( preg(string:version_prefix, pattern:"^SLE") )
+      {
+        if (preg(string:version, pattern:"^\d+\.\d+$") )
+        {
+          version_split = split(version, sep:".", keep:FALSE);
+          version = version_split[0];
+          patchlevel = version_split[1];
+        }
+        else
+        {
+          # Unable to detect a PATCHLEVEL line or a .# in VERSION or VERSION_ID.
+          # This means we're on service pack 0.
+          # Set patchlevel appropriately so that checks involving sp can succeed.
+          patchlevel = "0";
+        }
+        replace_kb_item(name: "Host/SuSE/patchlevel", value:patchlevel);
+        report += 'PATCHLEVEL = ' + patchlevel + '\n';
+      }
+    }
+  }
+
+  if(sap_found_via_products_d)
+    replace_kb_item(name:'Host/SuSE/release', value:'SLES_SAP' + version);
+  else
+    replace_kb_item(name:'Host/SuSE/release', value:version_prefix + version);
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"SuSE");
+
+  var cpu = host_info_key_val['cpu'];
+
+  # Identify LTSS via enabled LTSS repo
+  var repo_chk = run_command(
+    cmd:"zypper -qts11 lr -E",
+    session:session,
+    use_shell_handler:use_shell_handler,
+    channel:channel);
+
+  var extended_support;
+
+  if(repo_chk)
+  {
+    var ltss = pregmatch(pattern:"ltss-updates", string:repo_chk, multiline:TRUE, icase:TRUE);
+    if (!empty_or_null(ltss))
+    {
+      replace_kb_item(name:"Host/SuSE/LTSS", value:TRUE);
+      extended_support = 'LTSS';
+    }
+  }
+
+  # If LTSS repo not enabled we may still have LTSS evidence via an rpm
+  if((empty_or_null(ltss)) && (rpm_buf))
+  {
+    var ltss2 = pregmatch(pattern:"sles-ltss-release-[0-9]{2}\.[0-9]\-[0-9.]+", string:rpm_buf);
+    if (!empty_or_null(ltss2))
+    {
+      replace_kb_item(name:"Host/SuSE/LTSS", value:TRUE);
+      extended_support = 'LTSS';
+    }
+  }
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_suse.static', value: 282);
+    found_suse_os(session:session, use_shell_handler:use_shell_handler, channel:channel, cmd_res:cmd_res, alt_res:alt_res);
+  }
+
+  # Register OS
+  if(is_emc)
+  {
+     register_os(
+      type        : 'local',
+      method      : 'SSH',
+      confidence  : 100,
+
+      vendor      : "EMC",
+      product     : "RSA Authentication Manager Appliance",
+
+      version     : emc_version,
+
+      os_name     : version_prefix,
+      target_hw   : cpu,
+
+      cpe         : "cpe:/a:rsa:authentication_manager:" + emc_cpa_ver
+    );
+  }
+  else if(is_teradata)
+  {
+     register_os(
+      type        : 'local',
+      method      : 'SSH',
+      confidence  : 100,
+
+      vendor      : "Teradata",
+      product     : "SUSE Linux Enterprise Server",
+
+      version     : version,
+
+      os_name     : version_prefix,
+      target_hw   : cpu,
+
+      cpe         : "cpe:2.3:o:teradata:suse_linux_enterprise_server:" + version
+    );
+  }
+  else
+  {
+    register_suse_os(
+      release_info     : suse_label,
+      version          : version,
+      update           : patchlevel,
+      extended_support : extended_support,
+      cpu              : cpu
+    );
+  }
+
+  return TRUE;
+}
+
+
+function found_suse_os(session, use_shell_handler, &channel, cmd_res, alt_res)
+{
+  ##
+  #  Dell EMC Cyber Recovery
+  #  (unfortunately, nothing indicates dell in alt_res or cmd_res)
+  ##
+  var dellpath = run_command(cmd:"which crcli",
+                   session:session,
+                   use_shell_handler:use_shell_handler,
+                   channel:channel);
+
+  if (!empty_or_null(dellpath) &&
+      "no crcli in" >!< dellpath)
+  {
+    dellpath = dellpath - 'bin/crcli\n';
+
+    # example output:  '19.11.0.1-169'
+    var dellres = run_command(cmd:"crcli version",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+    var verregex = "^[0-9]+\.[0-9\.]+\-[0-9]+$";
+    if(!empty_or_null(dellres) &&
+       "Permission denied" >!< dellres &&
+       "command not found" >!< dellres &&
+       dellres =~ verregex)
+    {
+      dellres = chomp(dellres);
+      replace_kb_item(name:"Host/Dell/CyberRecovery", value: TRUE);
+      replace_kb_item(name:"Host/Dell/CyberRecovery/version", value: dellres);
+      replace_kb_item(name:"Host/Dell/CyberRecovery/path", value: dellpath);
+    }
+
+    # Expected output for VM:
+    # * This is a Cyber Recovery Virtual Appliance
+    # * This is a firewall-hardened Virtual Appliance that prevents
+    dellres = run_command(cmd:"cat /etc/motd | grep irtual",
+                    session:session,
+                    use_shell_handler:use_shell_handler,
+                    channel:channel);
+
+    if(!empty_or_null(dellres) && "Cyber Recovery Virtual Appliance" >< dellres)
+      replace_kb_item(name:"Host/Dell/CyberRecovery/virtual_appliance", value: TRUE);
+    else
+      replace_kb_item(name:"Host/Dell/CyberRecovery/virtual_appliance", value: FALSE);
+  }
+
+  return TRUE;
+}
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [cpu:str]          CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_suse_os(release_info, version, update, extended_support, cpu)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    SUSE Linux Enterprise 15.3
+  #    SUSE Linux Enterprise Server 12 SP3
+  #    SuSE Linux 12.2
+  #    SuSE 10.0
+  #    SUSE Linux Enterprise Server for SAP Applications 15.0
+  #    SUSE LINUX Openexchange Server 4.0
+  #
+  #    openSUSE 15.3
+  #    openSUSE Leap 15.4
+  #    openSUSE Tumbleweed 20240122
+  #
+  #  - Match groups:
+  #    1: Project (i.e. SUSE or openSUSE)
+  #    2: Product (e.g. Linux Enterprise, Linux Enterprise Server for SAP Applications, Linux, Leap, Tumbleweed)
+  #    3: Release (e.g. 10, 12, 15, 20240122)
+  #    4: Version (e.g. .0, .2, .3)
+  #    5: Update  (e.g. SP3, SP5)
+  var pattern = '^((?:open)?SUSE) (?:([a-zA-Z -]+) )?([0-9]+)(\\.[0-9.]+)? ?(SP[0-9]+)?';
+  var matches = pregmatch(pattern:pattern, string:release_info, icase:TRUE);
+
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + release_info);
+    return NULL;
+  }
+
+  # Project
+  var project = matches[1];
+
+  var vendor = project;
+  if (project =~ 'opensuse')
+    vendor += ' Project';
+
+  # Product
+  var product = project;
+  if (!empty_or_null(matches[2]))
+  {
+    var cpe_product = matches[2];
+    product += ' ' + matches[2];
+  }
+
+  # Release
+  var release = matches[3];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  if (empty_or_null(version))
+  {
+    version = release;
+    if (!empty_or_null(matches[4]))
+      version += matches[4];
+  }
+  else if (matches[5] && "." >!< version)
+  {
+    var cpe_version = release;
+    # Add the SP to release to produce full version (e.g. 15.3)
+    var sp_ver = substr(matches[5], 2, strlen(matches[5]) - 1);
+    version += "." + sp_ver;
+  }
+
+  # Update level
+  if (empty_or_null(update))
+    update = matches[5];
+
+  if (!empty_or_null(update))
+  {
+    # Add 'SP' if missing from update
+    if (update =~ '^[0-9]$')
+      update = 'SP' + update;
+  }
+
+  # Edition
+  var os_edition;
+  if (!empty_or_null(extended_support))
+    os_edition = extended_support;
+
+  # OS Name
+  var os_name = [];
+
+  append_element(var:os_name, value:product);
+
+  if (!empty_or_null(cpe_version))
+    append_element(var:os_name, value:cpe_version);
+  else if (!empty_or_null(version))
+    append_element(var:os_name, value:version);
+  if (!empty_or_null(update))
+    append_element(var:os_name, value:update);
+
+  os_name = join(os_name, sep:' ');
+
+  # Base CPE
+  #  - Examples:
+  #
+  #    cpe:/o:suse:suse_linux_enterprise_server:15
+  #    cpe:/o:suse:suse_linux_enterprise_desktop:15
+  #    cpe:/o:suse:linux_enterprise_server:15
+  #    cpe:/o:suse:linux_enterprise:11.0
+  #    cpe:/o:suse:suse_linux_enterprise_server_for_sap:12
+  #    cpe:/o:suse:suse_linux:9.2
+  #
+  #    cpe:/o:opensuse:opensuse:10.2
+  #    cpe:/o:opensuse:leap:42.1
+
+  var cpe_attributes = [];
+
+  # Vendor
+  append_element(var:cpe_attributes, value:project);
+
+  # Product
+  if (project =~ 'openSUSE')
+  {
+    if (empty_or_null(product))
+      append_element(var:cpe_attributes, value:'opensuse');
+    else
+      append_element(var:cpe_attributes, value:cpe_product);
+  }
+  else if (project =~ '^SUSE')
+  {
+    if (product =~ 'Linux Enterprise Server for SAP')
+      append_element(var:cpe_attributes, value:'suse_linux_enterprise_server_for_sap');
+    else if (product =~ 'Linux Enterprise Server')
+      append_element(var:cpe_attributes, value:'linux_enterprise_server');
+    else if (product =~ 'Linux Enterprise Desktop')
+      append_element(var:cpe_attributes, value:'linux_enterprise_desktop');
+    else if (product =~ 'Linux Enterprise')
+      append_element(var:cpe_attributes, value:'linux_enterprise');
+    else
+      append_element(var:cpe_attributes, value:'suse_linux');
+  }
+
+  if (!empty_or_null(cpe_version))
+    append_element(var:cpe_attributes, value:cpe_version);
+  var cpe = 'cpe:/o:' + join(cpe_attributes, sep:':');
+
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : vendor,
+    product     : product,
+
+    release     : release,
+    version     : version,
+    update      : update,
+    os_edition  : os_edition,
+
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    extended_support : extended_support,
+
+    cpe         : cpe
+  );
+
+  return NULL;
+}

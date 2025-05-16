@@ -1,0 +1,199 @@
+#TRUSTED 6c5a0e3cfb56c53e105869e6e45c4d4c473cec3311386beb4842a377febd50bf871c8812974cf1658acedcbedd93691e899f20b992c8ee3c9ff9932753d348e6467384460b174484eeae2456cf8ca079f2b189a8ac3d98f7ceaa2421c6e904b848c7e8ce63c9a6329c5611f50e17f838787fc5615d6897d94c6c9664cafda1a8be9baceae838be62b08e0443d7bd12a0f40c6f79b9f7059f325f79efa43ec6c14000e82307770581d71caec27e46e0c7dadccc6340c950c1cfdd2e462fa0e85ba6184eaf7b31f4e6c45b06de09f8f065663ddd201bf9b524a59eb7e0eb252fea48c3a11c92619efc75e3a7957301893a9ee5c33771b26dcee6e7019c34fc87bd42753568c4cd693814efb93f7324af3fa86d106d6f74ca259ea1eda0cdab07bbc3d6836ba6a327d7273e9db14a2c2c22bc8cd57d29347ab138391546497df770f06adc133acae76bdc4899cb127867891161d931bf140d40d87bf9b6f865cdda86b443e5deab048b271a95e5c08608855abbc43ee394ce23a4856eb2975d9358ee6971edd83fd4b65b5b5b67fe7af538bd1f921a7252a470aeca6f0b14f22daf4909d4ba257d6673498ffcc16c94c53490279d79f5c0c4568c753c49eb6dd486fd722cf60325a82dd5680493e54bf4bea8488147aa1279b50fc9701e6fdcec51e9b082aa3b232b77d3853402e4037898439b0b5422dc4433c9380546c9b8a33a
+#TRUST-RSA-SHA256 500952e752e0f53ceace4212144e7369a1bf783934d9614b4f311b64d0c40d787679d50d6ddcb98f467176657f138feadf091465864bbf21ea6a3c28dd714b4349a1a621ef4b510964415d488593c6e2f3738bc549c94592fcc6916e7dd483f6f8518fd7b1ddc147075079a80cf27723df69d7c5f007527fd96d1e614a525c407f5e0dbd5789e34ccf23fb3899445ad65dad765d2d36027526b259243f0b46a9481f3bdeae32c87d1da09fa685e5671070544d627b152bfc445288c372ab9254f016719398993cb05ffc3e23ac2e0052f849fb40f895f24886da4952e51f0aa549ddda22f00cd9e3d7fa4fe6a6e3eaf38a877a6b7dfa2a20ec8751d0ab38f362fc12f5cd5910207b9c82028c801af707ccdac4f3316a88f1a6b52dd87d00723af1ddcf50ec7badbd26621916878237b315d147a8e04f9d8606bfe8ac22c23188543f9264cca72e248a6f2fc8c2724c48a0d6b5a4991dc2f98c2bc32ee7f1f36c5de215f2dadfd52508089dcf8706d63a4776a209e27d74d3a8b2759274119a38284362f8df8e3cc2b4dc5330f25f0e9a6a05ec688217e316b1a155996e5d62c7fa521856c7ad12d57592bb95e1077be022ea062df92ebf633806f8a3682b6e76b29582e66c0d65546c84739e3a6d183ec77542ea598f88d1f7b165cd50d58ba3c02b27ff013407f7d3a52b3cfee842ccf44fef1456be285a944cf6787b90eda0
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.7
+
+#VMware Photon OS helper functions
+
+
+function handle_photon_os(session, use_shell_handler, &channel, file, cmd_res)
+{
+  local_var args, arg, props, release, version, build, matches;
+
+  # Simple argument checker
+  #  'channel' argument is optional
+  args = {};
+  args["session"]           = session;
+  args["use_shell_handler"] = use_shell_handler;
+  args["file"]              = file;
+  args["cmd_res"]           = cmd_res;
+
+  foreach arg (keys(args))
+  {
+    if (isnull(args[arg]))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'"+arg+"' argument is null", name:'ssh_get_info2.log');
+      return FALSE;
+    }
+  }
+
+  if (empty(args["file"]) || empty(args["cmd_res"]))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'file' or 'cmd_res' argument is empty", name:'ssh_get_info2.log');
+    return FALSE;
+  }
+
+  # Parse release, version, and build (only in /etc/photon-release)
+  set_kb_item(name:"Host"+file, value:cmd_res);
+
+  props = parse_properties(str:cmd_res, sep:"=");
+
+  if (file == "/etc/photon-release")
+  {
+    matches = pregmatch(string:cmd_res, pattern:"^VMware Photon (?:Linux|OS) *([0-9.]+)?", icase:TRUE);
+    if (!empty_or_null(matches))
+    {
+      release = matches[0];
+      version = matches[1];
+
+      build = props["PHOTON_BUILD_NUMBER"];
+    }
+  }
+  else if (file == "/etc/os-release")
+  {
+    release = props["PRETTY_NAME"];
+    if (empty_or_null(release))
+      release = props["NAME"];
+
+    version = props["VERSION"];
+    if (empty_or_null(version))
+      version = props["VERSION_ID"];
+  }
+  else if (file == "/etc/lsb-release")
+  {
+    release = props["DISTRIB_DESCRIPTION"];
+    if (empty_or_null(release))
+      release = props["DISTRIB_ID"];
+
+    version = props["DISTRIB_RELEASE"];
+  }
+
+  if (empty_or_null(release))
+    return FALSE;
+
+  # Standardize 'release'
+  release = str_replace(string:release, find:'"', replace:'');
+  release = str_replace(string:release, find:"'", replace:'');
+
+  release -= "/Linux"; # "VMware Photon OS/Linux" or "VMware Photon/Linux"
+
+  if (release !~ "^VMware Photon")
+    return FALSE;
+
+  if (!empty_or_null(version))
+  {
+    version = str_replace(string:version, find:'"', replace:'');
+    version = str_replace(string:version, find:"'", replace:'');
+
+    # If release doesn't have version and version wasn't detected, append version to the release
+    if (release !~ " [0-9]+\.[0-9.]+$")
+      release = release + " " + version;
+  }
+
+  # If release has version but version wasn't detected, use version from release
+  if (empty_or_null(version) && release =~ " [0-9]+\.[0-9.]+$")
+  {
+    matches = pregmatch(string:release, pattern:"^VMware Photon (?:Linux|OS) *([0-9.]+)$", icase:TRUE);
+    if (!empty_or_null(matches))
+      version = matches[1];
+  }
+
+  report += '\nThe remote VMware Photon OS system is :\n' + release + '\n';
+
+  set_kb_item(name:"Host/PhotonOS", value:TRUE);
+  set_kb_item(name:"Host/PhotonOS/release", value:release);
+  if (!empty_or_null(version))
+    set_kb_item(name:"Host/PhotonOS/version", value:version);
+  if (!empty_or_null(build))
+    set_kb_item(name:"Host/PhotonOS/build", value:build);
+
+  # Gather info and determine if local checks are enabled
+  # RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"PhotonOS");
+
+  var cpu = host_info_key_val['cpu'];
+
+
+  # Local checks enabled
+  if (!empty_or_null(rpm_buf) && !empty_or_null(cpu))
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_photon_os.static', value: 129);
+  }
+
+  # Register OS
+  register_photon_os(release_info:release, version:version, build:build, cpu:cpu);
+
+  return TRUE;
+}
+
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [release_info:str] OS release info from the release file under /etc
+# @param [version:str]      OS version
+# @param [build:str]        Build (Git commit)
+# @param [cpu:str]          CPU architecture detected
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_photon_os(release_info, version, build, cpu)
+{
+  var release;
+
+  # Vendor
+  var vendor = 'VMware';
+
+  # Product
+  var product = 'Photon OS';
+
+  # Release
+  if (!empty_or_null(version))
+  {
+    var version_split = split(version, sep:'.', keep:FALSE);
+
+    if (version_split[0] =~ '^[0-9]+$')
+      release = version_split[0];
+  }
+
+  var extra = {};
+  extra['Build'] = build;
+
+  # OS Name
+  var os_name = strcat(vendor, ' ', product);
+  if (!empty_or_null(version))
+    os_name += ' ' + version;
+
+  # Base CPE
+  #  - Example:
+  #    cpe:/o:vmware:photon_os:2.0
+  var cpe = 'cpe:/o:vmware:photon_os';
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : vendor,
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    cpe         : cpe,
+    extra       : extra
+  );
+
+  return NULL;
+}

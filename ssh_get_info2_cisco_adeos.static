@@ -1,0 +1,324 @@
+#TRUSTED a650286d30c6fdf7ed06dae95ffb7012ccdfa396c9cba233e55a79ce32a0f9d8c1b52721054c53665e6bf5ee67f7eec4fe4721be858c2852a9459b0bc4e830e9de5bc69a68b44bd8823ec2e67f7af944da5f018afc84d4498ec97adb44df1de0d7765e716239deb45e08d41c396d8b7dc2504743e6be307b3d2979d7ec8ad681bbee165b6fae7ce6ec83af29d4c8114a296a9ec8de0cb497ac1fc55feac37d4d2a7a09712e1f78b8e751108e82d0bfea613c0624ef90985b0b969161cdc4bf31ef19c691e5c7327f3be974289dff2ad1380467f367f749571fb9c203480231fa0781616341c4e2e80e3a7e782445247123a4eaf323e4c0efede2b4136c0eab8ddeeb66f141141410d758e2bfe91520dea8b18d3911965aaf5b7b1bf010a30f0d01fd7fbf1aa68320776902fd6ab3c5802ceabbe61d54a85fe03ec7611dd5476a329fd2edad3ce6c9575b73065fcbe14798648b704d4fcdf1bab0e27d43574e3c4669a192d197bc62b4ac67341235fbeb6518e4e64163000a3e0d6baad283311d3bb949774c0d47913c52ca6aec3bde4c921f1c89c57e0e96749b53aa036d483f3183f2c47fb3d11981f8d8a4b95567376c7d159dbfcd9e002de0355dbc166116298661fcc9860f9d9db5d2be8de52865f15387d894ed567f8f4ebe2a65f8d9990fe82ed2c33eb5fe880c3c4fbe0522f791d1d248479c53ec41a7c6e2f902c529
+#TRUST-RSA-SHA256 aa0ccf2099a93020c23c5fb342575dd84666f89c11a3a392370785d2702e3ea1a76b0bac4b4d581e7044b9dd92b8c17f0e5669b7f7cfcc008037adf530dd51605df41ae5f3027509cce81d4b284453a895489d02296c840df2949cb10a2d78eac47bf4ed4868de1a59925dba4686063001db338fb902c02367821fa7474472146102022d9248dfcecf7714fa4439e6273766ced807e84f82785392e8b7ef2ec01adbb74958fa2e8a64098b188bcd31c2059b8a4c7e3df2d85d5c1fe9d0acca748c61264caedcb82b6209db797344983fabee7afe41296bf682a971b1269902483800a3111aa4a8e7918989606ecf0fbad333396a3b026fb55e208c0854b6dfa7d5a8afe7cde2660e5a6d4cee2bf58ee07839b7585d038b2d4b50f517fc01955d01389585ba45dd9b817d7b8e15ec21202cce9395ca110c3a80072a343e852253e0a897c952cdfacb8e146c2727be4f55b6716d0439e35227b2d4336d3ec010f4b55be8ede29dae505ae7982af7a1f19060369e94a94bb7e6c0af20813a2f9daf3a597769d337920c2ad7bd0780672f3fd42aba3c6fd7cf37704250a248066ea93dbee6d26911b6ba01745ee15c396a6d1860d5d8e809734d5904ed9eb21fd5ba19f478dc947b186c93276ee181feaa53d3378a3b3bbc125b4c36fa5f06daac67cb3c4a29a00eb9ca506191f6b1a8a63c40c3492cd185b1ab4644d8676a05ce8a
+
+# (C) Tenable Network Security, Inc.
+#
+# Revision 1.0
+
+##
+# check if this is a Cisco ADE-OS device based on information collected
+#
+# @return Returns TRUE if we know this is not Cisco ADE-OS, FALSE otherwise.
+##
+function cisco_adeos_pre_check_fail()
+{
+  # we've already checked that the host is not ADE-OS previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_cisco_adeos'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ "Cisco Application Deployment Engine OS")
+    return TRUE;
+
+  # Not ADE-OS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# Sets KB items for fingerprinting and adds a line to report identifying the OS
+#
+# @param <os> A string identifying the OS to be saved
+#
+# @return @Returns NULL
+##
+function save_cisco_adeos_fingerprint(os)
+{
+  report += '\nThe remote operating system appears to be ' + os + '.\n';
+
+  replace_kb_item(name:"Host/OS/showver", value:os);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/showver/Type", value:"embedded");
+}
+
+##
+# Handle fingerprinting and report of ADE-OS application os if found to match cmd_res
+#
+# @parem <cmd_res>                    Command result from ssh_get_info2: "show version"
+# @param <os>                         A string identifying the OS
+# @param <marker_regex>               Regex to quickly identify marker of os in cmd_res
+# @param <version_regex>              Regex to match and capture the version of os from cmd_res
+# @param <kb_name>                    Name of os in the KB key
+# @param <enable_local_checks>        Boolean TRUE to enable local checks for os, FALSE otherwise
+# @param <patch_assessment_available> Boolean TRUE to enable patch assessment for os, FALSE otherwise
+#
+# @return @Returns FALSE if cmd_res does not match os, TRUE otherwise
+##
+function handle_cisco_adeos_app(cmd_res, os, marker_regex, version_regex, kb_name, enable_local_checks, patch_assessment_available)
+{
+  if( cmd_res !~ marker_regex )
+    return FALSE;
+
+  var ver_match = pregmatch(pattern:version_regex, string:cmd_res, icase:TRUE);
+
+  if(!ver_match)
+  {
+    save_cisco_adeos_fingerprint(os: os);
+
+    failure_kb_msg = "Could not parse " + os + " version from 'show version' output.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\nHowever, we could not detect the version from the output of "show version".' +
+              '\nOS Security Patch Assessment is not available.';
+    report += '\n\nThe output of "show version" is :\n\n' + cmd_res + '\n\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  release = ver_match[1];
+
+  if ("Maintenance Release" >< cmd_res)
+  {
+    var top_ver, mr_items, mr_item, mr_rgx, mr_match;
+
+    mr_rgx = "PI ([0-9.]+) Maintenance Release";
+    mr_items = split(cmd_res, sep:'Maintenance Release', keep:TRUE);
+    foreach mr_item (mr_items)
+    {
+      mr_match = pregmatch(string:mr_item, pattern:mr_rgx);
+      if (!empty_or_null(mr_match))
+      {
+        if (empty_or_null(top_ver))
+          top_ver = mr_match[1];
+        else
+        {
+          if (ver_compare(ver: mr_match[1], fix: top_ver, strict:TRUE))
+            top_ver = mr_match[1];
+        }
+      }
+    }
+
+
+    if (!empty_or_null(top_ver))
+    {
+      # Only applies for version 3.10.4 and greater
+      var mr_check = pregmatch(string:top_ver, pattern:"3\.10\.(\d+)");
+      if (!empty_or_null(mr_check) && mr_check[1] > 3)
+      {
+        # verify that we are not downgrading version
+        if (ver_compare(ver: top_ver, fix: release, strict:TRUE))
+          release = top_ver;
+      }
+    }
+  }
+
+  save_cisco_adeos_fingerprint(os: os + ' ' + release);
+
+  replace_kb_item(name:"Host/Cisco/" + kb_name, value: TRUE);
+  replace_kb_item(name:"Host/Cisco/" + kb_name + "/version", value: release);
+  replace_kb_item(name:"Host/Cisco/" + kb_name + "/show_ver", value: cmd_res);
+  replace_kb_item(name:"Host/Cisco/show_ver", value: cmd_res);
+  replace_kb_item(name:"Host/OS", value: os);
+
+  if (enable_local_checks)
+  {
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_adeos.static', value: 149);
+    report += '\nLocal checks have been enabled for ' + os + '.\n';
+  }
+
+  var not = '';
+  if (!patch_assessment_available || !enable_local_checks)
+  {
+    not = 'not ';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  }
+
+  report += '\nOS Security Patch Assessment is ' + not + 'available for ' + os + '.\n';
+
+  return TRUE;
+}
+
+##
+# callback for systems with "^Cisco Application Deployment Engine OS" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command.
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns TRUE
+##
+function handle_cisco_adeos(session, use_shell_handler, &channel, cmd_res)
+{
+  var app;
+  var found_app = FALSE;
+
+  # List of known ADE-OS applications with their respective regexes and fingerprint properties
+  var handled_apps = [
+    {
+      'os': 'Cisco Prime Infrastructure',
+      'marker_regex': "Cisco Prime Infrastructure",
+      'version_regex': "Cisco Prime Infrastructure\r?\n[-\*]+\r?\n[ \t]*Version[ :\t]*([0-9\.]+)[ \t]*",
+      'kb_name': 'PrimeInfrastructure',
+      'enable_local_checks': TRUE,
+      'patch_assessment_available': TRUE
+    },
+    {
+      'os': 'Cisco Prime Collaboration Assurance',
+      'marker_regex': "Collaboration Assurance",
+      'version_regex': "Collaboration Assurance\r?\n[-\*]+\r?\n[ \t]*Version[ :\t]*([0-9\.]+)[ \t]*",
+      'kb_name': 'PrimeCollaborationAssurance',
+      'enable_local_checks': TRUE,
+      'patch_assessment_available': TRUE
+    },
+    {
+      'os': 'Cisco Prime Collaboration Provisioning',
+      'marker_regex': "Collaboration (?:Provisioning|Manager)",
+      'version_regex': "Collaboration (?:Provisioning|Manager)\r?\n[-\*]+\r?\n[ \t]*Version[ :\t]*([0-9\.]+)[ \t]*",
+      'kb_name': 'PrimeCollaborationProvisioning',
+      'enable_local_checks': TRUE,
+      'patch_assessment_available': TRUE
+    },
+    {
+      'os': 'Cisco ACS',
+      'marker_regex': "Cisco ACS VERSION INFORMATION",
+      'version_regex': "Cisco ACS VERSION INFORMATION\r?\n[-\*]+\r?\n[ \t]*Version[ :\t]*([0-9a-zA-Z\.]+)[ \t]*",
+      'kb_name': 'ACS',
+      'enable_local_checks': TRUE,
+      'patch_assessment_available': TRUE
+    },
+    {
+      'os': 'Cisco Prime LAN Management Solution',
+      'marker_regex': "Cisco Prime LAN Management Solution",
+      'version_regex': "Cisco Prime LAN Management Solution\r?\n[-\*]+\r?\n[ \t]*Version[ :\t]*([0-9a-zA-Z\.]+)[ \t]*",
+      'kb_name': 'Prime_LMS',
+      'enable_local_checks': FALSE,
+      'patch_assessment_available': FALSE
+    },
+    {
+      'os': 'Cisco Prime Network Control System',
+      'marker_regex': "Cisco Prime Network Control System",
+      'version_regex': "Cisco Prime Network Control System\r?\n[-\*]+\r?\n[ \t]*Version[ :\t]*([0-9a-zA-Z\.]+)[ \t]*",
+      'kb_name': 'Prime_NCS',
+      'enable_local_checks': TRUE,
+      'patch_assessment_available': TRUE
+    }
+  ];
+
+  foreach app (handled_apps)
+  {
+    found_app = handle_cisco_adeos_app(
+      cmd_res: cmd_res,
+      os: app['os'],
+      marker_regex: app['marker_regex'],
+      version_regex: app['version_regex'],
+      kb_name: app['kb_name'],
+      enable_local_checks: app['enable_local_checks'],
+      patch_assessment_available: app['patch_assessment_available']
+    );
+
+    if (found_app)
+      break;
+  }
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+
+  # If ADE-OS runs a known application run 'show privilege' and return right away
+  if (found_app)
+  {
+    var cmd_output = run_command(
+      cmd: "show privilege",
+      session: session,
+      use_shell_handler: use_shell_handler,
+      channel: channel
+    );
+  
+    if(cmd_output && "Current privilege level is" >< cmd_output)
+    {
+      var priv = pregmatch(pattern:'Current privilege level is ([0-9]*)', string:cmd_output);
+      if(priv && priv[1])
+      {
+        priv = int(priv[1]);
+        replace_kb_item(name:'Host/Cisco/show_privilege', value:priv);
+      }
+    }
+
+    return TRUE;
+  }
+
+  # Proceed beyond this point only if no known ADE-OS application was found in cmd_res
+  # In this case, grab the ADE-OS version and return without local checks enabled
+  var os = "ADE-OS";
+
+  var ver_match = pregmatch(pattern: "\nADE-OS Build Version: ([\d\.]+)", string: cmd_res);
+
+  if(isnull(ver_match) || isnull(ver_match[1]))
+  {
+    save_cisco_adeos_fingerprint(os:os);
+
+    failure_kb_msg = "Could not parse ADE-OS version from 'show version' output.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\nHowever, we could not detect the version from the output of "show version".' +
+             '\nOS Security Patch Assessment is not available.\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+
+    return TRUE;
+  }
+
+  os += ' ' + ver_match[1];
+
+  sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  save_cisco_adeos_fingerprint(os:os);
+
+  report += '\n' + 'Nessus was able to run commands in support of OS' +
+            '\n' + 'fingerprinting.' +
+            '\n';
+
+  return TRUE;
+}
+
+##
+# callback for systems without "^Cisco Application Deployment Engine OS" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_cisco_adeos(session, use_shell_handler, &channel, cmd_res)
+{
+	if (use_shell_handler) store_shell_info();
+  host_info_key_val['host_not_cisco_adeos'] = TRUE;
+  if(!empty_or_null(cmd_res))
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+}

@@ -1,0 +1,3793 @@
+#TRUSTED 56141abfe13e9a18bb1539db1847e1b88e348e78c93f257fc1df6eccf7efb3c13a7202501e7a9cb4ee82f6c06aba1d2268a76bda68cfae0602b4fe1afe16ce2d30ab0428c4d6cbd0f0a738a82e2a14fb7ca1c3ef2ec562607916a6132a153c4c384474810707feb7a231da2bbcb997c6e91cb7b2bf3d99c9859105cae7a128959fe25932e17e5a77f1b2108811df5eba6680bfa859352f3915cd96d00669c2d96583808502251d6aba33ae2f28daab66047a62e3a671bdaf58a9d886af99b8f4f85dcde9ef9d302ec8273198d10b2b8da1d3c08129e6bdf9d72baede50ceee9c96e911a9a178ec85826ff03cdf9c34018c75109b44b3d15f5d9eae0a783bf9be4768531a2d879e45708850bdce93ac87b417d89c373dd056a6b8e71bd71b85b9456517ed4d919f327fdbc42485c1ccd49b4c183f688f851588e0feaa8d2a0558c6a4159638af6e7158388b435fb3ebe8e3790090794769a62fc59b78cab293fbd31775aec7390b913e2c2dcf9827695cea03133a49d3c1b7414d89be5d529a688adadd357e4035baaf6b9f5d14989e2763eb4f48124eac4dd04e0cc157e9218a55d95235fef08a0ba792d62ddf1b4f9c783f3dd3303285be3d786c6e745b3db16516cdf84bfe50eabebac1e5277ba5f8d63786e2608ded0f39651aa2d9052fb48f2cb0f262a78f1154f31aa1141d598618f820d2b782f8bade074237be04650c
+#TRUST-RSA-SHA256 15ca11e4affe7609b894e33f5ac53ad4a7ca4ba92233a3b751de1c4de7f15c9ea8450b5d3c0d918a2db81327d6943bbd7f09fcfc5064d9c9329920d6052b99691b4ccd73401fe87063ee0ec30c3e463fbb76110ab92c6bc34d1e125c5629bd3ca78db060fefbc6df89b602cd2dab3b201ea5ad928c73d4ede9ebf2df4443db477a53704b803a30f6c71f348d716e6cb6ce94cf752c741236b487b47e2948b9d1413f02b9d8957a38874fa7bb346ccb3b133e5ed1d06b6ca274d6c997750e18d53fc00fa33106c2421cfad2e87cd558e0eff843a474ca254d6999ca99774efe4ce3aaacbbb2338a1077542fed966065ca76c79252e7f4dd24792d7d6e92b64b6ee885e324294f9859a3e11df038e8e4f79cf37fa257f9a844dbc554741a4c1f02e9b5ce97e8255b8c6987d4908b81d398172dcbb0545d3d21b56ab4c22ac450200b33e0142be2021202b280ca47347fb5ca371e9db57d381f94aa3611e41724537cd2116ade34525f88cf8eb5f92d040a4d0f37ab1551290ae3ff7b7d5ef462cf2efcac1d409cac9c5837bdf5b878a44eb207ceab87005f9f0eb089e8850d058f0c68aad1428076eb79fbb340d6210a3deb313b9c751c98af25275f9e3ea85bb381cf950c60d637d8662eef672938543a11d52923f1874fca79699b502c393afb4cd961a3fa3811a3d19f2f8fc5cb324f3c58a6f017addcf530bb91c48576ca99
+###
+# Collection of objects and functions to perform Key EXchange (KEX) over SSH.
+#
+# @license
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.13
+#
+# @library ssh_lib.inc
+# @category SSH
+###
+
+##
+#
+#  Namespace sshlib
+#    Provides an encapsulated naming scope for sshlib functions and objects
+#
+##
+namespace sshlib {
+
+  global_var supported_compression_algs = "none";
+  if(nasl_level() >= 6900) # see if our engine version supports Z_PARTIAL_FLUSH
+    supported_compression_algs = "zlib@openssh.com,zlib,none";
+
+  # RFC 4419 Section 3
+  global_var MAX_DH_GROUP_SIZE = 8192;
+  global_var MIN_DH_GROUP_SIZE = 1024;
+
+  ##
+  # Diffie-Hellman group size preferred by this library
+  ##
+  global_var PRF_DH_GROUP_SIZE = 2048;
+
+  ##
+  # Namelists of KEX as defined by RFC 4253
+  ##
+  global_var KEX_NAME_LISTS = make_list(
+    "kex_algorithms",
+    "server_host_key_algorithms",
+    "encryption_algorithms_client_to_server",
+    "encryption_algorithms_server_to_client",
+    "mac_algorithms_client_to_server",
+    "mac_algorithms_server_to_client",
+    "compression_algorithms_client_to_server",
+    "compression_algorithms_server_to_client",
+    "languages_client_to_server",
+    "languages_server_to_client"
+  );
+
+  ##
+  # Algorithms guaranteed to be supported by our implementation.
+  # server_to_client algs are assumed to be the same as client_to_server
+  # if they are not specified.
+  #
+  # Certificate versions must be listed before their simple counterparts.
+  # Failure to do so will break certificate authentication.
+  #
+  # note:  The nistp-521 curve has been deprioritized due to a hard to
+  #        replicate bug affecting Solaris and a few other platforms.
+  ##
+
+  ##
+  # SSH KEX algorithm names supported by this library
+  ##
+  var kex_algorithms = "";
+  if(nasl_level() >= 190500)
+  {
+    kex_algorithms += "curve25519-sha256,";
+    kex_algorithms += "curve25519-sha256@libssh.org,";
+  }
+  if(defined_func("ecc_curve_details"))
+  {
+    kex_algorithms += "ecdh-sha2-nistp384,";
+  }
+  kex_algorithms +=
+    "diffie-hellman-group18-sha512," +
+    "diffie-hellman-group16-sha512," +
+    "diffie-hellman-group14-sha256," +
+    "diffie-hellman-group-exchange-sha256,";
+  if(defined_func("ecc_curve_details"))
+  {
+    kex_algorithms +=
+      "ecdh-sha2-nistp521," +
+      "ecdh-sha2-nistp256,";
+  }
+  kex_algorithms +=
+    "diffie-hellman-group14-sha1," +
+    "diffie-hellman-group-exchange-sha1," +
+    "diffie-hellman-group1-sha1," +
+    "ext-info-c"; # This last one is a special one from RFC8308 that solicits a SSH_MSG_EXT_INFO packet
+
+  ##
+  # SSH server host key algorithm names supported by this library
+  ##
+  var server_host_key_algorithms = "";
+
+  #ED25519 support added in Nessus 10.4
+  if(nasl_level() >= 190400)
+  {
+    server_host_key_algorithms +=
+      "ssh-ed25519-cert-v01@openssh.com," +
+      "ssh-ed25519,";
+  }
+  if(defined_func("ecc_curve_details"))
+  {
+    server_host_key_algorithms +=
+      "ecdsa-sha2-nistp384-cert-v01@openssh.com," +
+      "ecdsa-sha2-nistp384," +
+      "ecdsa-sha2-nistp256-cert-v01@openssh.com," +
+      "ecdsa-sha2-nistp256," +
+      "ecdsa-sha2-nistp521-cert-v01@openssh.com," +
+      "ecdsa-sha2-nistp521,";
+  }
+  server_host_key_algorithms +=
+    "rsa-sha2-512," +
+    "rsa-sha2-256," +
+    "x509v3-sign-rsa," +
+    "ssh-rsa-cert-v01@openssh.com," +
+    "ssh-dss-cert-v01@openssh.com," +
+    "ssh-rsa-cert-v00@openssh.com," +
+    "ssh-dss-cert-v00@openssh.com," +
+    "ssh-rsa," +
+    "ssh-dss";
+
+  ##
+  # SSH encryption algorithm names supported by this library
+  ##
+  var encryption_algorithms_client_to_server = "";
+
+  #Put one non-gcm cipher first to work around HP-UX bug.
+  encryption_algorithms_client_to_server += "aes256-ctr,";
+  if(defined_func("crypto_encrypt") && defined_func("crypto_decrypt"))
+  {
+    encryption_algorithms_client_to_server +=
+      "aes256-gcm@openssh.com," +
+      "aes128-gcm@openssh.com,";
+  }
+  encryption_algorithms_client_to_server +=
+    "aes192-ctr," +
+    "aes128-ctr," +
+    "aes256-cbc," +
+    "aes192-cbc," +
+    "aes128-cbc," +
+    "blowfish-cbc," +
+    "3des-cbc";
+
+  ##
+  # SSH KEX namelists
+  ##
+  global_var KEX_SUPPORTED_NAME_LISTS = make_array(
+    "kex_algorithms", kex_algorithms,
+    "server_host_key_algorithms", server_host_key_algorithms,
+    "encryption_algorithms_client_to_server", encryption_algorithms_client_to_server,
+    "mac_algorithms_client_to_server",
+      "hmac-sha2-512," +
+      "hmac-sha2-512-etm@openssh.com," +
+      "hmac-sha2-256," +
+      "hmac-sha2-256-etm@openssh.com," +
+      "umac-128-etm@openssh.com," +
+      "hmac-sha1",
+    "compression_algorithms_client_to_server",
+      "none",
+    "compression_algorithms_server_to_client",
+      supported_compression_algs
+  );
+
+  ##
+  # Diffie-Hellman p and g constants
+  ##
+  global_var DH_CONSTANT_GROUP_P_AND_G = make_array(
+    "diffie-hellman-group1", make_array(
+      "p", raw_string(
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
+        0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
+        0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+        0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
+        0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
+        0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
+        0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
+        0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
+        0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
+        0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
+        0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
+        0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+        0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
+        0x49, 0x28, 0x66, 0x51, 0xEC, 0xE6, 0x53, 0x81,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF),
+      "g", mkbyte(2)
+    ),
+    "diffie-hellman-group14", make_array(
+      "p", raw_string(
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
+        0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
+        0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+        0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
+        0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
+        0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
+        0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
+        0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
+        0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
+        0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
+        0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
+        0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+        0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
+        0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D,
+        0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
+        0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A,
+        0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
+        0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96,
+        0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
+        0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D,
+        0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
+        0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C,
+        0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
+        0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03,
+        0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
+        0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9,
+        0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
+        0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5,
+        0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
+        0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF),
+      "g", mkbyte(2)
+    ),
+    "diffie-hellman-group16", make_array(
+      "p", raw_string(
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
+        0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
+        0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+        0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
+        0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
+        0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
+        0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
+        0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
+        0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
+        0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
+        0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
+        0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+        0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
+        0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D,
+        0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
+        0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A,
+        0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
+        0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96,
+        0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
+        0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D,
+        0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
+        0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C,
+        0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
+        0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03,
+        0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
+        0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9,
+        0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
+        0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5,
+        0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
+        0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAA, 0xC4, 0x2D,
+        0xAD, 0x33, 0x17, 0x0D, 0x04, 0x50, 0x7A, 0x33,
+        0xA8, 0x55, 0x21, 0xAB, 0xDF, 0x1C, 0xBA, 0x64,
+        0xEC, 0xFB, 0x85, 0x04, 0x58, 0xDB, 0xEF, 0x0A,
+        0x8A, 0xEA, 0x71, 0x57, 0x5D, 0x06, 0x0C, 0x7D,
+        0xB3, 0x97, 0x0F, 0x85, 0xA6, 0xE1, 0xE4, 0xC7,
+        0xAB, 0xF5, 0xAE, 0x8C, 0xDB, 0x09, 0x33, 0xD7,
+        0x1E, 0x8C, 0x94, 0xE0, 0x4A, 0x25, 0x61, 0x9D,
+        0xCE, 0xE3, 0xD2, 0x26, 0x1A, 0xD2, 0xEE, 0x6B,
+        0xF1, 0x2F, 0xFA, 0x06, 0xD9, 0x8A, 0x08, 0x64,
+        0xD8, 0x76, 0x02, 0x73, 0x3E, 0xC8, 0x6A, 0x64,
+        0x52, 0x1F, 0x2B, 0x18, 0x17, 0x7B, 0x20, 0x0C,
+        0xBB, 0xE1, 0x17, 0x57, 0x7A, 0x61, 0x5D, 0x6C,
+        0x77, 0x09, 0x88, 0xC0, 0xBA, 0xD9, 0x46, 0xE2,
+        0x08, 0xE2, 0x4F, 0xA0, 0x74, 0xE5, 0xAB, 0x31,
+        0x43, 0xDB, 0x5B, 0xFC, 0xE0, 0xFD, 0x10, 0x8E,
+        0x4B, 0x82, 0xD1, 0x20, 0xA9, 0x21, 0x08, 0x01,
+        0x1A, 0x72, 0x3C, 0x12, 0xA7, 0x87, 0xE6, 0xD7,
+        0x88, 0x71, 0x9A, 0x10, 0xBD, 0xBA, 0x5B, 0x26,
+        0x99, 0xC3, 0x27, 0x18, 0x6A, 0xF4, 0xE2, 0x3C,
+        0x1A, 0x94, 0x68, 0x34, 0xB6, 0x15, 0x0B, 0xDA,
+        0x25, 0x83, 0xE9, 0xCA, 0x2A, 0xD4, 0x4C, 0xE8,
+        0xDB, 0xBB, 0xC2, 0xDB, 0x04, 0xDE, 0x8E, 0xF9,
+        0x2E, 0x8E, 0xFC, 0x14, 0x1F, 0xBE, 0xCA, 0xA6,
+        0x28, 0x7C, 0x59, 0x47, 0x4E, 0x6B, 0xC0, 0x5D,
+        0x99, 0xB2, 0x96, 0x4F, 0xA0, 0x90, 0xC3, 0xA2,
+        0x23, 0x3B, 0xA1, 0x86, 0x51, 0x5B, 0xE7, 0xED,
+        0x1F, 0x61, 0x29, 0x70, 0xCE, 0xE2, 0xD7, 0xAF,
+        0xB8, 0x1B, 0xDD, 0x76, 0x21, 0x70, 0x48, 0x1C,
+        0xD0, 0x06, 0x91, 0x27, 0xD5, 0xB0, 0x5A, 0xA9,
+        0x93, 0xB4, 0xEA, 0x98, 0x8D, 0x8F, 0xDD, 0xC1,
+        0x86, 0xFF, 0xB7, 0xDC, 0x90, 0xA6, 0xC0, 0x8F,
+        0x4D, 0xF4, 0x35, 0xC9, 0x34, 0x06, 0x31, 0x99,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF),
+      "g", mkbyte(2)
+    ),
+    "diffie-hellman-group18", make_array(
+      "p", raw_string(
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
+        0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
+        0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+        0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
+        0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
+        0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
+        0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
+        0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
+        0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
+        0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
+        0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
+        0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+        0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
+        0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D,
+        0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
+        0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A,
+        0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
+        0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96,
+        0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
+        0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D,
+        0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
+        0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C,
+        0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
+        0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03,
+        0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
+        0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9,
+        0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
+        0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5,
+        0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
+        0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAA, 0xC4, 0x2D,
+        0xAD, 0x33, 0x17, 0x0D, 0x04, 0x50, 0x7A, 0x33,
+        0xA8, 0x55, 0x21, 0xAB, 0xDF, 0x1C, 0xBA, 0x64,
+        0xEC, 0xFB, 0x85, 0x04, 0x58, 0xDB, 0xEF, 0x0A,
+        0x8A, 0xEA, 0x71, 0x57, 0x5D, 0x06, 0x0C, 0x7D,
+        0xB3, 0x97, 0x0F, 0x85, 0xA6, 0xE1, 0xE4, 0xC7,
+        0xAB, 0xF5, 0xAE, 0x8C, 0xDB, 0x09, 0x33, 0xD7,
+        0x1E, 0x8C, 0x94, 0xE0, 0x4A, 0x25, 0x61, 0x9D,
+        0xCE, 0xE3, 0xD2, 0x26, 0x1A, 0xD2, 0xEE, 0x6B,
+        0xF1, 0x2F, 0xFA, 0x06, 0xD9, 0x8A, 0x08, 0x64,
+        0xD8, 0x76, 0x02, 0x73, 0x3E, 0xC8, 0x6A, 0x64,
+        0x52, 0x1F, 0x2B, 0x18, 0x17, 0x7B, 0x20, 0x0C,
+        0xBB, 0xE1, 0x17, 0x57, 0x7A, 0x61, 0x5D, 0x6C,
+        0x77, 0x09, 0x88, 0xC0, 0xBA, 0xD9, 0x46, 0xE2,
+        0x08, 0xE2, 0x4F, 0xA0, 0x74, 0xE5, 0xAB, 0x31,
+        0x43, 0xDB, 0x5B, 0xFC, 0xE0, 0xFD, 0x10, 0x8E,
+        0x4B, 0x82, 0xD1, 0x20, 0xA9, 0x21, 0x08, 0x01,
+        0x1A, 0x72, 0x3C, 0x12, 0xA7, 0x87, 0xE6, 0xD7,
+        0x88, 0x71, 0x9A, 0x10, 0xBD, 0xBA, 0x5B, 0x26,
+        0x99, 0xC3, 0x27, 0x18, 0x6A, 0xF4, 0xE2, 0x3C,
+        0x1A, 0x94, 0x68, 0x34, 0xB6, 0x15, 0x0B, 0xDA,
+        0x25, 0x83, 0xE9, 0xCA, 0x2A, 0xD4, 0x4C, 0xE8,
+        0xDB, 0xBB, 0xC2, 0xDB, 0x04, 0xDE, 0x8E, 0xF9,
+        0x2E, 0x8E, 0xFC, 0x14, 0x1F, 0xBE, 0xCA, 0xA6,
+        0x28, 0x7C, 0x59, 0x47, 0x4E, 0x6B, 0xC0, 0x5D,
+        0x99, 0xB2, 0x96, 0x4F, 0xA0, 0x90, 0xC3, 0xA2,
+        0x23, 0x3B, 0xA1, 0x86, 0x51, 0x5B, 0xE7, 0xED,
+        0x1F, 0x61, 0x29, 0x70, 0xCE, 0xE2, 0xD7, 0xAF,
+        0xB8, 0x1B, 0xDD, 0x76, 0x21, 0x70, 0x48, 0x1C,
+        0xD0, 0x06, 0x91, 0x27, 0xD5, 0xB0, 0x5A, 0xA9,
+        0x93, 0xB4, 0xEA, 0x98, 0x8D, 0x8F, 0xDD, 0xC1,
+        0x86, 0xFF, 0xB7, 0xDC, 0x90, 0xA6, 0xC0, 0x8F,
+        0x4D, 0xF4, 0x35, 0xC9, 0x34, 0x02, 0x84, 0x92,
+        0x36, 0xC3, 0xFA, 0xB4, 0xD2, 0x7C, 0x70, 0x26,
+        0xC1, 0xD4, 0xDC, 0xB2, 0x60, 0x26, 0x46, 0xDE,
+        0xC9, 0x75, 0x1E, 0x76, 0x3D, 0xBA, 0x37, 0xBD,
+        0xF8, 0xFF, 0x94, 0x06, 0xAD, 0x9E, 0x53, 0x0E,
+        0xE5, 0xDB, 0x38, 0x2F, 0x41, 0x30, 0x01, 0xAE,
+        0xB0, 0x6A, 0x53, 0xED, 0x90, 0x27, 0xD8, 0x31,
+        0x17, 0x97, 0x27, 0xB0, 0x86, 0x5A, 0x89, 0x18,
+        0xDA, 0x3E, 0xDB, 0xEB, 0xCF, 0x9B, 0x14, 0xED,
+        0x44, 0xCE, 0x6C, 0xBA, 0xCE, 0xD4, 0xBB, 0x1B,
+        0xDB, 0x7F, 0x14, 0x47, 0xE6, 0xCC, 0x25, 0x4B,
+        0x33, 0x20, 0x51, 0x51, 0x2B, 0xD7, 0xAF, 0x42,
+        0x6F, 0xB8, 0xF4, 0x01, 0x37, 0x8C, 0xD2, 0xBF,
+        0x59, 0x83, 0xCA, 0x01, 0xC6, 0x4B, 0x92, 0xEC,
+        0xF0, 0x32, 0xEA, 0x15, 0xD1, 0x72, 0x1D, 0x03,
+        0xF4, 0x82, 0xD7, 0xCE, 0x6E, 0x74, 0xFE, 0xF6,
+        0xD5, 0x5E, 0x70, 0x2F, 0x46, 0x98, 0x0C, 0x82,
+        0xB5, 0xA8, 0x40, 0x31, 0x90, 0x0B, 0x1C, 0x9E,
+        0x59, 0xE7, 0xC9, 0x7F, 0xBE, 0xC7, 0xE8, 0xF3,
+        0x23, 0xA9, 0x7A, 0x7E, 0x36, 0xCC, 0x88, 0xBE,
+        0x0F, 0x1D, 0x45, 0xB7, 0xFF, 0x58, 0x5A, 0xC5,
+        0x4B, 0xD4, 0x07, 0xB2, 0x2B, 0x41, 0x54, 0xAA,
+        0xCC, 0x8F, 0x6D, 0x7E, 0xBF, 0x48, 0xE1, 0xD8,
+        0x14, 0xCC, 0x5E, 0xD2, 0x0F, 0x80, 0x37, 0xE0,
+        0xA7, 0x97, 0x15, 0xEE, 0xF2, 0x9B, 0xE3, 0x28,
+        0x06, 0xA1, 0xD5, 0x8B, 0xB7, 0xC5, 0xDA, 0x76,
+        0xF5, 0x50, 0xAA, 0x3D, 0x8A, 0x1F, 0xBF, 0xF0,
+        0xEB, 0x19, 0xCC, 0xB1, 0xA3, 0x13, 0xD5, 0x5C,
+        0xDA, 0x56, 0xC9, 0xEC, 0x2E, 0xF2, 0x96, 0x32,
+        0x38, 0x7F, 0xE8, 0xD7, 0x6E, 0x3C, 0x04, 0x68,
+        0x04, 0x3E, 0x8F, 0x66, 0x3F, 0x48, 0x60, 0xEE,
+        0x12, 0xBF, 0x2D, 0x5B, 0x0B, 0x74, 0x74, 0xD6,
+        0xE6, 0x94, 0xF9, 0x1E, 0x6D, 0xBE, 0x11, 0x59,
+        0x74, 0xA3, 0x92, 0x6F, 0x12, 0xFE, 0xE5, 0xE4,
+        0x38, 0x77, 0x7C, 0xB6, 0xA9, 0x32, 0xDF, 0x8C,
+        0xD8, 0xBE, 0xC4, 0xD0, 0x73, 0xB9, 0x31, 0xBA,
+        0x3B, 0xC8, 0x32, 0xB6, 0x8D, 0x9D, 0xD3, 0x00,
+        0x74, 0x1F, 0xA7, 0xBF, 0x8A, 0xFC, 0x47, 0xED,
+        0x25, 0x76, 0xF6, 0x93, 0x6B, 0xA4, 0x24, 0x66,
+        0x3A, 0xAB, 0x63, 0x9C, 0x5A, 0xE4, 0xF5, 0x68,
+        0x34, 0x23, 0xB4, 0x74, 0x2B, 0xF1, 0xC9, 0x78,
+        0x23, 0x8F, 0x16, 0xCB, 0xE3, 0x9D, 0x65, 0x2D,
+        0xE3, 0xFD, 0xB8, 0xBE, 0xFC, 0x84, 0x8A, 0xD9,
+        0x22, 0x22, 0x2E, 0x04, 0xA4, 0x03, 0x7C, 0x07,
+        0x13, 0xEB, 0x57, 0xA8, 0x1A, 0x23, 0xF0, 0xC7,
+        0x34, 0x73, 0xFC, 0x64, 0x6C, 0xEA, 0x30, 0x6B,
+        0x4B, 0xCB, 0xC8, 0x86, 0x2F, 0x83, 0x85, 0xDD,
+        0xFA, 0x9D, 0x4B, 0x7F, 0xA2, 0xC0, 0x87, 0xE8,
+        0x79, 0x68, 0x33, 0x03, 0xED, 0x5B, 0xDD, 0x3A,
+        0x06, 0x2B, 0x3C, 0xF5, 0xB3, 0xA2, 0x78, 0xA6,
+        0x6D, 0x2A, 0x13, 0xF8, 0x3F, 0x44, 0xF8, 0x2D,
+        0xDF, 0x31, 0x0E, 0xE0, 0x74, 0xAB, 0x6A, 0x36,
+        0x45, 0x97, 0xE8, 0x99, 0xA0, 0x25, 0x5D, 0xC1,
+        0x64, 0xF3, 0x1C, 0xC5, 0x08, 0x46, 0x85, 0x1D,
+        0xF9, 0xAB, 0x48, 0x19, 0x5D, 0xED, 0x7E, 0xA1,
+        0xB1, 0xD5, 0x10, 0xBD, 0x7E, 0xE7, 0x4D, 0x73,
+        0xFA, 0xF3, 0x6B, 0xC3, 0x1E, 0xCF, 0xA2, 0x68,
+        0x35, 0x90, 0x46, 0xF4, 0xEB, 0x87, 0x9F, 0x92,
+        0x40, 0x09, 0x43, 0x8B, 0x48, 0x1C, 0x6C, 0xD7,
+        0x88, 0x9A, 0x00, 0x2E, 0xD5, 0xEE, 0x38, 0x2B,
+        0xC9, 0x19, 0x0D, 0xA6, 0xFC, 0x02, 0x6E, 0x47,
+        0x95, 0x58, 0xE4, 0x47, 0x56, 0x77, 0xE9, 0xAA,
+        0x9E, 0x30, 0x50, 0xE2, 0x76, 0x56, 0x94, 0xDF,
+        0xC8, 0x1F, 0x56, 0xE8, 0x80, 0xB9, 0x6E, 0x71,
+        0x60, 0xC9, 0x80, 0xDD, 0x98, 0xED, 0xD3, 0xDF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF),
+      "g", mkbyte(2)
+    )
+  );
+
+  ##
+  #
+  # Object kex_handler
+  #   Encapsulates functions and state for handling SSH key exchange (KEX)
+  #
+  ##
+  object kex_handler
+  {
+    var session;
+    var obj = 'kex_handler';
+    var kex_alg; # selected key exchange algorithm
+    var server_host_key_alg; # selected algorithm for public / private key exchange
+    var mac_alg_c_to_s; # selected hashing algorithm - client to server
+    var mac_alg_s_to_c; # selected hashing algorithm - server to client
+    var encryption_alg_c_to_s; # selected encryption algorithm - client to server
+    var encryption_alg_s_to_c; # selected encryption algorithm - server to client
+    var kex_supported_namelists;
+    var dh_local_priv, dh_local_pub;
+    var dh_remote_pub;
+    var shared_secret;
+    var host_cert;
+    var remote_init_pkt = '';
+    var our_init_pkt = '';
+    var auth_alg;
+    var auth_hash_alg;
+    var dsa_p = NULL;
+    var dsa_q = NULL;
+    var dsa_g = NULL;
+    var dsa_y = NULL;
+    var rsa_e = NULL;
+    var rsa_n = NULL;
+    var dh_p, dh_g;
+    var kex_recv_namelists;
+    var id;
+    var remote_cookie;
+    var our_cookie;
+
+    var ecdh_local_priv;
+    var ecdh_local_pub;
+    var ecdh_remote_pub;
+    var ecdh_hash_alg;
+    var ecdh_curve;
+    var ecdh_curve_info;
+    var ecdh_x25519_local;
+    var ecdsa_sig_hash_cb;
+
+    var keyblob_ecdsa_curve_info, keyblob_ecdsa_nid, keyblob_q_s_x, keyblob_q_s_y, keyblob_q_s;
+    var ed25519_hk;
+
+    ##
+    # Constructor function for the ``kex_handler`` object.
+    #
+    # @anonparam [session:object] The ``sshlib::session`` object to use for the KEX.
+    ##
+    function kex_handler()
+    {
+      session = _FCT_ANON_ARGS[0];
+      if(isnull(session))
+        exit(1, "A valid session was not passed to the kex_handler constructor.");
+
+      session.dbg_log(src:FUNCTION_NAME, lvl:3, msg:'Initialized KEX handler.');
+    }
+
+    ##
+    # Stores the given remote Diffie-Hellman public key.
+    #
+    # @anonparam [dh_remote_pub:string] The remote Diffie-Hellman public key to store.
+    ##
+    public function set_dh_remote_pub()
+    {
+      dh_remote_pub = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given Diffie-Hellman shared secret.
+    #
+    # @anonparam [shared_secret:string] The Diffie-Hellman shared secret to store.
+    ##
+    public function set_shared_secret()
+    {
+      var fn = obj +'.set_shared_secret';
+      shared_secret = _FCT_ANON_ARGS[0];
+      session.dbg_log(
+        lvl:3,
+        src:fn,
+        msg:"Setting shared secret.",
+        msg_details:{
+          "Data":{"lvl":3, "value":shared_secret}});
+    }
+
+    ##
+    # Stores the given remote host SSH certificate.
+    #
+    # @anonparam [host_cert:string] Remote host SSH certificate, used in place of a public key.
+    ##
+    public function set_host_cert()
+    {
+      host_cert = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given KEX init packet sent by the remote host.
+    #
+    # @anonparam [remote_init_pkt:data] The KEX init packet sent by the remote host.
+    ##
+    public function set_remote_init_pkt()
+    {
+      remote_init_pkt = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given KEX init packet sent by this library.
+    #
+    # @anonparam [our_init_pkt:data] The KEX init packet we sent.
+    ##
+    public function set_our_init_pkt()
+    {
+      our_init_pkt = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given auth algorithm name the KEX handler should use.
+    #
+    # @anonparam [auth_alg:string] The name of the auth algorithm.
+    ##
+    public function set_auth_alg()
+    {
+      auth_alg = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given auth's hash algorithm name the KEX handler should use.
+    #
+    # @anonparam [auth_hash_alg:string] The name of the hash algorithm.
+    ##
+    public function set_auth_hash_alg()
+    {
+      auth_hash_alg = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``p`` parameter for the DSA algorithm.
+    #
+    # @anonparam [dsa_p:data] The ``p`` parameter to store.
+    ##
+    public function set_dsa_p()
+    {
+      dsa_p = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``q`` parameter for the DSA algorithm.
+    #
+    # @anonparam [dsa_q:data] The ``q`` parameter to store.
+    ##
+    public function set_dsa_q()
+    {
+      dsa_q = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``g`` parameter for the DSA algorithm.
+    #
+    # @anonparam [dsa_g:data] The ``g`` parameter to store.
+    ##
+    public function set_dsa_g()
+    {
+      dsa_g = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``y`` parameter for the DSA algorithm.
+    #
+    # @anonparam [dsa_y:data] The ``y`` parameter to store.
+    ##
+    public function set_dsa_y()
+    {
+      dsa_y = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``e`` parameter for the RSA algorithm.
+    #
+    # @anonparam [rsa_e:data] The ``e`` parameter to store.
+    ##
+    public function set_rsa_e()
+    {
+      rsa_e = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``n`` parameter for the RSA algorithm.
+    #
+    # @anonparam [rsa_n:data] The ``n`` parameter to store.
+    ##
+    public function set_rsa_n()
+    {
+      rsa_n = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given ``p`` and ``g`` parameters for the Diffie-Hellman algorithm.
+    #
+    # @param [p:data] The ``p`` parameter to store.
+    # @param [g:data] The ``g`` parameter to store.
+    ##
+    public function set_dh_groups(p, g)
+    {
+      dh_p = p;
+      dh_g = g;
+    }
+
+    ##
+    # Stores the given array of namelists of algorithms offered by the target.
+    #
+    # @anonparam [kex_recv_namelists:array] The array of comma-separated names of algorithms.
+    ##
+    public function set_kex_recv_namelists()
+    {
+      kex_recv_namelists = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Retrieves list of algorithm names offered by the target for the given namelist name.
+    #
+    # @anonparam [namelist:string] The name of the namelist to retrieve.
+    #
+    # @return [string|NULL] A comma-separated list of algorithm names corresponding to the given namelist name.
+    #         NULL is returned if the namelist doesn't exist.
+    ##
+    public function get_kex_recv_namelist()
+    {
+      var namelist = _FCT_ANON_ARGS[0];
+      if(empty_or_null(namelist))
+        return NULL;
+      return kex_recv_namelists[namelist];
+    }
+
+    ##
+    # Stores the given hashed session ID.
+    #
+    # @anonparam [id:data] The hashed session ID to store.
+    #
+    # @remark If an ID has already been stored, this function will not do anything.
+    ##
+    public function set_id()
+    {
+      if(isnull(id))
+        id = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Stores the given remote SSH cookie.
+    #
+    # @anonparam [remote_cookie:data] The remote cookie to store.
+    ##
+    public function set_remote_cookie()
+    {
+      remote_cookie = _FCT_ANON_ARGS[0];
+    }
+
+    ##
+    # Generates a random sequence of bytes to serve as our SSH cookie and stores it.
+    ##
+    public function generate_ssh_cookie()
+    {
+      our_cookie = "";
+      var i;
+      for (i = 0; i < 16; i++)
+        our_cookie = our_cookie + mkbyte(rand() % 256);
+    }
+
+    ##
+    # Sets the chosen algorithm for the namelist provided.
+    #
+    # @anonparam [namelist:string] The namelist name that the algorithm was chosen from.
+    # @anonparam [algo:string]     The chosen algorithm's name.
+    #
+    # @remark If given a compression-related namelist name, this function will
+    #         set the session's compression algorithm to the given algorithm name.
+    ##
+    public function set_algorithm()
+    {
+      var namelist = _FCT_ANON_ARGS[0];
+      var algo     = _FCT_ANON_ARGS[1];
+
+      if("kex_" >< namelist)
+        kex_alg = algo;
+      else if("server_host_" >< namelist)
+        server_host_key_alg = algo;
+
+      else if("encryption_" >< namelist && "client_to_server">< namelist)
+        encryption_alg_c_to_s = algo;
+      else if("encryption_" >< namelist && "server_to_client">< namelist)
+        encryption_alg_s_to_c = algo;
+
+      else if("mac_" >< namelist && "client_to_server" >< namelist)
+        mac_alg_c_to_s = algo;
+      else if("mac_" >< namelist && "server_to_client" >< namelist)
+        mac_alg_s_to_c = algo;
+
+      else if("compression_" >< namelist && "client_to_server" >< namelist)
+        session.set_compression_alg(mode:MODE_OUT, alg:algo);
+      else if("compression_" >< namelist && "server_to_client" >< namelist)
+        session.set_compression_alg(mode:MODE_IN, alg:algo);
+      else
+        session.set_error(src:FUNCTION_NAME, err_msg:"Unrecognized namelist '"+namelist+"' sent to set_algorithm()");
+    }
+
+    ##
+    # Selects the first supported algorithm from the client's supported namelist that the server
+    # also supports in their namelist.
+    #
+    # @param [namelist:string] The name of the namelist that a matching algorithm should be returned for.
+    #
+    # @return [string|NULL] The name of an algorithm supported by both the client and
+    #         the server for the specified namelist if one was found, NULL otherwise.
+    #
+    # @remark
+    # This function expects that the arrays of supported algorithms and algorithms
+    # offered by the target have already been set by `sshlib::kex_handler.set_supported_namelists()`_ and
+    # `sshlib::kex_handler.set_kex_recv_namelists()`_ respectively.
+    ##
+    public function select_algorithm(namelist)
+    {
+      var fn = obj+'.select_algorithm';
+      var supported_list = split(kex_supported_namelists[namelist], sep:",", keep:FALSE);
+      var selected = NULL;
+      var i;
+
+      if(isnull(supported_list))
+      {
+        session.set_error(src:fn, err_msg:"No value for "+namelist+" in kex_supported_namelists");
+        return NULL;
+      }
+      if(isnull(kex_recv_namelists[namelist]))
+      {
+        session.set_error(src:fn, err_msg:"No value for "+namelist+" in kex_recv_namelists");
+        return NULL;
+      }
+
+      for (i=0; i<max_index(supported_list); i++)
+      {
+        selected = supported_list[i];
+        if(kex_recv_namelists[namelist] =~ "(^|,)" + selected + "(,|$)")
+          break;
+
+        selected = NULL; # if nothing is found, we want selected NULL
+      }
+
+      if(!isnull(selected))
+        session.dbg_log(lvl:2, src:fn, msg: "Selected " + selected + " for namelist " + namelist + '.');
+
+      return selected;
+    }
+
+    ##
+    # Stores the array of namelists supported by the scanner.
+    #
+    # @anonparam [kex_supported_namelists:array] The array of supported namelists.
+    #
+    # @remark If only a client-to-server namelist is specified in the array,
+    #         then the associated server-to-client namelist is set to the same list of algorithms.
+    #
+    # @remark For an example of structure for ``kex_supported_namelists``
+    #         see ``sshlib::KEX_SUPPORTED_NAME_LISTS``.
+    ##
+    public function set_supported_namelists()
+    {
+      kex_supported_namelists = _FCT_ANON_ARGS[0];
+
+      var namelist, tmp_namelist;
+
+      # if we don't specify a server to client namelist, use what we have from
+      # client to server
+      foreach namelist (KEX_NAME_LISTS)
+      {
+        if("server_to_client" >< namelist && isnull(kex_supported_namelists[namelist]))
+        {
+          tmp_namelist = namelist - "server_to_client" + "client_to_server";
+          kex_supported_namelists[namelist] = kex_supported_namelists[tmp_namelist];
+        }
+      }
+    }
+
+    ##
+    # Extracts namelists from a KEX_INIT packet sent by the remote host.
+    #
+    # @anonparam [pkt:data] The KEX_INIT packet to parse.
+    #
+    # @return [array|NULL] A dictionary containing the parsed namelists, or NULL if an error occurred.
+    #
+    # @remark
+    # The structure of the returned array is as follows:
+    # ```
+    # {
+    #   <namelist name>: <comma-seperated list of algorithms for that namelist>,
+    #   ...
+    # }
+    # ```
+    # The list of possible namelist names are stored in ``sshlib::KEX_NAME_LISTS``.
+    #
+    # @remark Namelists defined in https://www.ietf.org/rfc/rfc4253.txt
+    ##
+    public function kex_pkt_parse_namelists()
+    {
+      var pkt = _FCT_ANON_ARGS[0];
+      # Skip past kex server cookie
+      var cur_pos = 16;
+
+      var namelists = make_array();
+      var namelist;
+      var value;
+
+      # parse namelists into an array
+      foreach namelist (KEX_NAME_LISTS)
+      {
+        # Sanity check
+        if(cur_pos >= strlen(pkt.payload))
+          return NULL;
+        namelists[namelist] = get_ssh_string(buffer:pkt.payload, pos:cur_pos);
+        # Failed to parse list
+        if(isnull(namelists[namelist]))
+          return NULL;
+        cur_pos += 4 + strlen(namelists[namelist]);
+      }
+
+      return namelists;
+    }
+
+    ##
+    # Validates a public key received as part of Diffie-Hellman exchange.
+    #
+    # @param [key:string] The public key to validate.
+    # @param [p:data]     The ``p`` parameter for the DH algorithm.
+    #
+    # @return [boolean] TRUE if the key is valid, FALSE otherwise.
+    #
+    # @remark This function uses the validation algorithm from section 2.1.5 of https://tools.ietf.org/html/rfc2631
+    ##
+    function dh_valid_key(key, p)
+    {
+      var val,i;
+
+      if (ord(key[0]) > 0x80)
+        return 0;
+
+      val = 0;
+      for(i=0;i<strlen(key);i++)
+      {
+        val = val + ord(key[i]);
+        if (val > 1)
+          break;
+      }
+
+      # ok if key < p
+      if ((val>1) && (bn_cmp(key1:key,key2:p) == -1))
+        return 1;
+
+      return 0;
+    }
+
+    ##
+    # Generates a ECC public/private key pair for a given NISTP elliptic curve.
+    #
+    # @param [nid:integer] OpenSSL NID representing an elliptic curve.
+    #
+    # @return [boolean] TRUE if the function succeeds in creating an elliptic curve key pair, FALSE otherwise.
+    #
+    # @remark The generated keys are stored in the object's variables ``ecdh_local_priv`` and ``ecdh_local_pub``.
+    ##
+    public function ecdh_gen_secret_key(nid)
+    {
+      ecdh_local_priv = ecc_generate_secret_key(curve_nid: nid);
+      ecdh_curve_info = ecc_curve_details(curve_nid: nid);
+      if(isnull(ecdh_curve_info))
+        return FALSE;
+
+      if(ecdh_curve_info.order_bits <= 256)
+        ecdh_hash_alg = "sha256";
+      else if(ecdh_curve_info.order_bits > 256 && ecdh_curve_info.order_bits <= 384)
+        ecdh_hash_alg = "sha384";
+      else if(ecdh_curve_info.order_bits > 384 && ecdh_curve_info.order_bits <= 521)
+        ecdh_hash_alg = "sha512";
+      else
+        return FALSE;
+
+      ecdh_local_pub = ecc_scalar_multiply(scalar:ecdh_local_priv, curve_nid:nid);
+      if(isnull(ecdh_local_pub))
+        return FALSE;
+
+      ecdh_local_pub.x = ecc_fe2osp(curve_nid: nid, element: ecdh_local_pub.x);
+      ecdh_local_pub.y = ecc_fe2osp(curve_nid: nid, element: ecdh_local_pub.y);
+
+      ecdh_curve = nid;
+      return TRUE;
+    }
+
+    ##
+    # Generates an ECC public/private key pair for curve 25519.
+    #
+    # @return [boolean] TRUE if the function succeeds in creating a 25519 curve key pair, FALSE otherwise.
+    #
+    # @remark The generated key pair is stored in the object's variable ``ecdh_x25519_local``.
+    ##
+    public function ecdh_gen_25519_key()
+    {
+      var fn = obj + '.ecdh_gen_25519_key';
+      var NID_X25519;  #Suppress errors in older versions of Nessus
+
+      if(nasl_level() < 190500)
+      {
+        session.dbg_log(lvl:1, src:fn, msg:"Support for X25519 key exchange requires Nessus 10.5");
+        return FALSE;
+      }
+
+      var keygen_ctx = new("EVP_PKEY_CTX", NID_X25519);
+      if(isnull(keygen_ctx))
+      {
+        session.dbg_log(
+          lvl:1,
+          src:fn,
+          msg: "Can't create EVP_PKEY_CTX object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+        return FALSE;
+      }
+
+      keygen_ctx.keygen_init();
+
+      ecdh_x25519_local = keygen_ctx.keygen();
+      if(isnull(ecdh_x25519_local))
+      {
+        session.dbg_log(lvl:1, src:fn, msg: "Failed to generate a X25519 key-pair for key exchange.");
+        return FALSE;
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Generates a public/private key pair for Diffie-Hellman key exchange.
+    #
+    # @return [boolean] TRUE if the function succeeds in creating a key pair, FALSE otherwise.
+    #
+    # @remark The genrated keys are stored in the object's variables ``dh_local_pub`` and ``dh_local_priv``.
+    ##
+    public function dh_gen_key()
+    {
+      var tries,need, dh_local_priv_tmp, dh_local_pub_tmp;
+
+      if(isnull(session.new_cipherset))
+        return FALSE;
+
+      need = session.new_cipherset.get_ciphers_need();
+
+      this.dh_local_pub  = '';
+      this.dh_local_priv = '';
+      dh_local_pub_tmp = '';
+      dh_local_priv_tmp = '';
+      tries    = 0;
+
+      for (tries = 0; tries < 10; tries++)
+      {
+        dh_local_priv_tmp = bn_random(need:(need*2));
+        if(!dh_local_priv_tmp)
+          return FALSE;
+        dh_local_pub_tmp = dh_generate_key(p:dh_p, g:dh_g, priv:dh_local_priv_tmp);
+        if(!dh_local_pub_tmp)
+          return FALSE;
+        if(dh_valid_key(key:dh_local_pub_tmp, p:dh_p))
+          break;
+      }
+      if (tries == 10)
+        return FALSE;
+      this.dh_local_pub  = dh_local_pub_tmp;
+      this.dh_local_priv = dh_local_priv_tmp;
+      return TRUE;
+    }
+
+    ##
+    # Generates an encryption key from a shared secret and exchange hash value.
+    #
+    # @param [hash:data]          A hash of the key exchange parameters.
+    # @param [session_id:integer] The session's ID.
+    # @param [shared:data]        The shared secret from which to derive the key.
+    # @param [hash_type:string]   The name of the algorithm used to calculate the exchange hash.
+    # @param [max:integer]        The maximum length of the derived key.
+    #
+    # @return [list] The derived key.
+    #
+    # @remark Described in https://tools.ietf.org/html/rfc4253 section 7.2.
+    ##
+    public function ssh_derive_keys(hash, session_id, shared, hash_type, max)
+    {
+      var h, i, k, key, s, x;
+      if (isnull(hash_type) || (hash_type != "sha1" && hash_type != "sha256" && hash_type != "sha384" && hash_type != "sha512"))
+        hash_type = "sha1";
+
+      # Convert variables to match formulas.
+      h = hash;
+      s = mk_ssh_mpint(shared);
+      x = ord("A");
+      key = make_list();
+
+      for (i = 0; i < 6; i++)
+      {
+        # Derive the key.
+        if (hash_type == "sha1")
+          k = SHA1(s + h + mkbyte(x + i) + session_id);
+        else if (hash_type == "sha256")
+          k = SHA256(s + h + mkbyte(x + i) + session_id);
+        else if (hash_type == "sha384")
+          k = SHA384(s + h + mkbyte(x + i) + session_id);
+        else if (hash_type == "sha512")
+          k = SHA512(s + h + mkbyte(x + i) + session_id);
+
+        # Lengthen the key if required.
+        while(strlen(k) < max)
+        {
+          if (hash_type == "sha1")
+            k += SHA1(s + h + k);
+          else if (hash_type == "sha256")
+            k += SHA256(s + h + k);
+          else if (hash_type == "sha384")
+            k += SHA384(s + h + k);
+          else if (hash_type == "sha512")
+            k += SHA512(s + h + k);
+        }
+
+        key[i] = substr(k, 0, max - 1);
+      }
+
+      #         MODE OUT  MODE IN
+      # enc.iv    0         1
+      # enc.key   2         3
+      # mac.key   4         5
+
+      return key;
+    }
+
+    ##
+    # Finalize KEX by parsing and validating the host certificate, computing a shared secret and encryption keys.
+    #
+    # @return [boolean] TRUE if the function succeeded, otherwise returns NULL.
+    #
+    # @remark
+    # All quantities computed by this function are not returned but are stored in diffirent variables
+    # in the ``sshlib::kex_handler`` object.
+    #
+    # The name of the variables depend on the algorithms used to compute the shared secret and encryption keys.
+    ##
+    public function parse_host_cert()
+    {
+      var last_pkt, key_blob, algo, host_cert, pos, tmp, signed_hash;
+      var correct, hash, to_hash, shared, tmp_offset, cert_info, q_s;
+      var q_s_x, q_s_y, cert_sig, pub_25519;
+
+      var alt_hash, alt_to_hash;
+
+      var fn = obj + '.parse_host_cert';
+
+      last_pkt = session.last_packet;
+      key_blob = get_ssh_string(buffer:last_pkt.payload, pos:0);
+
+      if(empty_or_null(key_blob))
+        return session.set_error(src:fn, err_msg:"Remote host key blob is empty or NULL.");
+      session.set_remote_host_key(key_blob);
+
+      if(server_host_key_alg != "x509v3-sign-rsa" && "-cert-" >!< server_host_key_alg)
+      {
+        algo = get_ssh_string(buffer:key_blob, pos:0);
+        pos = 4 + strlen(algo);
+      }
+      else
+      {
+        algo = server_host_key_alg;
+      }
+
+      # Log the host key to the KB
+      set_kb_blob(
+        name : SSH_LIB_KB_PREFIX + session.get_kb_connection_id() + '/hostkey/' + algo,
+        value: key_blob
+      );
+
+      session.dbg_log(lvl:2, src:fn, msg:'Host certificate uses ' + algo + ' signature algorithm');
+
+      if(algo == "ssh-rsa" || algo == "ssh-dss")
+      {
+        if(algo == "ssh-rsa")
+        {
+          set_auth_alg("rsa");
+
+          tmp = get_ssh_mpint (buffer:key_blob, pos:pos);
+          if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host RSA e parameter.");
+            return NULL;
+          }
+
+          set_rsa_e(tmp['value']);
+          pos += tmp['length'];
+          tmp = get_ssh_mpint (buffer:key_blob, pos:pos);
+          if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host RSA n parameter.");
+            return NULL;
+          }
+          pos += tmp['length'];
+          set_rsa_n(tmp['value']);
+        }
+        else
+        {
+          set_auth_alg("dsa");
+
+          tmp = get_ssh_mpint (buffer:key_blob, pos:pos);
+          if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host DSA p parameter.");
+            return NULL;
+          }
+          pos += tmp['length'];
+          set_dsa_p(tmp['value']);
+
+          tmp = get_ssh_mpint (buffer:key_blob, pos:pos);
+          if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host DSA q parameter.");
+            return NULL;
+          }
+          pos += tmp['length'];
+          set_dsa_q(tmp['value']);
+
+          tmp = get_ssh_mpint (buffer:key_blob, pos:pos);
+          if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host DSA g parameter.");
+            return NULL;
+          }
+          pos += tmp['length'];
+          set_dsa_g(tmp['value']);
+
+          tmp = get_ssh_mpint (buffer:key_blob, pos:pos);
+          if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host DSA y parameter.");
+            return NULL;
+          }
+
+          pos += tmp['length'];
+          set_dsa_y(tmp['value']);
+        }
+      }
+      else if("ssh-rsa-cert-" >< algo || "ssh-dss-cert-" >< algo)
+      {
+        host_cert = key_blob;
+        cert_info = parse_ssh_cert(cert:host_cert);
+        if(isnull(cert_info))
+        {
+          session.set_error(src:fn, err_msg:"Error parsing host SSH certificate.");
+          return NULL;
+        }
+
+        if(cert_info['signature_type'] !~ "^ssh-(rsa|dss|ed25519)$" && cert_info['signature_type'] !~ '^ecdsa')
+        {
+          session.set_error(src:fn, err_msg:"Unsupported certificate signature type : " + cert_info["signature_type"]);
+        }
+
+        set_host_cert(cert_info);
+
+        if("-rsa-" >< algo)
+        {
+          set_auth_alg("rsa");
+          set_rsa_e(cert_info["e"]);
+          set_rsa_n(cert_info["n"]);
+        }
+        else
+        {
+          set_auth_alg("dsa");
+          set_dsa_p(cert_info["p"]);
+          set_dsa_q(cert_info["q"]);
+          set_dsa_g(cert_info["g"]);
+          set_dsa_y(cert_info["y"]);
+        }
+      }
+      else if(algo == "x509v3-sign-rsa")
+      {
+        set_auth_alg("rsa");
+        var res = parse_der_cert(cert:key_blob);
+        var key_info = res['tbsCertificate']['subjectPublicKeyInfo'];
+        var i;
+        for(i=0; i<max_index(key_info); i += 2)
+        {
+          if(key_info[i] == '1.2.840.113549.1.1.1') # RSA encryption
+          {
+            set_rsa_n(key_info[i+1][0]);
+            set_rsa_e(key_info[i+1][1]);
+
+            break;
+          }
+        }
+      }
+      else if(algo =~ "^ecdsa-sha2-nistp(256|384|521).*$")
+      {
+        set_auth_alg(algo);
+        if("-cert-" >< algo)
+        {
+          host_cert = key_blob;
+          cert_info = parse_ssh_cert(cert:host_cert);
+          if(isnull(cert_info))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host SSH certificate.");
+            return NULL;
+          }
+
+          if(cert_info['signature_type'] !~ "^ssh-(rsa|dss|ed25519)$" && cert_info['signature_type'] !~ '^ecdsa')
+          {
+            session.set_error(src:fn, err_msg:"Unsupported certificate signature type : " + cert_info["signature_type"]);
+          }
+
+          set_host_cert(cert_info);
+          keyblob_q_s = cert_info["public_key"];
+        }
+        else
+        {
+          var keyblob_q_id = get_ssh_string(buffer:key_blob, pos:pos);
+          pos += strlen(keyblob_q_id) + 4;
+          keyblob_q_s = get_ssh_string(buffer:key_blob, pos:pos);
+        }
+
+        if(algo =~ "^ecdsa-sha2-nistp256")
+        {
+          keyblob_ecdsa_nid = curve_nid.nist.P256;
+          ecdsa_sig_hash_cb = @SHA256;
+        }
+        else if(algo =~ "^ecdsa-sha2-nistp384")
+        {
+          keyblob_ecdsa_nid = curve_nid.nist.P384;
+          ecdsa_sig_hash_cb = @SHA384;
+        }
+        else if(algo =~ "^ecdsa-sha2-nistp521")
+        {
+          keyblob_ecdsa_nid = curve_nid.nist.P521;
+          ecdsa_sig_hash_cb = @SHA512;
+        }
+
+        keyblob_ecdsa_curve_info = ecc_curve_details(curve_nid:keyblob_ecdsa_nid);
+        if(isnull(keyblob_ecdsa_curve_info))
+        {
+          session.set_error(src:fn, err_msg:"Failed to retrieve ECC curve details for : " + algo);
+          return NULL;
+        }
+
+        keyblob_q_s_x = substr(keyblob_q_s, 1, (keyblob_ecdsa_curve_info.order_bits + 7) / 8);
+        keyblob_q_s_y = substr(keyblob_q_s, 1 + ((keyblob_ecdsa_curve_info.order_bits + 7) / 8),
+                               ((keyblob_ecdsa_curve_info.order_bits + 7) / 8) * 2);
+      }
+      else if(algo =~ "^ssh-ed25519")
+      {
+        set_auth_alg("ed25519");
+        if("-cert-" >< algo)
+        {
+          host_cert = key_blob;
+          cert_info = parse_ssh_cert(cert:host_cert);
+          if(isnull(cert_info))
+          {
+            session.set_error(src:fn, err_msg:"Error parsing host SSH certificate.");
+            return NULL;
+          }
+
+          if(cert_info['signature_type'] !~ "^ssh-(rsa|dss|ed25519)$" && cert_info['signature_type'] !~ '^ecdsa')
+          {
+            session.set_error(src:fn, err_msg:"Unsupported certificate signature type : " + cert_info["signature_type"]);
+          }
+
+          set_host_cert(cert_info);
+          ed25519_hk = cert_info["public_key"];
+        }
+        else
+        {
+          ed25519_hk = get_ssh_string(buffer:key_blob, pos:pos);
+        }
+      }
+      else
+      {
+        session.set_error(src:fn, err_msg:"Unsupported host key algorithm: " + algo);
+        return NULL;
+      }
+
+      tmp_offset = 4 + strlen(key_blob);
+
+      if(kex_alg =~ "^ecdh-sha2-")
+      {
+        q_s = get_ssh_string(buffer:last_pkt.payload, pos:tmp_offset);
+        q_s_x = substr(q_s, 1, (ecdh_curve_info.order_bits + 7) / 8);
+        q_s_y = substr(q_s, 1 + ((ecdh_curve_info.order_bits + 7) / 8),  ((ecdh_curve_info.order_bits + 7) / 8) * 2);
+
+        session.dbg_log(
+          lvl:3,
+          src:fn,
+          msg:'Computed scalars for ecdh.',
+          msg_details:{
+            "ecdh_q_s": {"lvl":3, "value":hexstr(q_s)},
+            "ecdh_q_s_x": {"lvl":3, "value":hexstr(q_s_x)},
+            "ecdh_q_s_y": {"lvl":3, "value":hexstr(q_s_y)}});
+
+        tmp_offset += 4 + strlen(q_s);
+      }
+      else if(kex_alg =~ "^curve25519-sha256")
+      {
+        pub_25519 = get_ssh_string(buffer:last_pkt.payload, pos:tmp_offset);
+
+        session.dbg_log(
+          lvl:3,
+          src:fn,
+          msg:"Server X25519 public key.",
+          msg_details:{"Data":{"lvl":3, "value":pub_25519}});
+
+        tmp_offset += 4 + strlen(pub_25519);
+      }
+      else
+      {
+        set_dh_remote_pub(get_ssh_string(buffer:last_pkt.payload, pos:tmp_offset));
+        if(!dh_valid_key(key:dh_remote_pub, p:dh_p))
+        {
+          session.set_error(src:fn, err_msg:"Server DH public key is not valid!");
+          return NULL;
+        }
+        tmp_offset += 4 + strlen(dh_remote_pub);
+      }
+
+      signed_hash = get_ssh_string(buffer:last_pkt.payload, pos:tmp_offset);
+
+      session.dbg_log(
+        lvl:3,
+        src:fn,
+        msg:'Exchange hash signature.',
+        msg_details:{
+          "Data":{"lvl":3, "value":signed_hash}});
+
+      if(kex_alg =~ "^ecdh-sha2-")
+      {
+        var tmp_secret = bn_mul(ecdh_local_priv, ecdh_curve_info.cofactor);
+        shared = ecc_scalar_multiply(
+          scalar    : tmp_secret,
+          curve_nid : ecdh_curve,
+          x         : q_s_x,
+          y         : q_s_y
+        );
+        shared = shared.x;
+      }
+      else if(kex_alg =~ "^curve25519-sha256")
+      {
+        #Redundant declaration of engine built-in to silence warnings on older scanners.
+        var NID_X25519;
+
+        var peer_public_key = new("EVP_PKEY");
+        if(isnull(peer_public_key))
+        {
+          session.dbg_log(
+            lvl:1,
+            src:fn,
+            msg: "Can't create EVP_PKEY object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+          return NULL;
+        }
+
+        peer_public_key.new_raw_public_key(type:NID_X25519, key:pub_25519);
+
+        var derivation_ctx = new("EVP_PKEY_CTX", ecdh_x25519_local);
+        if(isnull(derivation_ctx))
+        {
+          session.dbg_log(
+            lvl:1,
+            src:fn,
+            msg: "Can't create EVP_PKEY_CTX object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+
+          return NULL;
+        }
+
+        derivation_ctx.derive_init();
+        derivation_ctx.derive_set_peer(peer:peer_public_key);
+        shared = derivation_ctx.derive();
+      }
+      else
+      {
+        shared = dh_compute_key(
+          p             : dh_p,
+          g             : dh_g,
+          dh_server_pub : dh_remote_pub,
+          pub_key       : dh_local_pub,
+          priv_key      : dh_local_priv
+        );
+      }
+
+      if (!shared)
+      {
+        session.set_error(src:fn, err_msg:"Error during shared secret computing.");
+        return NULL;
+      }
+
+      set_shared_secret(shared);
+
+      # hash data
+      to_hash =
+        mk_ssh_string(session.local_version) +     # client version
+        mk_ssh_string(session.remote_version) +    # server version
+        mkdword(strlen(our_init_pkt) + 1, order:BYTE_ORDER_BIG_ENDIAN) +
+        mkbyte(PROTO_SSH_MSG_KEXINIT) +
+        our_init_pkt +
+
+        mkdword(strlen(remote_init_pkt) + 1, order:BYTE_ORDER_BIG_ENDIAN) +
+        mkbyte(PROTO_SSH_MSG_KEXINIT) +
+        remote_init_pkt +
+
+        mk_ssh_string(key_blob); # server host key blob
+
+      if (kex_alg == 'diffie-hellman-group-exchange-sha1' || kex_alg == 'diffie-hellman-group-exchange-sha256')
+      {
+        to_hash +=
+          # minimal size in bits of group
+          mkdword(MIN_DH_GROUP_SIZE, order:BYTE_ORDER_BIG_ENDIAN) +
+          # preferred size in bits of group
+          mkdword(PRF_DH_GROUP_SIZE, order:BYTE_ORDER_BIG_ENDIAN) +
+          # maximal size in bits of group
+          mkdword(MAX_DH_GROUP_SIZE, order:BYTE_ORDER_BIG_ENDIAN) +
+          mk_ssh_mpint(buffer:dh_p) + # p
+          mk_ssh_mpint(buffer:dh_g);  # g
+      }
+
+      if(kex_alg =~ "^ecdh-sha2-")
+      {
+        to_hash +=
+          mk_ssh_string('\x04' + ecdh_local_pub.x + ecdh_local_pub.y) +
+          mk_ssh_string(q_s) +
+          mk_ssh_mpint(buffer:shared);         # shared bignum
+      }
+      else if(kex_alg =~ "^curve25519-sha256")
+      {
+        to_hash +=
+          mk_ssh_string(ecdh_x25519_local.get_raw_public_key()) +
+          mk_ssh_string(pub_25519);              # server dh public key bignum
+
+        # This is to work around the behavior of SSH on some linux distros
+        # that do something non-standard for signature computation when the shared
+        # secret begins with 00
+        if(shared[0] == '\x00')
+        {
+          alt_to_hash = to_hash;
+          alt_to_hash += mk_ssh_mpint(buffer:substr(shared, 1));
+        }
+
+        to_hash += mk_ssh_mpint(buffer:shared);         # shared bignum
+      }
+      else
+      {
+        to_hash +=
+          mk_ssh_mpint(buffer:dh_local_pub) +  # public key bignum
+          mk_ssh_mpint(buffer:dh_remote_pub) + # server dh public key bignum
+          mk_ssh_mpint(buffer:shared);         # shared bignum
+      }
+
+      if(!isnull(ecdh_hash_alg))
+      {
+        if(ecdh_hash_alg == "sha256")
+          hash = SHA256(to_hash);
+        else if(ecdh_hash_alg == "sha384")
+          hash = SHA384(to_hash);
+        else if(ecdh_hash_alg == "sha512")
+          hash = SHA512(to_hash);
+
+        set_auth_hash_alg(ecdh_hash_alg);
+      }
+      else if (kex_alg =~ "-sha1$")
+      {
+        hash = SHA1(to_hash);
+        set_auth_hash_alg("sha1");
+      }
+      else if (kex_alg =~ "-sha256$" || kex_alg =~ "-sha256@")
+      {
+        hash = SHA256(to_hash);
+        if(!empty_or_null(alt_to_hash))
+          alt_hash = SHA256(alt_to_hash);
+
+        set_auth_hash_alg("sha256");
+      }
+      else if (kex_alg =~ "-sha512$" || kex_alg =~ "-sha512@")
+      {
+        hash = SHA512(to_hash);
+        set_auth_hash_alg("sha512");
+      }
+      else
+      {
+        session.set_error(src:fn, err_msg:"Unsupported key exchange algorithm hash: " + kex_alg);
+        return NULL;
+      }
+
+      var retry_verify;
+      do {
+        retry_verify = FALSE;
+
+        if (auth_alg == "rsa")
+        {
+          correct = ssh_rsa_verify(
+            e:rsa_e,
+            n:rsa_n,
+            signature:signed_hash,
+            data:hash
+          );
+        }
+        else if (auth_alg == "dsa")
+        {
+          correct = ssh_dss_verify(
+            p:dsa_p,
+            q:dsa_q,
+            g:dsa_g,
+            pub:dsa_y,
+            signature:signed_hash,
+            data:hash
+          );
+        }
+        else if(auth_alg =~ "^ecdsa")
+        {
+          cert_sig = decode_ecdsa_signature(signed_hash);
+
+          if(isnull(cert_sig))
+          {
+            session.set_error(src:fn, err_msg:"Failed to decode server's ECDSA signature.");
+            return NULL;
+          }
+
+          var sig_r = cert_sig['sig_r'];
+          var sig_s = cert_sig['sig_s'];
+
+          correct = ecdsa_verify(
+            msg       : hash,
+            x         : keyblob_q_s_x,
+            y         : keyblob_q_s_y,
+            r         : sig_r,
+            s         : sig_s,
+            hash      : ecdsa_sig_hash_cb,
+            curve_nid : keyblob_ecdsa_nid
+          );
+        }
+        else if(auth_alg == "ed25519")
+        {
+          correct = eddsa_verify(msg:hash, host_key:ed25519_hk, sig_blob:signed_hash);
+        }
+
+        if(!correct && !empty_or_null(alt_hash))
+        {
+          hash = alt_hash;
+          alt_hash = NULL;
+
+          set_shared_secret(substr(shared, 1));
+          retry_verify = TRUE;
+        }
+      } while(retry_verify)
+
+      if (!correct)
+      {
+        session.set_error(src:fn, err_msg:"Server's signature is not valid!");
+        return NULL;
+      }
+      set_id(hash);
+      var keys = ssh_derive_keys(
+        hash       : hash,
+        shared     : shared_secret,
+        session_id : id,
+        hash_type  : auth_hash_alg,
+        max        : session.new_cipherset.get_ciphers_need()
+      );
+
+      session.new_cipherset.set_enc_keys(keys);
+
+      return TRUE;
+    }
+
+    ##
+    # Verifies that the signature of the given SSH certificate is valid.
+    #
+    # @remark Currently only RSA, DSA and ECDSA certificates and signatures are supported.
+    #
+    # @anonparam [cert:array] The certificate that contains the signature to verify.
+    #
+    # @return [boolean] TRUE if the signature is valid, FALSE if it is invalid or
+    #         the cert/signature type is unknown or unsupported.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    public function verify_ssh_cert_signature()
+    {
+      var cert, data, ca_key, ca_sig;
+      cert = _FCT_ANON_ARGS[0];
+
+      if (cert["key_type"] =~ "^ssh-rsa-cert-")
+        data = generate_ssh_rsa_cert_sig_data(cert);
+      else if (cert["key_type"] =~ "^ssh-dss-cert-")
+        data = generate_ssh_dsa_cert_sig_data(cert);
+      else if (cert["key_type"] =~ "^ecdsa-sha2-nistp.*-cert-")
+        data = generate_ssh_ecdsa_cert_sig_data(cert);
+      else if (cert["key_type"] =~ "^ssh-ed25519-cert-")
+        data = generate_ssh_ed25519_cert_sig_data(cert);
+      else
+      {
+        session.set_error(src:FUNCTION_NAME, err_msg:"Unable to verify the certificate signature (type "+cert["key_type"]+" is currently unsupported).");
+        return FALSE; # unknown/unsupported cert key type
+      }
+
+      ca_key = decode_ssh2_public_key(cert["signature_key"]);
+
+      if (isnull(ca_key))
+        return FALSE;
+      if (ca_key["type"] == "ssh-rsa")
+      {
+        return ssh_rsa_verify(e:ca_key["e"], n:ca_key["n"], signature:cert["signature"], data:data);
+      }
+      else if (ca_key["type"] == "ssh-dss")
+      {
+        return ssh_dss_verify(p:ca_key["p"], q:ca_key["q"], g:ca_key["g"], pub:ca_key["y"], signature:cert["signature"], data:data);
+      }
+      else if (ca_key["type"] =~ "^ecdsa")
+      {
+        ca_sig = decode_ecdsa_signature(cert["signature"]);
+        if(isnull(ca_sig))
+          return FALSE;
+
+        return ecdsa_verify(
+          msg       : data,
+          x         : ca_key["q_s_x"],
+          y         : ca_key["q_s_y"],
+          r         : ca_sig["sig_r"],
+          s         : ca_sig["sig_s"],
+          hash      : ca_key["hash_cb"],
+          curve_nid : ca_key["nid"]
+        );
+      }
+      else if (ca_key["type"] =~ "^ssh-ed25519")
+      {
+        return eddsa_verify(msg:data, host_key:ca_key["sig_key"], sig_blob:cert["signature"]);
+      }
+
+      session.set_error(
+        src:FUNCTION_NAME,
+        err_msg:"Unable to verify the certificate signature (CA key type "+ca_key["type"]+" is currently unsupported).");
+      return FALSE; # unknown/unsupported CA key type
+    }
+
+    ##
+    # Decodes and parses an SSH2 public key.
+    #
+    # @anonparam [key:data] The public key to parse (in binary format).
+    #
+    # @return [data|NULL] A hash of the decoded public key, or NULL if the operation failed.
+    ##
+    function decode_ssh2_public_key()
+    {
+      var key, type;
+      key = _FCT_ANON_ARGS[0];
+      type = get_ssh_string(buffer:key, pos:0);
+      if (type == 'ssh-rsa')
+        return decode_ssh2_rsa_public_key(key);
+      if (type == 'ssh-dss')
+        return decode_ssh2_dsa_public_key(key);
+      if (type =~ '^ecdsa')
+        return decode_ssh2_ecdsa_public_key(key);
+      if (type =~ '^ssh-ed25519')
+        return decode_ssh2_ed25519_public_key(key);
+
+      session.set_error(src:FUNCTION_NAME, err_msg:"Unable to parse ssh2 public key: type "+type+" is currently unsupported.");
+      return NULL; # unknown/unsupported key type
+    }
+
+    ##
+    # Decodes and parses an SSH2 DSA public key.
+    #
+    # @anonparam [key:data] The DSA public key to parse (in binary format).
+    #
+    # @return [data|NULL] A hash of the decoded public key, or NULL if the operation failed.
+    ##
+    function decode_ssh2_dsa_public_key()
+    {
+      var key, ret, pos, tmp;
+      key = _FCT_ANON_ARGS[0];
+      ret = make_array();
+      pos = 0;
+
+      ret["type"] = get_ssh_string(buffer:key, pos:pos);
+      pos += 4 + strlen(ret["type"]);
+
+      tmp = get_ssh_mpint(buffer:key, pos:pos);
+      ret["p"] = tmp["value"];
+      pos += tmp["length"];
+
+      tmp = get_ssh_mpint(buffer:key, pos:pos);
+      ret["q"] = tmp["value"];
+      pos += tmp["length"];
+
+      tmp = get_ssh_mpint(buffer:key, pos:pos);
+      ret["g"] = tmp["value"];
+      pos += tmp["length"];
+
+      tmp = get_ssh_mpint(buffer:key, pos:pos);
+      ret["y"] = tmp["value"];
+
+      return ret;
+    }
+
+    ##
+    # Decodes and parses an SSH2 RSA public key.
+    #
+    # @anonparam [key:data] The RSA public key to parse (in binary format).
+    #
+    # @return [data|NULL] A hash of the decoded public key, or NULL if the operation failed.
+    ##
+    function decode_ssh2_rsa_public_key()
+    {
+      var key, ret, pos, tmp;
+      key = _FCT_ANON_ARGS[0];
+      ret = make_array();
+      pos = 0;
+      ret["type"] = get_ssh_string(buffer:key, pos:pos);
+      pos += 4 + strlen(ret["type"]);
+
+      tmp = get_ssh_mpint(buffer:key, pos:pos);
+      ret["e"] = tmp["value"];
+      pos += tmp["length"];
+
+      tmp = get_ssh_mpint(buffer:key, pos:pos);
+      ret["n"] = tmp["value"];
+
+      return ret;
+    }
+
+    ##
+    # Decodes/parses an SSH2 ECDSA public key
+    #
+    # @anonparam [key:data] The ECDSA public key to parse (in binary format).
+    #
+    # @return [array|NULL] An array with the hash algorithm, curve type
+    #         and NID of the decoded public key, or NULL if there is an error.
+    #
+    # @remark
+    # The format of the return array is as follows:
+    # ```
+    # {
+    #   'type': <name of the curve type>,
+    #   'nid': <the curve's NID>,
+    #   'hash_cb': <reference to the function used to compute the hash>,
+    #   'q_s_x': <the curve's x coordinate>,
+    #   'q_s_y': <the curve's y coordinate>
+    # }
+    # ```
+    ##
+    function decode_ssh2_ecdsa_public_key()
+    {
+      var key, ret, pos;
+      key = _FCT_ANON_ARGS[0];
+      ret = make_array();
+      pos = 0;
+      ret["type"] = get_ssh_string(buffer:key, pos:pos);
+      pos += 4 + strlen(ret["type"]);
+
+      var curve  = get_ssh_string(buffer:key, pos:pos);
+      pos += 4 + strlen(curve);
+
+      var q_s  = get_ssh_string(buffer:key, pos:pos);
+      if(ret["type"] == "ecdsa-sha2-nistp256")
+      {
+        ret["nid"] = curve_nid.nist.P256;
+        ret["hash_cb"] = @SHA256;
+      }
+      else if(ret["type"] == "ecdsa-sha2-nistp384")
+      {
+        ret["nid"] = curve_nid.nist.P384;
+        ret["hash_cb"] = @SHA384;
+      }
+      else if(ret["type"] == "ecdsa-sha2-nistp521")
+      {
+        ret["nid"] = curve_nid.nist.P521;
+        ret["hash_cb"] = @SHA512;
+      }
+
+      var curve_info = ecc_curve_details(curve_nid:ret["nid"]);
+      if(isnull(curve_info)) return NULL;
+
+      ret["q_s_x"] = substr(q_s, 1, (curve_info.order_bits + 7) / 8);
+      ret["q_s_y"] = substr(q_s, 1 + ((curve_info.order_bits + 7) / 8),  ((curve_info.order_bits + 7) / 8) * 2);
+      return ret;
+    }
+
+
+    ##
+    # Decodes and parses an SSH2 ED25519 public key.
+    #
+    # @anonparam [key:data] the ED25519 public key to parse (in binary format).
+    #
+    # @return [array] An array with the curve type and key's signature.
+    #
+    # @remark
+    # The format of the returned array is as follows:
+    # ```
+    # {
+    #   'type': <name of the curve type>,
+    #   'sig_key': <the key's signature>
+    # }
+    # ```
+    ##
+    function decode_ssh2_ed25519_public_key()
+    {
+      var key, ret, pos;
+      key = _FCT_ANON_ARGS[0];
+      ret = make_array();
+      pos = 0;
+      ret["type"] = get_ssh_string(buffer:key, pos:pos);
+      pos += 4 + strlen(ret["type"]);
+
+      var sig_key = get_ssh_string(buffer:key, pos:pos);
+      ret["sig_key"] = sig_key;
+
+      return ret;
+    }
+
+
+    ##
+    # Extracts curve type, ``r`` and ``s`` parameters from a ECDSA signature.
+    #
+    # @anonparam [sig_blob:data] A signature blob to parse.
+    #
+    # @return [array] An array with the curve type, r and s parameters.
+    #
+    # @remark
+    # The format of the returned array is as follows:
+    # ```
+    # {
+    #   'type': <name of the curve type>,
+    #   'sig_r': <the signature's r parameter>,
+    #   'sig_s': <the signature's s parameter>
+    # }
+    # ```
+    ##
+    function decode_ecdsa_signature()
+    {
+      var sig_blob, ret, pos, tmp;
+      sig_blob = _FCT_ANON_ARGS[0];
+      ret = make_array();
+      pos = 0;
+
+      ret["type"] = get_ssh_string(buffer:sig_blob, pos:pos);
+      ret["sig_r"] = mk_ssh_mpint('\0');
+      ret["sig_s"] = mk_ssh_mpint('\0');
+
+      pos += 4 + strlen(ret["type"]);
+      var signature = get_ssh_string(buffer:sig_blob, pos:pos);
+      pos = 0;
+
+      tmp = get_ssh_mpint(buffer:signature, pos:pos);
+      if(!isnull(tmp))
+        ret["sig_r"] = tmp["value"];
+
+      pos += tmp["length"];
+
+      tmp = get_ssh_mpint(buffer:signature, pos:pos);
+      if(!isnull(tmp))
+        ret["sig_s"] = tmp["value"];
+
+      return ret;
+    }
+
+    ##
+    # Generates parts of the SSH certificate common to all signature types at the end.
+    #
+    # @param [cert:array] The certificate that contains the signature to verify.
+    # @param [data:data]  The signature type specific part of the certificate data.
+    #
+    # @return [data|NULL] The data used to verify the signature common to all signature types,
+    #         or NULL if an error occurred.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    function generate_ssh_common_cert_data(cert, data)
+    {
+      var tmp_data, key_type;
+      tmp_data = '';
+
+      if (empty_or_null(cert) || empty_or_null(data))
+        return NULL;
+
+      key_type = cert["key_type"];
+      if (empty_or_null(key_type))
+        return NULL;
+
+      data +=
+        cert["type"] +
+        mk_ssh_string(cert["key_id"]);
+
+      foreach var tmp (cert["valid_principals"])
+        tmp_data += mk_ssh_string(tmp);
+
+      data +=
+        mk_ssh_string(tmp_data) +
+        cert["valid_after"] +
+        cert["valid_before"];
+
+      if("v00@" >< key_type)
+      {
+        data +=
+          mk_ssh_string(cert["constraints"]) +
+          mk_ssh_string(cert["nonce"]);
+      }
+      else
+      {
+        data +=
+          mk_ssh_string(cert["critical_options"]) +
+          mk_ssh_string(cert["extensions"]);
+      }
+
+      data +=
+        mk_ssh_string(cert["reserved"]) +
+        mk_ssh_string(cert["signature_key"]);
+
+      return data;
+    }
+
+
+    ##
+    # Generates data used to verify the signature in an SSH RSA certificate.
+    #
+    # @anonparam [cert:array] The certificate that contains the signature to verify.
+    #
+    # @return [data|NULL] The data used to verify the signature in an SSH RSA certificate,
+    #         or NULL if an error occurred.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    function generate_ssh_rsa_cert_sig_data()
+    {
+      var cert, data;
+
+      cert = _FCT_ANON_ARGS[0];
+      if (isnull(cert))
+        return NULL;
+
+      if (cert["key_type"] == "ssh-rsa-cert-v00@openssh.com")
+      {
+        data =
+        mk_ssh_string(cert["key_type"]) +
+        mk_ssh_mpint(cert["e"]) +
+        mk_ssh_mpint(cert["n"]);
+      }
+      else
+      {
+        data =
+          mk_ssh_string(cert["key_type"]) +
+          mk_ssh_string(cert["nonce"]) +
+          mk_ssh_mpint(cert["e"]) +
+          mk_ssh_mpint(cert["n"]) +
+          cert["serial"];
+      }
+
+      return generate_ssh_common_cert_data(cert:cert, data:data);
+    }
+    ##
+    # Generates data used to verify the signature in an SSH DSA certificate.
+    #
+    # @anonparam [cert:array] The certificate that contains the signature to verify.
+    #
+    # @return [data|NULL] The data used to verify the signature in an SSH DSA certificate,
+    #         or NULL if an error occurred.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    function generate_ssh_dsa_cert_sig_data()
+    {
+      var cert, data;
+
+      cert = _FCT_ANON_ARGS[0];
+      if (isnull(cert))
+        return NULL;
+
+      if (cert["key_type"] == "ssh-dss-cert-v00@openssh.com")
+      {
+        data =
+          mk_ssh_string(cert["key_type"]) +
+          mk_ssh_mpint(cert["p"]) +
+          mk_ssh_mpint(cert["q"]) +
+          mk_ssh_mpint(cert["g"]) +
+          mk_ssh_mpint(cert["y"]);
+      }
+      else
+      {
+        data =
+          mk_ssh_string(cert["key_type"]) +
+          mk_ssh_string(cert["nonce"]) +
+          mk_ssh_mpint(cert["p"]) +
+          mk_ssh_mpint(cert["q"]) +
+          mk_ssh_mpint(cert["g"]) +
+          mk_ssh_mpint(cert["y"]) +
+          cert["serial"];
+      }
+
+      return generate_ssh_common_cert_data(cert:cert, data:data);
+    }
+
+    ##
+    # Generates data used to verify the signature in an SSH ECDSA certificate.
+    #
+    # @anonparam [cert:array] The certificate that contains the signature to verify.
+    #
+    # @return [data|NULL] The data used to verify the signature in an SSH ECDSA certificate,
+    #         or NULL if an error occurred.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    function generate_ssh_ecdsa_cert_sig_data()
+    {
+      var cert, data, tmp;
+
+      cert = _FCT_ANON_ARGS[0];
+      if (isnull(cert))
+        return NULL;
+
+      data =
+        mk_ssh_string(cert["key_type"]) +
+        mk_ssh_string(cert["nonce"]) +
+        mk_ssh_string(cert["curve"]) +
+        mk_ssh_string(cert["public_key"]) +
+        cert["serial"];
+
+      return generate_ssh_common_cert_data(cert:cert, data:data);
+    }
+
+    ##
+    # Generates data used to verify the signature in an SSH ED25519 certificate.
+    #
+    # @anonparam [cert:array] The certificate that contains the signature to verify.
+    #
+    # @return [data|NULL] The data used to verify the signature in an SSH ED25519 certificate,
+    #         or NULL if an error occurred.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    function generate_ssh_ed25519_cert_sig_data()
+    {
+      var cert, data;
+
+      cert = _FCT_ANON_ARGS[0];
+      if (isnull(cert)) return NULL;
+
+      data =
+        mk_ssh_string(cert["key_type"]) +
+        mk_ssh_string(cert["nonce"]) +
+        mk_ssh_string(cert["public_key"]) +
+        cert["serial"];
+
+      return generate_ssh_common_cert_data(cert:cert, data:data);
+    }
+
+    ##
+    # Validates a DSS server signature.
+    #
+    # @param [p:data]          The DSS p parameter
+    # @param [q:data]          The DSS g parameter
+    # @param [g:data]          The DSS p parameter
+    # @param [pub:data]        The DSS public key (y parameter)
+    # @param [signature:data]  The digital signature being verified.
+    # @param [data:data]       The message that was signed.
+    #
+    # @return [boolean] TRUE if the signature is valid, FALSE otherwise.
+    ##
+    function ssh_dss_verify(p, q, g, pub, signature, data)
+    {
+      var sigtype, next, tmp_sig, siglen, r, s, hash;
+
+      sigtype = get_ssh_string(buffer:signature, pos:0);
+      if ("ssh-dss" >!< sigtype)
+        return 0;
+
+      next = 4 + strlen(sigtype);
+      tmp_sig = get_ssh_string(buffer:signature,pos:next);
+      siglen = strlen(tmp_sig);
+
+      r = substr(tmp_sig,  0, 19);
+      s = substr(tmp_sig, 20, 39);
+
+      hash = SHA1(data);
+
+      return dsa_do_verify(p:p,g:g,q:q,pub:pub,r:r,s:s,data:hash);
+    }
+
+    ##
+    # Validates a RSA server signature.
+    #
+    # @param [p:data]          The RSA p parameter.
+    # @param [q:data]          The RSA q parameter.
+    # @param [signature:data]  The digital signature being verified.
+    # @param [data:data]       The message that was signed.
+    #
+    # @return [boolean] TRUE if the signature is valid, FALSE otherwise.
+    ##
+    function ssh_rsa_verify(e, n, signature, data)
+    {
+      var hash, sigtype, nlen;
+      var next, tmp_sig, siglen, len, sig;
+      var hdecoid, hshaoid, hhash, decrypted, hash_alg;
+
+
+      var fn = 'ssh_rsa_verify';
+
+      var id_sha1, id_md5, id_sha256, id_sha384, id_sha512, test_hash;
+
+      # https://www.ietf.org/rfc/rfc3447.txt
+      # Page 42 excerpt:
+      # 1. For the six hash functions mentioned in Appendix B.1, the DER
+      #    encoding T of the DigestInfo value is equal to the following:
+      #
+      #     MD2:     (0x)30 20 30 0c 06 08 2a 86 48 86 f7 0d 02 02 05 00 04
+      #                  10 || H.
+      #     MD5:     (0x)30 20 30 0c 06 08 2a 86 48 86 f7 0d 02 05 05 00 04
+      #                  10 || H.
+      #     SHA-1:   (0x)30 21 30 09 06 05 2b 0e 03 02 1a 05 00 04 14 || H.
+      #     SHA-256: (0x)30 31 30 0d 06 09 60 86 48 01 65 03 04 02 01 05 00
+      #                  04 20 || H.
+      #     SHA-384: (0x)30 41 30 0d 06 09 60 86 48 01 65 03 04 02 02 05 00
+      #                  04 30 || H.
+      #     SHA-512: (0x)30 51 30 0d 06 09 60 86 48 01 65 03 04 02 03 05 00
+      #                     04 40 || H.
+      id_sha1   = '\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14';
+      id_md5    = '\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x05\x05\x00\x04\x10';
+      id_sha256 = '\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20';
+      id_sha384 = '\x30\x41\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x02\x05\x00\x04\x30';
+      id_sha512 = '\x30\x51\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x03\x05\x00\x04\x40';
+
+      if (!n)
+        return 0;
+      sigtype = get_ssh_string(buffer:signature, pos:0);
+
+      if (sigtype != "x509v3-ssh-rsa" &&
+          sigtype != "x509v3-sign-rsa" &&
+          sigtype != "ssh-rsa" &&
+          !preg(string:sigtype, pattern:"^rsa-sha2-(?:256|512)$") )
+        return 0;
+
+      nlen = strlen(n);
+      if (ord(n[0]) == 0)
+        nlen--;
+
+      # Used by ssh_key_size.nasl to audit RSA key length
+      KEY_LEN = num_bits(n:n);
+
+      # check minimum n size
+      if ( (nlen*8) < 512 )
+        return 0;
+
+      next = 4 + strlen(sigtype);
+      tmp_sig = get_ssh_string(buffer:signature,pos:next);
+      siglen = strlen(tmp_sig);
+
+      # bad signature (should be less than n)
+      if (siglen > nlen)
+        return 0;
+      # Add padding if needed
+      if (siglen < nlen)
+      {
+        len = nlen - siglen;
+        sig = crap(data:raw_string(0x00), length:len) + tmp_sig;
+      }
+      else
+        sig = tmp_sig;
+
+      # must call RSA_public_decrypt from openssl, so convert arg - see ssh-rsa.c
+      decrypted = rsa_public_decrypt(sig:sig,e:e,n:n);
+      if (!decrypted)
+        return 0;
+
+      if(substr(decrypted, 0, strlen(id_md5) - 1) == id_md5)
+      {
+        hash = MD5(data);
+        test_hash = substr(decrypted,strlen(id_md5));
+
+        if(strlen(hash) != 16 || strlen(test_hash) != 16)
+          return 0;
+      }
+      else if(substr(decrypted, 0, strlen(id_sha1) - 1) == id_sha1)
+      {
+        hash = SHA1(data);
+        test_hash = substr(decrypted,strlen(id_sha1));
+
+        if(strlen(hash) != 20 || strlen(test_hash) != 20)
+          return 0;
+      }
+      else if(substr(decrypted, 0, strlen(id_sha256) - 1) == id_sha256)
+      {
+        if(!defined_func("SHA256"))
+          return 0;
+        hash = SHA256(data);
+        test_hash = substr(decrypted,strlen(id_sha256));
+
+        if(strlen(hash) != 32 || strlen(test_hash) != 32)
+          return 0;
+      }
+      else if(substr(decrypted, 0, strlen(id_sha384) - 1) == id_sha384)
+      {
+        if(!defined_func("SHA384"))
+          return 0;
+        hash = SHA384(data);
+        test_hash = substr(decrypted,strlen(id_sha384));
+
+        if(strlen(hash) != 48 || strlen(test_hash) != 48)
+          return 0;
+      }
+      else if(substr(decrypted, 0, strlen(id_sha512) - 1) == id_sha512)
+      {
+        if(!defined_func("SHA512"))
+          return 0;
+        hash = SHA512(data);
+        test_hash = substr(decrypted,strlen(id_sha512));
+
+        if(strlen(hash) != 64 || strlen(test_hash) != 64)
+          return 0;
+      }
+      else return 0;
+
+      hdecoid = hexstr(test_hash);
+      hhash = hexstr(hash);
+
+      if (hdecoid != hhash)
+        return 0;
+
+      return 1;
+    }
+
+    ##
+    # Validates a EdDSA server signature.
+    #
+    # @param [msg:data]        The RSA p parameter.
+    # @param [host_key:data]   The target host's public key.
+    # @param [sig_blob:data]   The signature blob to be verified.
+    #
+    # @return [boolean] TRUE if the signature is valid, FALSE otherwise.
+    ##
+    function eddsa_verify(msg, host_key, sig_blob)
+    {
+      #NID_ED25519 is a Nessus built-in value defined in Nessus 10.4 or later
+      var NID_ED25519;
+
+      #EdDSA is only available in Nessus 10.4 or later
+      if(nasl_level() < 190400)
+        return FALSE;
+
+      var pos = 0;
+      var type= get_ssh_string(buffer:sig_blob, pos:pos);
+      var nid;
+      if(type =~ "^ssh-ed25519")
+        nid = NID_ED25519;
+      else
+        return FALSE;
+
+      var pub_key = new("EVP_PKEY");
+      if(isnull(pub_key))
+      {
+        dbg::detailed_log(
+          lvl:1,
+          src:FUNCTION_NAME,
+          msg: "Can't create EVP_PKEY object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+        return FALSE;
+      }
+
+      pub_key.new_raw_public_key(
+        type:nid,
+        key:host_key
+      );
+
+      if(!pub_key.valid())
+        return FALSE;
+
+      pos += 4 + strlen(type);
+      var signature = get_ssh_string(buffer:sig_blob, pos:pos);
+
+      var sig_context = new("EVP_MD_CTX");
+      if(isnull(sig_context))
+      {
+        dbg::detailed_log(
+          lvl:1,
+          src:FUNCTION_NAME,
+          msg: "Can't create EVP_MD_CTX object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+        return FALSE;
+      }
+
+      var res = sig_context.DigestVerifyInit(pkey:pub_key);
+      if(!res)
+        return FALSE;
+
+      return sig_context.DigestVerify(tbs:msg, signature:signature);
+    }
+
+
+    ##
+    # Parses the parts of a digital signature common to all supported algorithms.
+    #
+    # @param [cert:data]       An SSH digital certificate.
+    # @param [cert_info:array] An array storing parsed certificate parameters.
+    # @param [pos:integer]     Position within the certificate that common parameters start.
+    #
+    # @return [array|NULL] The array given in ``cert_info`` function argument with
+    #         common parameters added to it, or NULL if an error occurs.
+    ##
+    function parse_ssh_end_of_cert(cert, cert_info, pos)
+    {
+      var tmp, tmp_pos, tmp_list;
+      var ret = cert_info;
+      if (ret["key_type"] !~ "^.*-cert-v00@openssh.com")
+      {
+        ret["serial"] = substr(cert, pos, pos + 7);
+        pos += 8;
+      }
+
+      ret["type"] = substr(cert, pos, pos + 3);
+      pos += 4;
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["key_id"] = tmp;
+      pos += 4 + strlen(ret["key_id"]);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["valid_principals"] = tmp;
+      pos += 4 + strlen(ret["valid_principals"]);
+
+      tmp_pos = 0;
+      tmp_list = make_list();
+      while(tmp_pos < strlen(ret["valid_principals"]))
+      {
+        tmp = get_ssh_string(buffer:ret["valid_principals"], pos:tmp_pos);
+        tmp_list = make_list(tmp_list, tmp);
+        tmp_pos += 4 + strlen(tmp);
+      }
+      ret["valid_principals"] = tmp_list;
+
+      ret["valid_after"] = substr(cert, pos, pos + 7);
+      pos += 8;
+
+      ret["valid_before"] = substr(cert, pos, pos + 7);
+      pos += 8;
+
+      if (ret["key_type"] =~ "^.*-cert-v00@openssh.com")
+      {
+        tmp = get_ssh_string(buffer:cert, pos:pos);
+        if(isnull(tmp))
+          return NULL;
+        ret["constraints"] = tmp;
+        pos += 4 + strlen(ret["constraints"]);
+
+        tmp = get_ssh_string(buffer:cert, pos:pos);
+        if(isnull(tmp))
+          return NULL;
+        ret["nonce"] = tmp;
+        pos += 4 + strlen(ret["nonce"]);
+      }
+      else
+      {
+        tmp = get_ssh_string(buffer:cert, pos:pos);
+        if(isnull(tmp))
+          return NULL;
+        ret["critical_options"] = tmp;
+        pos += 4 + strlen(ret["critical_options"]);
+
+        tmp = get_ssh_string(buffer:cert, pos:pos);
+        if(isnull(tmp))
+          return NULL;
+        ret["extensions"] = tmp;
+        pos += 4 + strlen(ret["extensions"]);
+      }
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["reserved"] = tmp;
+      pos += 4 + strlen(ret["reserved"]);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["signature_key"] = tmp;
+
+      tmp = get_ssh_string(buffer:ret["signature_key"], pos:0);
+      if(isnull(tmp))
+        return NULL;
+      ret["signature_type"] = tmp;
+      pos += 4 + strlen(ret["signature_key"]);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["signature"] = tmp;
+      pos += 4 + strlen(ret["signature"]);
+
+      return ret;
+    }
+
+    ##
+    # Parses a SSH DSA digital signature.
+    #
+    # @param [cert:data] An SSH digital certificate.
+    #
+    # @return [array] An array containing parameters parsed from the certificate,
+    #         or NULL if an error occurs.
+    #
+    # @remark
+    # The format of the returned array is as follows:
+    # ```
+    # {
+    #   'key_type': <name of the key type>,
+    #   'nonce': <the nonce flag>,
+    #   'p': <the key's p parameter>,
+    #   'q': <the key's q parameter>,
+    #   'g': <the key's g parameter>,
+    #   'y': <the key's y parameter>
+    # }
+    # ```
+    ##
+    function parse_ssh_dsa_cert(cert)
+    {
+      var ret, pos, tmp, tmp_pos, tmp_list, fn;
+      fn = 'parse_ssh_dsa_cert';
+      ret = make_array();
+      pos = 0;
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["key_type"] = tmp;
+
+      pos += 4 + strlen(ret["key_type"]);
+
+      if (ret["key_type"] != "ssh-dss-cert-v00@openssh.com")
+      {
+        tmp = get_ssh_string(buffer:cert, pos:pos);
+        if(isnull(tmp))
+          return NULL;
+        ret["nonce"] = tmp;
+        pos += 4 + strlen(ret["nonce"]);
+      }
+
+      tmp = get_ssh_mpint(buffer:cert, pos:pos);
+      if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+        return NULL;
+      ret["p"] = tmp['value'];
+      pos += tmp['length'];
+
+      tmp = get_ssh_mpint(buffer:cert, pos:pos);
+      if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+        return NULL;
+      ret["q"] = tmp['value'];
+      pos += tmp['length'];
+
+      tmp = get_ssh_mpint(buffer:cert, pos:pos);
+      if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+        return NULL;
+      ret["g"] = tmp['value'];
+      pos += tmp['length'];
+
+      tmp = get_ssh_mpint(buffer:cert, pos:pos);
+      if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+        return NULL;
+      ret["y"] = tmp['value'];
+      pos += tmp['length'];
+
+      return parse_ssh_end_of_cert(cert:cert, cert_info:ret, pos:pos);
+    }
+
+    ##
+    # Parses a SSH RSA digital signature.
+    #
+    # @param [cert:data] An SSH digital certificate.
+    #
+    # @return [array] An array containing parameters parsed from the certificate,
+    #         or NULL if an error occurs.
+    #
+    # @remark
+    # The format of the returned array is as follows:
+    # ```
+    # {
+    #   'key_type': <name of the key type>,
+    #   'nonce': <the nonce flag>,
+    #   'e': <the key's e parameter>,
+    #   'n': <the key's n parameter>
+    # }
+    # ```
+    ##
+    function parse_ssh_rsa_cert(cert)
+    {
+      var ret, pos, tmp, tmp_pos, tmp_list, fn;
+      fn = 'parse_ssh_rsa_cert';
+      ret = make_array();
+      pos = 0;
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+
+      ret["key_type"] = tmp;
+
+      pos += 4 + strlen(ret["key_type"]);
+
+      if (ret["key_type"] != "ssh-rsa-cert-v00@openssh.com")
+      {
+        tmp = get_ssh_string(buffer:cert, pos:pos);
+        if(isnull(tmp))
+          return NULL;
+        ret["nonce"] = tmp;
+        pos += 4 + strlen(ret["nonce"]);
+      }
+
+      tmp = get_ssh_mpint(buffer:cert, pos:pos);
+      if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+        return NULL;
+      ret["e"] = tmp['value'];
+      pos += tmp['length'];
+
+      tmp = get_ssh_mpint(buffer:cert, pos:pos);
+      if(isnull(tmp) || empty_or_null(tmp['value']) || isnull(tmp['length']))
+        return NULL;
+      ret["n"] = tmp['value'];
+      pos += tmp['length'];
+
+      return parse_ssh_end_of_cert(cert:cert, cert_info:ret, pos:pos);
+    }
+
+    ##
+    # Parses a SSH ECDSA digital signature.
+    #
+    # @param [cert:data] An SSH digital certificate.
+    #
+    # @return [array] An array containing parameters parsed from the certificate,
+    #         or NULL if an error occurs.
+    #
+    # @remark
+    # The format of the returned array is as follows:
+    # ```
+    # {
+    #   'key_type': <name of the key type>,
+    #   'nonce': <the nonce flag>,
+    #   'curve': <the key's curve type>,
+    #   'public_key': <the public key>
+    # }
+    # ```
+    ##
+    function parse_ssh_ecdsa_cert(cert)
+    {
+      var ret, pos, tmp, tmp_pos, tmp_list, fn;
+      fn = 'parse_ssh_ecdsa_cert';
+      ret = make_array();
+      pos = 0;
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["key_type"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["nonce"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["curve"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["public_key"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      return parse_ssh_end_of_cert(cert:cert, cert_info:ret, pos:pos);
+    }
+
+    ##
+    # Parses a SSH ED25519 digital signature.
+    #
+    # @param [cert:data] An SSH digital certificate.
+    #
+    # @return [array] An array containing parameters parsed from the certificate,
+    #         or NULL if an error occurs.
+    #
+    # @remark
+    # The format of the returned array is as follows:
+    # ```
+    # {
+    #   'key_type': <name of the key type>,
+    #   'nonce': <the nonce flag>,
+    #   'public_key': <the public key>
+    # }
+    # ```
+    ##
+    function parse_ssh_ed25519_cert(cert)
+    {
+      var ret, pos, tmp, tmp_pos, tmp_list, fn;
+      fn = 'parse_ssh_ed25519_cert';
+      ret = {};
+      pos = 0;
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["key_type"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["nonce"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      tmp = get_ssh_string(buffer:cert, pos:pos);
+      if(isnull(tmp))
+        return NULL;
+      ret["public_key"] = tmp;
+      pos += 4 + strlen(tmp);
+
+      return parse_ssh_end_of_cert(cert:cert, cert_info:ret, pos:pos);
+    }
+
+    ##
+    # Parses a SSH digital signature.
+    #
+    # @param [cert:data] An SSH digital certificate.
+    #
+    # @return [array] An array containing parameters parsed from the certificate,
+    #         or NULL if an error occurs.
+    #
+    # @remark
+    # The format of the returned array will depend on the certificate's type.
+    # See the documentation of the following functions to know more:
+    #
+    # - `sshlib::kex_handler.parse_ssh_rsa_cert()`_
+    # - `sshlib::kex_handler.parse_ssh_dsa_cert()`_
+    # - `sshlib::kex_handler.parse_ssh_ecdsa_cert()`_
+    # - `sshlib::kex_handler.parse_ssh_ed25519_cert()`_
+    ##
+    public function parse_ssh_cert(cert)
+    {
+      var type;
+      type = get_ssh_string(buffer:cert, pos:0);
+      if ('ssh-rsa-cert' >< type)
+        return parse_ssh_rsa_cert(cert:cert);
+      else if ('ssh-dss-cert' >< type)
+        return parse_ssh_dsa_cert(cert:cert);
+      else if(type =~ "^ecdsa-sha2-nistp" && "-cert-" >< type)
+        return parse_ssh_ecdsa_cert(cert:cert);
+      else if(type =~ "^ssh-ed25519")
+        return parse_ssh_ed25519_cert(cert:cert);
+      return NULL; # error condition
+    }
+
+    ##
+    # Verifies the provided host key or host certificate against hosts known by the scan.
+    #
+    # @param [key:data]        An SSH host key.
+    # @param [key_type:string] Describes the keying algorithm.
+    # @param [cert:data]       An SSH host certificate.
+    #
+    # @return [boolean|NULL] TRUE if a matching valid key is found or no known host file was provided,
+    #         otherwise on error the return value of `sshlib::session.set_error()`_ is returned.
+    ##
+    public function verify_known_hosts(key, key_type, cert)
+    {
+      var ca_key, ca_keys, hostname, host_ip, host_string, known_key, ca_match, principal, revoked_key, valid_principal;
+      var val_key_count, validated_keys, fn = obj + '.verify_known_hosts';
+      var long_log;
+
+      session.dbg_log(
+        lvl:2,
+        src:fn,
+        msg:"Verifying the host key / certificate against the SSH known_hosts file provided in the scan policy...");
+
+      # If the server provided a host certificate, extract its public key
+      if(cert)
+      {
+        key = get_pub_key_from_cert(cert);
+        if (cert["key_type"] =~ "^ssh-rsa-")
+          key_type = "rsa";
+        else if (cert["key_type"] =~ "^ssh-dss-")
+          key_type = "dss";
+        else if (cert["key_type"] =~ "^ssh-ed25519-")
+          key_type = "ed25519";
+      }
+
+      # Check to see if we already have a validated key stored in the kb
+      var kt, kbname;
+      if (key_type !~ "^ecdsa")
+        kt = 'ssh-'+key_type;
+      else
+        kt = key_type;
+
+      kbname = SSH_LIB_KB_PREFIX+session.get_kb_connection_id()+'/hostkey/validated/'+kt;
+      validated_keys = get_kb_blob_list(kbname);
+
+      var vk;
+      foreach (vk in validated_keys)
+      {
+        if (vk == key)
+        {
+          session.dbg_log(
+            lvl:3,
+            src:fn,
+            msg:'Found matching, validated key in kb.',
+            msg_details:{"Data":{"lvl":3, "value":base64(str:key)}});
+          return TRUE;
+        }
+      }
+      session.dbg_log(lvl:3, src:fn, msg:'No validated key found in kb. Proceeding with validation.');
+
+      # Set host string of hostname/IP for debugging
+      hostname = get_host_name();
+      host_ip = get_host_ip();
+      host_string = hostname;
+      if(hostname != host_ip)
+        host_string += ', ' + host_ip;
+
+      # If neither of these KB items are present, a known_hosts file was not
+      # provided in the scan policy
+      ca_keys = get_kb_list("SSH/CAKey");
+      known_key = get_kb_item("SSH/KnownFingerprint/" + kt);
+      if(isnull(ca_keys) && isnull(known_key))
+      {
+        long_log =
+          "A known_hosts file was not provided in the scan policy or the " +
+          "known_hosts file provided did not contain any entries matching this host: " +
+          host_string;
+        session.dbg_log(lvl:2, src:fn, msg:long_log);
+        return TRUE;
+      }
+
+      # If the remote SSH server only provided a host key, not a host
+      # certificate, and a known host key was not provided in the same
+      # key type, the host cannot be validated
+      if (!cert && !known_key)
+      {
+        long_log =
+          "The host's "+key_type+" public key is missing from the scan policy's "+
+          "SSH known_hosts file. A CA key may have been provided to validate a remote "+
+          "SSH server certificate for this host, but the remote SSH server did not send a certificate.";
+        return session.set_error(src:fn, err_msg:long_log);
+      }
+
+      # Check if the key has been revoked
+      foreach revoked_key (get_kb_list("SSH/RevokedKey"))
+      {
+        # Check if the host key itself has been revoked
+        if (base64(str:key) == revoked_key)
+        {
+          long_log = "The host's "+key_type+" public key has been revoked in the scan policy's SSH known_hosts file.";
+          return session.set_error(src:fn, err_msg:long_log);
+        }
+
+        # If a host certificate was provided, check if the key of the CA
+        # used to sign the certificate has been revoked
+        if (cert && base64(str:cert["signature_key"]) == revoked_key)
+        {
+          long_log =
+            "The public key of the CA used to sign this host's " + cert["key_type"] +
+            " certificate has been revoked in the scan policy's SSH known_hosts file.";
+          return session.set_error(src:fn, err_msg:long_log);
+        }
+      }
+
+      # If a certificate was provided, check if the key was signed by a
+      # trusted CA and includes the host as a valid principal
+      if (cert && !isnull(ca_keys))
+      {
+        ca_match = FALSE;
+        valid_principal = FALSE;
+        foreach ca_key (ca_keys)
+        {
+          if (base64(str:cert["signature_key"]) == ca_key)
+          {
+            long_log =
+              "The SSH server certificate was signed using a trusted CA key " +
+              "listed in the scan policy's SSH known_hosts file.";
+            session.dbg_log(lvl:3, src:fn, msg:long_log);
+            ca_match = TRUE;
+            break;
+          }
+        }
+
+        # If we found a matching CA, verify that the principal is valid
+        if(ca_match)
+        {
+          # As a special case, a zero-length "valid principals" field
+          # means the certificate is valid for any principal of the
+          # specified type.
+          # Ref: http://www.openssh.com/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.certkeys?rev=1.9
+          if (max_index(cert["valid_principals"]) == 0)
+          {
+            session.dbg_log(
+              lvl:3,
+              src:fn,
+              msg:"The SSH server certificate is valid for any principal because the valid principals field is zero-length.");
+            valid_principal = TRUE;
+          }
+
+          # Otherwise, check to see if either the hostname or host IP
+          # is listed as a valid principal for the certificate
+          else
+          {
+            session.dbg_log(
+              lvl:3,
+              src:fn,
+              msg:"The following principals (hostnames) were found in the server certificate.",
+              msg_details:{"Principals":{"lvl":3, "value":serialize(cert["valid_principals"])}});
+            foreach principal (cert["valid_principals"])
+            {
+              if (principal == hostname || principal == host_ip)
+              {
+                session.dbg_log(
+                  lvl:3,
+                  src:fn,
+                  msg:"The SSH server certificate includes the SSH server host in its list of valid principals.");
+                valid_principal = TRUE;
+                break;
+              }
+            }
+          }
+
+          # If we found a matching CA and the principal is valid, we've
+          # validated the remote host
+          if(valid_principal)
+          {
+            long_log =
+              "The SSH certificate was validated: It is signed by a trusted CA and "+
+              "includes the target host as a valid principal.";
+            session.dbg_log(lvl:2, src:fn, msg:long_log);
+            # store the validated key in the kb
+            set_kb_blob(name:kbname, value:key);
+            return TRUE;
+          }
+          # If the CA is valid but the principal is invalid, we will still
+          # check for a valid host key, so just log and continue
+          else
+          {
+            session.dbg_log(
+              lvl:3,
+              src:fn,
+              msg:"The SSH server's certificate does not contain the following principal(s) : " + host_string);
+          }
+        }
+
+        # If we didn't find a matching CA, we will still check to see if
+        # the server's individual key is trusted, so just log and continue
+        else
+        {
+          long_log =
+            "The SSH server certificate was not signed by any of the trusted CAs " +
+            "with patterns matching the hostname " + host_string + " in the scan policy's " +
+            "SSH known_hosts file.";
+          session.dbg_log(lvl:3, src:fn, msg:long_log);
+        }
+      }
+      else if (cert && isnull(ca_keys))
+      {
+        long_log =
+          "The SSH server provided a certificate but there was not a CA key " +
+          "provided in the known_hosts file with a pattern to match this hostname: " + host_string;
+        session.dbg_log(lvl:3, src:fn, msg:long_log);
+      }
+      # end certificate checks
+
+      # Check if the host's key is explicitly listed as trusted
+      if (known_key)
+      {
+        if(base64(str:key) == known_key)
+        {
+          # store the validated key in the kb
+          set_kb_blob(name:kbname, value:key);
+          long_log =
+            "The SSH certificate was validated: The SSH server's " + key_type +
+            " public key matches the fingerprint in the scan policy's SSH known_hosts file.";
+          session.dbg_log(lvl:2, src:fn, msg:long_log);
+          return TRUE;
+        }
+
+        known_key = base64_decode(str:known_key);
+
+        if ("@NOTSET@" >< known_key)
+        {
+          long_log = "The host's "+key_type+" public key is missing from the scan policy's SSH known_hosts file.";
+          return session.set_error(src:fn, err_msg:long_log);
+        }
+
+        long_log =
+          "The host's "+key_type+" public key does not match the fingerprint "+
+          "in the scan policy's SSH known_hosts file.";
+        return session.set_error(src:fn, err_msg:long_log);
+      }
+      else
+      {
+        long_log =
+          "Public keys matching hostname " + host_string +
+          " were not provided in the scan policy's known_hosts file, only trusted CA keys " +
+          "were provided to match this hostname.";
+        session.dbg_log(lvl:3, src:fn, msg:long_log);
+      }
+
+      # If we got this far, that means trusted CA keys were supplied for
+      # this host in known_hosts but a public key for the key type was not,
+      # AND the server's certificate either was not signed by any of the
+      # trusted CAs or did not include a principal (hostname) that matched
+      # the remote host
+      if(!ca_match)
+      {
+        long_log =
+          "The SSH server's certificate was not signed by any of the trusted CAs in "+
+          "the scan policy's SSH known_hosts file and the host's " + key_type +
+          " public key was not provided in the scan policy's SSH known_hosts file.";
+        return session.set_error(src:fn, err_msg:long_log);
+      }
+      else
+      {
+        long_log =
+          "The SSH server's certificate was signed by a trusted CA in the scan policy's "+
+          "SSH known_hosts file, but the certificate does not contain the principal(s) '"+
+          host_string + "' and the host's "+key_type+" public key was not provided in the scan policy's SSH known_hosts file.";
+        return session.set_error(src:fn, err_msg:long_log);
+      }
+    }
+
+    ##
+    # Extracts the public key from an SSH certificate.
+    #
+    # @anonparam [cert:array] The array containing the parameters parsed from an SSH certficate.
+    #
+    # @return [data|NULL] The certificate's public key, or NULL if an error occurred.
+    #
+    # @remark The value given to ``cert`` should be in the format returned by `sshlib::kex_handler.parse_ssh_cert()`_.
+    ##
+    public function get_pub_key_from_cert()
+    {
+      var cert, key;
+      cert = _FCT_ANON_ARGS[0];
+      key = NULL;
+
+      if (cert["key_type"] =~ "^ssh-rsa-")
+        key = encode_ssh_rsa_public_key(e:cert["e"], n:cert["n"]);
+      else if (cert["key_type"] =~ "^ssh-dss-")
+        key = encode_ssh_dsa_public_key(p:cert["p"], q:cert["q"], g:cert["g"], y:cert["y"]);
+      else if (cert["key_type"] =~ "^ecdsa-")
+        key = encode_ecdsa_public_key(type:cert["key_type"], curve:cert["curve"], pk:cert["public_key"]);
+      else if (cert["key_type"] =~ "^ssh-ed25519-")
+        key = encode_ed25519_public_key(type:cert["key_type"], pubkey:cert["public_key"]);
+      else
+        session.set_error(src:FUNCTION_NAME, err_msg:"Unable to get public key from certificate. Unknown or unsupported key type.");
+
+      return key;
+    }
+
+    ##
+    # Encodes an SSH RSA public key from ``e`` and ``n`` parameters.
+    #
+    # @param [e:data] An RSA ``e`` parameter.
+    # @param [n:data] An RSA ``n`` parameter.
+    #
+    # @return [data] The encoded public key.
+    ##
+    function encode_ssh_rsa_public_key(e, n)
+    {
+      var key;
+      key =
+        mk_ssh_string('ssh-rsa') +
+        mk_ssh_mpint(e) +
+        mk_ssh_mpint(n);
+      return key;
+    }
+
+    ##
+    # Encodes an SSH DSA public key from its parameters.
+    #
+    # @param [p:data] An DSA ``p`` parameter.
+    # @param [q:data] An DSA ``q`` parameter.
+    # @param [g:data] An DSA ``g`` parameter.
+    # @param [y:data] An DSA ``y`` parameter.
+    #
+    # @return [data] The encoded public key.
+    ##
+    function encode_ssh_dsa_public_key(p, q, g, y)
+    {
+      var key;
+      key =
+        mk_ssh_string('ssh-dss') +
+        mk_ssh_mpint(p) +
+        mk_ssh_mpint(q) +
+        mk_ssh_mpint(g) +
+        mk_ssh_mpint(y);
+      return key;
+    }
+
+    ##
+    # Encodes an SSH ECDSA public key from its parameters.
+    #
+    # @param [type:string]   An ECDSA curve name.
+    # @param [curve:integer] The OpenSSL curve NID.
+    # @param [pk:data]       Public key bytes.
+    #
+    # @return [data] The encoded public key.
+    ##
+    function encode_ecdsa_public_key(type, curve, pk)
+    {
+      var key =
+        mk_ssh_string(type) +
+        mk_ssh_string(curve) +
+        mk_ssh_string(pk);
+      return key;
+    }
+
+    ##
+    # Encodes an SSH ED25519 public key from its parameters.
+    #
+    # @param [type:string] An ECDSA curve name.
+    # @param [pubkey:data] Public key bytes.
+    #
+    # @return [data] The encoded public key.
+    ##
+    function encode_ed25519_public_key(type, pubkey)
+    {
+      return mk_ssh_string(type) + mk_ssh_string(pubkey);
+    }
+
+    ##
+    # Sets a private field in this kex_handler object in support of unit testing.
+    #
+    # @param [field:string] A kex_handler member variable.
+    # @param [value:any]    A value to set.
+    ##
+    public function set_private_field(field, value)
+    {
+      if (field >!< serialize(keys(this)))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:field+' is not a field of kex_handler');
+        return NULL;
+      }
+      this[field] = value;
+    }
+
+    ##
+    # Tests a private member function of this kex_handler object.
+    #
+    # @param [name:string]  A kex_handler member function name.
+    # @param [kwargs:array] A dictionary of function arguments to use.
+    # @param [args:list]    A list of argument values to use.
+    #
+    # @return [any] The result of invoking the named private function with the
+    #         parameters provided.
+    ##
+    public function test_private_function(name, kwargs, args)
+    {
+      var fn = obj+'.test_private_function';
+      if (isnull(name))
+      {
+        dbg::detailed_log(lvl:1, src:fn, msg:'missing name parameter');
+        return NULL;
+      }
+      switch (name)
+      {
+        case "generate_ssh_rsa_cert_sig_data":
+          return generate_ssh_rsa_cert_sig_data(args[0]);
+        case "generate_ssh_dsa_cert_sig_data":
+          return generate_ssh_dsa_cert_sig_data(args[0]);
+        case "generate_ssh_ecdsa_cert_sig_data":
+          return generate_ssh_ecdsa_cert_sig_data(args[0]);
+        case "generate_ssh_ed25519_cert_sig_data":
+          return generate_ssh_ed25519_cert_sig_data(args[0]);
+        case "decode_ssh2_public_key":
+          return decode_ssh2_public_key(args[0]);
+        case "dh_valid_key":
+          return dh_valid_key(key:kwargs['key'],
+                              p:kwargs['p']);
+        case "ssh_derive_keys":
+          return ssh_derive_keys(hash:kwargs['hash'],
+                                 session_id:kwargs['session_id'],
+                                 shared:kwargs['shared'],
+                                 hash_type:kwargs['hash_type'],
+                                 max:kwargs['max']);
+        case "mk_ssh_mpint":
+          return mk_ssh_mpint(buffer:kwargs['buffer']);
+        case "ssh_rsa_verify":
+          return ssh_rsa_verify(e:kwargs.e,
+                                n:kwargs.n,
+                                signature:kwargs.signature,
+                                data:kwargs.data);
+        case "eddsa_verify":
+          return eddsa_verify(msg:kwargs.msg,
+                              host_key:kwargs.host_key,
+                              sig_blob:kwargs.sig_blob);
+        default:
+          dbg::detailed_log(lvl:1, src:fn, msg:
+              name+' is not yet implemented for testing with this function');
+          return NULL;
+      }
+    }
+  }
+
+  ##
+  # Generates a cryptographic signature of an SSH message (or hash) using an ED25519 key.
+  #
+  # @param [priv:data] An ED25519 private key.
+  # @param [data:data] The bits to sign.
+  #
+  # @return [data|NULL] The computed signature or NULL if an error happens.
+  ##
+  function ed25519_sign(priv, data)
+  {
+    #NID_ED25519 is a Nessus built-in value defined in Nessus 10.4 or later
+    var NID_ED25519;
+
+    #EdDSA is only available in Nessus 10.4 or later
+    if(nasl_level() < 190400)
+      return NULL;
+
+    var digest_ctx = new("EVP_MD_CTX");
+    if(isnull(digest_ctx) || !digest_ctx.valid())
+    {
+      dbg::detailed_log(
+        lvl:1,
+        src:FUNCTION_NAME,
+        msg:"Can't create EVP_MD_CTX object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+      return NULL;
+    }
+
+    var priv_key = new("EVP_PKEY");
+    if(isnull(priv_key))
+    {
+      dbg::detailed_log(
+        lvl:1,
+        src:FUNCTION_NAME,
+        msg: "Can't create EVP_PKEY object. This may happen with NBINs compiled with Nessus 10.3.x or older.");
+      return NULL;
+    }
+
+    priv_key.new_raw_private_key(
+      type:NID_ED25519,
+      key:priv
+    );
+
+    if(!priv_key.valid())
+      return NULL;
+
+    if(!digest_ctx.DigestSignInit(pkey:priv_key))
+    {
+      dbg::detailed_log(
+        lvl:1,
+        src:FUNCTION_NAME,
+        msg:"Failed to initialize a EVP_MD_CTX object. The supplied private key may be incorrect or corrupt.");
+      return NULL;
+    }
+
+    return digest_ctx.DigestSign(tbs:data);
+  }
+
+  ##
+  # Generates a cryptographic signature of an SSH message using an ECDSA key.
+  #
+  # @param [priv:data]   An ECDSA private key.
+  # @param [nid:integer] OpenSSL curve NID.
+  # @param [digest:data] The hash digest of an SSH message to sign.
+  #
+  # @return [data|NULL] The computed signature or NULL if an error occurs.
+  #
+  # @remark
+  # More information about ECDSA cryptography at:
+  #
+  #   SEC 1: Elliptic Curve Cryptography, Version 2.0 (http://www.secg.org/sec1-v2.pdf) Ch. 4.3.5
+  ##
+  function ecdsa_sign(priv, nid, digest)
+  {
+    var r, s, k, e, bits_to_drop;
+    var rcount, k_x_y, factor, inv_k;
+    s = bn_dec2raw("0");
+
+    var curve_info = ecc_curve_details(curve_nid:nid);
+    if(isnull(curve_info))
+      return NULL;
+
+    # Truncate digest if the hash is bigger than the curve
+    bits_to_drop = (strlen(digest) * 8) - curve_info.order_bits;
+    if (bits_to_drop > 0)
+      e = bn_rshift(bn:digest, bits:bits_to_drop);
+    else
+      e = digest;
+
+    var scount = 0;
+    # bn_cmp against bn_dec2raw("0") will not report -1 for big numbers with their MSB set
+    while ((bn_cmp(key1:s, key2:bn_dec2raw("0")) == 0 || s[0] >= '\x80') && scount < 1024)
+    {
+      rcount = 0;
+      r = bn_dec2raw("0");
+      while ((bn_cmp(key1:r, key2:bn_dec2raw("0")) == 0 || r[0] >= '\x80') && rcount < 1024)
+      {
+        k = ecc_generate_secret_key(curve_nid: nid);
+        k_x_y = ecc_scalar_multiply(scalar:k, curve_nid:nid);
+        r = bn_mod(k_x_y.x, curve_info.order);
+
+        rcount += 1;
+      }
+      factor = bn_mod_mul(r, priv, curve_info.order);
+      factor = bn_mod_add(e, factor, curve_info.order);
+
+      inv_k = bn_mod_inverse(k, curve_info.order);
+      s = bn_mod_mul(inv_k, factor, curve_info.order);
+
+      scount += 1;
+    }
+    return mk_ssh_string(r) + mk_ssh_string(s);
+  }
+
+  ##
+  # Takes a passphrase and extends it into a decryption key.
+  #
+  # @param [passphrase:string] A passphrase to extend.
+  # @param [iv:string]         The initial vector.
+  # @param [keysize:integer]   The number of bytes in the key.
+  #
+  # @return [string] The decryption key derived from the passphrase.
+  #
+  # @remark An implementation of PBKDF1 from section 5.1 of IETF RFC 2898
+  #         https://www.ietf.org/rfc/rfc2898.txt
+  ##
+  function make_key_from_passphrase(passphrase, iv, keysize)
+  {
+    var size;
+
+    var salt = iv;
+    if (strlen(salt) > 8) salt = substr(iv, 0, 7);
+
+    var bytes_left = keysize;
+    var digest = '';
+    var to_hash = '';
+    var key = '';
+
+    while(bytes_left > 0)
+    {
+      if (strlen(digest) > 0)
+        to_hash = digest;
+      else
+        to_hash = '';
+
+      to_hash += passphrase;
+      to_hash += salt;
+      digest = MD5(to_hash);
+      size = len(digest);
+      if (bytes_left < len(digest))
+      {
+        key += substr(digest, 0, bytes_left - 1);
+        size = bytes_left;
+      }
+      else
+        key += digest;
+
+      bytes_left -= size;
+    }
+
+    return key;
+  }
+
+
+  ##
+  # Decrypts a passphrase-protected SSH key.
+  #
+  # @param [encoded_key:data]  The key to decrypt.
+  # @param [iv:string]         The initial vector.
+  # @param [cipher:string]     The cipher used to encrypt the key.
+  # @param [passphrase:string] The passphrase for decrypting the key.
+  # @param [session:object]    The SSH session using the key - for reporting errors.
+  #
+  # @return [data|NULL] The decrypted key or NULL if an error occurs.
+  ##
+  function decrypt_protected_priv_key(encoded_key, iv, cipher, passphrase, session)
+  {
+    if (empty_or_null(iv) || empty_or_null(cipher) || empty_or_null(encoded_key))
+      return NULL;
+
+    # Map the openssh cipher to our cipher names - the assumption here with these
+    # rather loose mappings is that if use the wrong cipher the PK won't be decrypted
+    # correctly and an unsupported key error will be reported.
+    var orig_cipher = cipher;
+    cipher = tolower(cipher);
+
+    if (cipher =~ '^aes')
+      cipher = ereg_replace(pattern: "^aes-(.*)$", string: cipher, replace: "aes\1");
+    else if (cipher == 'des-ede3-cbc' || cipher == 'des3')
+      cipher = "3des-cbc";
+    else if (cipher == 'blowfish' || cipher == 'bf' || cipher == 'bf-cbc')
+      cipher = "blowfish-cbc";
+    else
+    {
+      if(!isnull(session))
+      {
+        return session.set_error(
+          src:FUNCTION_NAME,
+          err_msg:"Passphrase protected private key encrypted with unsupported cipher type: " + orig_cipher);
+      }
+      else
+        return NULL;
+    }
+
+    var cipherset = new("sshlib::cipherset");
+
+    cipherset.set_crypto_alg(cipher, sshlib::MODE_IN);
+    var key_len = cipherset.get_key_length(mode: sshlib::MODE_IN);
+    if(key_len <= 0)
+    {
+      if(!isnull(session))
+      {
+        return session.set_error(
+          src:FUNCTION_NAME,
+          err_msg:"Unable to decrypt passphrase protected private key. Unsupported cipher type: " + orig_cipher);
+      }
+      else
+        return NULL;
+    }
+
+    var key = make_key_from_passphrase(passphrase:passphrase, iv: iv, keysize: key_len);
+
+    var enckeys = make_list();
+    enckeys[0] = crap(data:'\0', length:strlen(iv));
+    enckeys[1] = iv;
+    enckeys[2] = crap(data:'\0', length:strlen(key));
+    enckeys[3] = key;
+    enckeys[4] = crap(data:'\0', length:strlen(iv));
+    enckeys[5] = crap(data:'\0', length:strlen(key));
+
+    cipherset.set_enc_keys(enckeys);
+
+    return cipherset.decrypt(data:encoded_key);
+  }
+
+  ##
+  # Reads public key information from OpenSSH formatted private keys
+  #
+  # @param [key_bytes:bytes]
+  # @param [pos:int]
+  # @param [key_type:string]
+  # @param [key_out:array]
+  #
+  # @return On success returns an updated position within the provided key_bytes that the
+  #         caller can use to continue parsing from.  On failure returns NULL.
+  ##
+  function openssh_get_public_key(key_bytes, pos, key_type, &key_out)
+  {
+    if(key_type == "ssh-ed25519")
+    {
+      key_out.pub = get_ssh_string(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.pub))
+        return NULL;
+
+      pos += strlen(key_out.pub) + 4;
+    }
+    else if(key_type == "ssh-rsa")
+    {
+      key_out.e = get_ssh_mpint(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.e) || isnull(key_out.e.length) || isnull(key_out.e.value))
+        return NULL;
+
+      pos += key_out.e.length;
+      key_out.e = key_out.e.value;
+
+      key_out.n = get_ssh_mpint(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.n) || isnull(key_out.n.length) || isnull(key_out.n.value))
+        return NULL;
+
+      pos += key_out.n.length;
+      key_out.n = key_out.n.value;
+    }
+    else if("ecdsa-sha2-nistp" >< key_type)
+    {
+      key_out.nid_name= get_ssh_string(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.nid_name))
+        return NULL;
+
+      pos += strlen(key_out.nid_name) + 4;
+
+      key_out.pub = get_ssh_string(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.pub))
+        return NULL;
+
+      pos += strlen(key_out.pub) + 4;
+
+      key_out.pub = mk_ssh_string(key_type) + mk_ssh_string(key_out.nid_name) + mk_ssh_string(key_out.pub);
+    }
+    else if(key_type == "ssh-dss")
+    {
+      key_out.p = get_ssh_mpint(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.p))
+        return NULL;
+      pos += key_out.p.length;
+      key_out.p = key_out.p.value;
+
+      key_out.q = get_ssh_mpint(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.q))
+        return NULL;
+      pos += key_out.q.length;
+      key_out.q = key_out.q.value;
+
+      key_out.g = get_ssh_mpint(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.g))
+        return NULL;
+      pos += key_out.g.length;
+      key_out.g = key_out.g.value;
+
+      key_out.pub_key = get_ssh_mpint(buffer:key_bytes, pos:pos);
+      if(isnull(key_out.pub_key))
+        return NULL;
+      pos += key_out.pub_key.length;
+      key_out.pub_key = key_out.pub_key.value;
+
+    }
+    else
+    {
+      return NULL;
+    }
+
+    return pos;
+  }
+
+
+  ##
+  # Converts an OpenSSH encoded SSH key into a binary form usable by sshlib.
+  #
+  # @param [priv:string]       A PEM encoded private key.
+  # @param [passphrase:string] A passphrase - optional, but required to unlock protected keys.
+  # @param [session:object]    The SSH session using the key - for reporting errors.
+  #
+  # @return [array|NULL] The binary key as an array of parameters,
+  #         or NULL or the return value of `sshlib::session.set_error()`_ if an error occurs.
+  #
+  # @remark
+  # The format of the returned array for ED25519 keys is as follows:
+  # ```
+  # {
+  #   'cipher'     : <name of the cipher used to encrypt the private key>,
+  #   'kdf'        : <name of the KDF used to extend the passphrase>,
+  #   'kdfoptions' : <options for the KDF>,
+  #   'type'       : <the type of key>,
+  #   'pub'        : <the public key>,
+  #   'priv'       : <the private key>,
+  #   'alg'        : <the algorithm used to derive the key>
+  # }
+  #
+  # The format for other key types follows that returned by the pem_to_<algo>() functions.
+  # ```
+  ##
+  function openssh_to_key(priv, passphrase, session)
+  {
+    var i, line, matches, key_bytes;
+
+    # There is no key or no session
+    if(isnull(priv) || isnull(session))
+      return NULL;
+
+    var lines = split(chomp(priv), sep:'\n', keep:FALSE);
+
+    if(max_index(lines) < 2)
+      return NULL;
+
+    if("--BEGIN OPENSSH PRIVATE KEY" >!< lines[0] || "--END OPENSSH PRIVATE KEY" >!< lines[max_index(lines)-1])
+      return NULL;
+
+    var encoded_key = '';
+
+    for(i = 1; i < max_index(lines)-1; i++)
+    {
+      line = chomp(lines[i]);
+      if(strlen(line) > 0)
+        encoded_key += line;
+    }
+
+    key_bytes = base64_decode(str: encoded_key);
+
+    var null_idx = stridx(key_bytes, '\x00');
+    if(null_idx < 0 || null_idx >= strlen(key_bytes))
+      return NULL;
+
+    var magic = substr(key_bytes, 0, null_idx);
+    if(magic != 'openssh-key-v1\x00')
+      return NULL;
+
+    var key = {};
+    var pos = null_idx + 1;
+
+    key.cipher = get_ssh_string(buffer:key_bytes, pos:pos);
+    pos += strlen(key.cipher) + 4;
+
+    key.kdf = get_ssh_string(buffer:key_bytes, pos:pos);
+    pos += strlen(key.kdf) + 4;
+
+    key.kdfoptions = get_ssh_string(buffer:key_bytes, pos:pos);
+    pos += strlen(key.kdfoptions) + 4;
+
+    if(isnull(key.cipher) || isnull(key.kdf) || isnull(key.kdfoptions))
+      return NULL;
+
+    var key_count = getdword(blob:key_bytes, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+    pos += 4;
+
+    var key_size;
+    for(i = 0; i < key_count; i++)
+    {
+      key_size = getdword(blob:key_bytes, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+
+      #The protocol supports multiple keys, but we only look at the first one so far.
+      if(i > 0)
+      {
+        pos += key_size;
+        continue;
+      }
+
+      key.type = get_ssh_string(buffer:key_bytes, pos:pos);
+      pos += strlen(key.type) + 4;
+
+      pos = openssh_get_public_key(key_bytes:key_bytes, pos:pos, key_type:key.type, key_out:key);
+      if(isnull(pos))
+        return NULL;
+    }
+
+    var priv_bytes = get_ssh_mpint(buffer:key_bytes, pos:pos);
+    priv_bytes = priv_bytes.value;
+    pos = strlen(priv_bytes) + 4;
+
+    if(key.cipher != "none" || key.kdf != "none" || key.kdfoptions != "")
+    {
+      priv_bytes = decrypt_openssh_private_key(
+        blob       : priv_bytes,
+        cipher     : key.cipher,
+        kdf        : key.kdf,
+        passphrase : passphrase,
+        options    : key.kdfoptions
+      );
+
+      if(empty_or_null(priv_bytes))
+        return session.set_error(src:FUNCTION_NAME,
+                                 err_msg:"Decryption of passphrase protected OpenSSH private key failed.");
+    }
+
+    pos = 0;
+    i = getdword(blob:priv_bytes, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+    pos += 4;
+    var j = getdword(blob:priv_bytes, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+    pos += 4;
+
+    #decryption success quick check
+    if(i != j)
+      return NULL;
+
+    var key_type = get_ssh_string(buffer:priv_bytes, pos:pos);
+    pos += strlen(key_type) + 4;
+
+    var decrypted_key = {};
+    pos = openssh_get_public_key(key_bytes:priv_bytes, pos:pos, key_type:key_type, key_out:decrypted_key);
+    if(isnull(pos))
+      return NULL;
+
+    key.priv = get_ssh_mpint(buffer:priv_bytes, pos:pos);
+    key.priv = key.priv.value;
+
+    #encrypted public key must match
+    if(key_type == "ssh-ed25519")
+    {
+      if(decrypted_key.pub != key.pub)
+        return NULL;
+
+      key.priv = substr(key.priv, 0, 31);
+      key.pub = mk_ssh_string(key.type) + mk_ssh_string(key.pub);
+    }
+    else if(key_type == "ssh-rsa")
+    {
+      #In the private key 'e' and 'n' are reversed
+      if(decrypted_key.n != key.e ||
+         decrypted_key.e != key.n)
+        return NULL;
+
+      key.d = key.priv;
+    }
+    else if("ecdsa-sha2-nistp" >< key_type)
+    {
+      if(key.pub != decrypted_key.pub)
+        return NULL;
+
+      if(key.nid_name == "nistp256")
+        key.nid = curve_nid.nist.P256;
+      else if(key.nid_name == "nistp384")
+        key.nid = curve_nid.nist.P384;
+      else if(key.nid_name == "nistp521")
+        key.nid = curve_nid.nist.P521;
+      else
+        return NULL;
+    }
+    else if(key_type == "ssh-dss")
+    {
+      if(key.p != decrypted_key.p ||
+         key.q != decrypted_key.q ||
+         key.g != decrypted_key.g ||
+         key.pub_key != decrypted_key.pub_key)
+        return NULL;
+
+      key.priv_key = key.priv;
+    }
+    else
+    {
+      return NULL;
+    }
+
+    key.alg = key.type;
+
+    return key;
+  }
+
+
+  ##
+  # Converts a PEM encoded SSH key into its ECDSA binary form.
+  #
+  # @param [priv:string]       A PEM encoded private key.
+  # @param [passphrase:string] A passphrase - required to unlock protected keys.
+  # @param [session:object]    The SSH session using the key - for reporting errors.
+  #
+  # @return [array|NULL] The binary key as an array of parameters, or NULL if an error occurs.
+  #
+  # @remark
+  # The format of the returned array is as follows:
+  # ```
+  # {
+  #   'type'       : <the type of key>,
+  #   'pub'        : <the public key>,
+  #   'priv'       : <the private key>,
+  #   'alg'        : <the algorithm used to derive the key>,
+  #   'nid'        : <the curve's NID used to derive the key>
+  # }
+  # ```
+  ##
+  function pem_to_ecdsa(priv, passphrase, session)
+  {
+    var i, line, matches, der_key;
+
+    # There is no key
+    if(isnull(priv))
+      return NULL;
+    var lines = split(chomp(priv), sep:'\n', keep:FALSE);
+
+    if( max_index(lines) < 2)
+      return NULL;
+    if( "--BEGIN EC PRIVATE KEY" >!< lines[0] || "--END EC PRIVATE KEY" >!< lines[max_index(lines)-1])
+      return NULL;
+
+    var encoded_key = '';
+    var encrypted = FALSE;
+    var pk_cipher = '';
+    var iv = '';
+
+    for (i=1; i < max_index(lines)-1; i++)
+    {
+      line = chomp(lines[i]);
+      if (line =~ '^Proc-Type:.*ENCRYPTED')
+      {
+        encrypted = TRUE;
+        continue;
+      }
+
+      matches = pregmatch(pattern:"^DEK-Info: ([\w-]+),(\w+)", string: line);
+      if (!empty_or_null(matches))
+      {
+        pk_cipher = matches[1];
+        iv = hex2raw(s:matches[2]);
+        continue;
+      }
+
+      if(strlen(line) > 0)
+        encoded_key += line;
+    }
+
+    der_key = base64_decode(str: encoded_key);
+    if (encrypted)
+    {
+      if (empty_or_null(iv) || empty_or_null(pk_cipher) || empty_or_null(encoded_key))
+        return NULL;
+
+      der_key = decrypt_protected_priv_key(
+        encoded_key : der_key,
+        iv          : iv,
+        cipher      : pk_cipher,
+        passphrase  : passphrase,
+        session     : session
+      );
+    }
+
+    if(empty_or_null(der_key))
+      return NULL;
+
+    var asn1_key = der_decode(data:der_key);
+    if(empty_or_null(asn1_key))
+      return NULL;
+
+    asn1_key = asn1_key[1];
+    var pos = 0;
+    var length_der = der_decode(data:asn1_key, pos:0);
+
+    #Check the der code here to detect bad private key decryption or user submitted garbage.
+    if(empty_or_null(length_der) || length_der[0] != 2) return NULL;
+    pos = length_der[2];
+    var der_private_key = der_decode(data:asn1_key, pos:pos);
+
+    if(empty_or_null(der_private_key))
+      return NULL;
+    pos = der_private_key[2];
+    var parameters = der_decode(data:asn1_key, pos:pos);
+
+    if(empty_or_null(parameters))
+      return NULL;
+    pos = parameters[2];
+    var asn_public_key = der_decode(data:asn1_key, pos:pos);
+    if(empty_or_null(asn_public_key))
+      return NULL;
+
+
+    var der_public_key = der_decode(data:asn_public_key[1]);
+    if(empty_or_null(der_public_key))
+      return NULL;
+
+    var key = {};
+    key.priv = der_private_key[1];
+
+    var der_named_curve = der_decode(data:parameters[1], pos:0);
+    if(empty_or_null(der_named_curve))
+      return NULL;
+
+    var named_curve = der_decode_oid(oid: der_named_curve[1]);
+    key.nid = curve_nid.oid[named_curve];
+
+    var nidname;
+    if(key.nid == curve_nid.nist.P256)
+      nidname = "nistp256";
+    else if(key.nid == curve_nid.nist.P384)
+      nidname = "nistp384";
+    else if(key.nid == curve_nid.nist.P521)
+      nidname = "nistp521";
+    else
+      return NULL;
+
+    key.type = "ecdsa-sha2-" + nidname;
+    key.alg = key.type;
+    var pk_point = substr(der_public_key[1], 1);
+    key.pub = mk_ssh_string(key.type) + mk_ssh_string(nidname) + mk_ssh_string(pk_point);
+
+    return key;
+  }
+}

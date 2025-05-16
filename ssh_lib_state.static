@@ -1,0 +1,210 @@
+#TRUSTED 88e94bbdc09e7549dbf969f9ae1694b87c4a4a806e4051b58615e63bd5bff0700919d321d3d67d383716a4707ac6126b4b14af9ed800c7065b1065ce08d9fe65c8517a121af5a9449d536c0ae12db15ad3f2cb49390d6b8cac88aad60974c0c4ac57d261d6cf90c150477de3bc632ca064cc9f90b50db8291b0587e0661b6bb91225f8fcab6e96d3ad883206b217334a1d52f15560702bf2e2179f5dd6da13ec977ecdb1ca8697377b7b1ff2f0ac31a11f1957d04012b75b7677b89e82c187721f82a523633de08338011e4e6e49ce2d6ef268da96abec1c82f0500b0260018417a7b2cd35523d2e19562fd95bae21414b7e9dc60c3a4e84b8cac1f8a67be86c9d12944c50d41b2d1c8f78ad30bb630ff79fa163fba15a7dcbc5832897a1da1dbb02a490484685fe115b2bdf47676054244e30d225cda17e62ceadac00d845dafc46cac9b8f5c8dfca84ba1781a23193011717a8d5904c3b1ac0c1f498dc173a54ed130a02b532f14773cb40bb84b951fc55f17271af7ee2954afbbe8927db264894eddc8573bdac7d17dcd85ecc6a784ae246bb75a18f07d3a4f6f0301c2c39330590094fc2c62f4ddb411be93bec1eeb928f51e7ac1e9e5694cf9a9922455650c3519f081bfb402745f0e7a4d8c4dd7e303b3d576b278d40127341e72904a5e772698605a1694d2ae0d2191e7efe7e115b53466902beee8ddc424522ed0e3f
+#TRUST-RSA-SHA256 782c1ab9a5a5b13cce25b289d8777c46482578ee9f3576b579534259641bf1d093125856eb20d7484e0a612541744f3fd4e1737b8c104a31b824e57f59887d3823ff3a6254328f9452394219b09f2915671eade44e071881ea9edec225906656214725f7379e479b984ddaecce13254c8cff4e16b3322e3abf2acebab9ebef27c4bd4f66fe33d9e6ff5e8c0a2de60a8ab4e947e7c4b15abd34bbb815b13a28fdb80313e5635ebca3f1b16c86887593757d762d548a777f94d14d9a89c9ea34b400bd7a905f932134e2bd26c1a5b616f79d285d6244cc143783fd96f6a3bcb7a2651444fdf161b404f35ff90b4125c39f7ae12fec702e1b1f012af40adc4c0b3998ae0d4c8327b85a736d5ca33d265789dc8df4237b64f6b639345197d3610be8734d5497191e8258eb8118b41358755236a6dd6538a3c010e2fb6a78df0b7df335c63871fab25e9897b7e84a320570089a77ec4a8d4889da9cf86345856915e81dcf24bee2d3d721c3f06272a156c9a19a06192b5b81beeb42f180c9006f8d890c5e080011add2a0dff98ba60b6f1ea02e7b6ce26bf7c049e564dac5e7aa89ddb9d1f05f5a88a7432aa9e5d985ef290a47f6696ae5786b5fb4cb9bc45b8aaf71783c81c00adaec6b639a646a2c48ab98256a952294ec20d3e2a9111c1e8a0832c044432f511aec2db69d52374d6b5fb5fcc1113c159077ac0ad356c6984bcece
+###
+# Collection of objects and functions to handle SSH client states.
+#
+# @license
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.4
+#
+# @NOGPL@
+#
+# @library ssh_lib.inc
+# @category SSH
+###
+
+namespace sshlib {
+
+  global_var ssh_client_allowed_states =
+    make_list(
+      "SOC_CLOSED",
+      "SOC_OPENED",
+      "KEX_BEGIN",
+      "KEX_DONE",
+      "SERVICE_REQUEST_SUCCESS",
+      "USERAUTH_REQUEST",
+      "USERAUTH_SUCCESS",
+      "USERAUTH_INFO_REQ",
+      "USERAUTH_INFO_RES",
+      "USERAUTH_FAILURE",
+      "USERAUTH_PK_REQUEST",
+      "USERAUTH_PK_OK",
+      "USERAUTH_GSSAPI_REQUEST",
+      "USERAUTH_GSSAPI_RESPONSE",
+      "USERAUTH_GSSAPI_TOKEN",
+      "USERAUTH_GSSAPI_ERROR",
+      "USERAUTH_GSSAPI_ERRTOK"
+    );
+
+  # Note: We cannot use inheritance yet, because it is only supported in
+  # Nessus 6.4+ and Nessus 6.0+ is still supported. Please do not remove
+  # the following commented code because it can be used as a template.
+  # Begin commented code
+  #object ssh_state
+  #{
+  #  var val;
+  #  var allowed_states;
+  #  var session;
+
+  #  function ssh_state()
+  #  {
+  #    if(!isnull(_FCT_ANON_ARGS[1]))
+  #      allowed_states = _FCT_ANON_ARGS[1];
+
+  #    if(!isnull(_FCT_ANON_ARGS[0]))
+  #      set(_FCT_ANON_ARGS[0]);
+  #  }
+
+  #  public function set_session()
+  #  {
+  #    session = _FCT_ANON_ARGS[0];
+  #  }
+
+  #  public function oneof(state_list)
+  #  {
+  #    var state;
+  #    foreach state (state_list)
+  #      if(state == val) return TRUE;
+
+  #    return FALSE;
+  #  }
+
+  #  public function set()
+  #  {
+  #    if(session.debug >= DEBUG1)
+  #      session.dbg_log(fn:"ssh_client_state.set", message:'** Entering STATE ' + _FCT_ANON_ARGS[0] + ' **');
+
+  #    var state;
+  #    foreach state (allowed_states)
+  #    {
+  #      if(state == _FCT_ANON_ARGS[0])
+  #      {
+  #        val = _FCT_ANON_ARGS[0];
+  #        return;
+  #      }
+  #    }
+      # should never get here
+  #    exit(1, "Critical error - SSH STATE " + _FCT_ANON_ARGS[0] + " is invalid."); 
+  #  }
+  #}
+  #object ssh_client_state : sshlib::ssh_state
+  #{
+  #  function ssh_client_state () : super(_FCT_ANON_ARGS[0], ssh_client_allowed_states) {}
+  #}
+  # End commented code
+
+  ##
+  #
+  # Object ssh_client_state
+  #   Object to keep track of SSH client state
+  #
+  ##
+  object ssh_client_state
+  {
+    var val;
+    var allowed_states;
+    var session_id;
+
+    ##
+    # Constructor for the ``sshlib::ssh_client_state`` object.
+    ##
+    function ssh_client_state()
+    {
+      allowed_states = ssh_client_allowed_states;
+    }
+
+    ##
+    # Links the given ``sshlib::session`` object to this ``sshlib::ssh_client_state`` instance.
+    #
+    # @anonparam [session:object] The ``sshlib::session`` object to link.
+    ##
+    public function set_session()
+    {
+      var session = _FCT_ANON_ARGS[0];
+      session_id = session.get_number();
+    }
+
+    ##
+    # Check list of states against current state.
+    #
+    # @param [state_list:list] The list of states to check against.
+    #
+    # @return [boolean] TRUE if a state in ``state_list`` matches the current state, FALSE otherwise.
+    ##
+    public function oneof(state_list)
+    {
+      var state;
+      foreach state (state_list)
+      {
+        if(state == val)
+          return TRUE;
+      }
+
+      return FALSE;
+    }
+
+    ##
+    # Gets the Session ID of the ``sshlib::session`` object linked to this instance.
+    #
+    # @return [integer] The session ID.
+    ##
+    public function get_session_id()
+    {
+      return this.session_id;
+    }
+
+    ##
+    # Constructs and logs the given debug message.
+    #
+    # @param [message:string] The debug message to log.
+    # @param [fn:string]      Function name string of callee to include in debug message.
+    #
+    # @return [string] Formatted debug log string.
+    #
+    # @remark All messsages logged with this function are logged at level 3.
+    ##
+    public function dbg_log_client_state(message, fn)
+    {
+      var s;
+      if (isnull(message))
+        message = _FCT_ANON_ARGS[0];
+      if (isnull(fn))
+        fn = '';
+      fn = '[session ' + this.get_session_id() + '] ' + fn;
+      dbg::detailed_log(lvl:3, src:fn, msg:message);
+      if (TAP_MODE) 
+        _SCRATCH_PAD_MIRROR[max_index(_SCRATCH_PAD_MIRROR)] = fn + ' ' + message;
+      return fn + ' ' + message;
+    }
+
+    ##
+    # Sets the SSH state to the given state.
+    #
+    # @anonparam [set_state:string] The SSH state to set.
+    #
+    # @remark This function will validate the given state and only set it as the current state if it valid.
+    ##
+    public function set()
+    {
+      var set_state = _FCT_ANON_ARGS[0];
+      dbg_log_client_state(fn:"ssh_client_state.set", message:'** Entering STATE ' + set_state + ' **');
+
+      var state;
+      foreach state (allowed_states)
+      {
+        if(state == set_state)
+        {
+          val = set_state;
+          return NULL;
+        }
+      }
+      # should never get here
+      dbg_log_client_state(fn:"ssh_client_state.set", message:"Critical error - SSH STATE " + set_state + " is invalid.");
+    }
+  }
+}

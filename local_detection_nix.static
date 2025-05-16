@@ -1,0 +1,3695 @@
+#TRUSTED aa067f91e1f1b2a9861d9c331dfe90c10dedc657f5469a1649e2625ccfb094eba14f25f78a22ca0780772756aa0c40e1d1881e8e2cfb58a0f7fabb005d8fed68c38e7c3ee524d26564e829576b6d413400cb6762228a1c7138cbfbb5115947c2425713924db7643bac40d3b7bee49ab1cf31f10d3da9ee51379acade705fa6b24a0e575424a27a91a1655b757426a4830bba2a42c78ca78fcfaf46d667246def4a62dcd34fcb0fa473b7eebd41006439d93dfaa5cfa8e395bf077a0ae75f31afe41b19584402375789833b413e99d5f604c81f8a1ca8d16661efbe5d7e9e502ba516804ee1bea5125c932538063d34b0719b3f13f476e3cad715e0144a1f3e481b8d54f11306b27e79828f1bbf74daa29a23d5e25b0215697e91da7cc2d8b01e4d61cf109d8a81c76002e3c207ddee9bd9a01e9f7ceecb87f32d1581ac07b29e7330f9f295ff376559b25483829537433a25cb998b91c40f65fd28952f2fb79be60c60ca8589ca2c3377339d5d36a7e553c7ea333783095d46c1dc682b913258bf45937150dabcc818bf99752ac7dab43ca3ce0b43ca803f40814e6ee120d6a9d1172ecd24a0bf5faae9c64ac962eac4765d551547b36f8a6b66a658c9e2079b741d43b5aeb95d220eed1765cb4dae3f558b6b72e9b801ca5c0b86f7c66c1f7348a063ebb2dd54b369e81c28a43b01738f930e898f997cced8d945dd2930f604
+#TRUST-RSA-SHA256 52fd9062358ee599a84bda77979cdf18724877e6aed3fb8017bb2a80aa190767c8dff93eebb2a1dd79947abd8214d411523ec56d2b6dfdd2aa21eb53496e44f0b4f14b2019b048dbe9ab549c4cbb6c857190d74f4019a7f4270ec75ae29fc947328a5b7da45d31762a0ab2a6b3a7e12f12eea3f74fb6d26a9074596e1978bc6fefb8c9e1994c7230feefbf4d151be766295683c1c5782e74b4f352ddbe48451fc3e91d73b77efc22a0eeedb005a8a8ae9afa31eaaac92f6260b348656fe3155fb001e376ab9b89700e15e4a289d6f8d38ad7619dbf8ea28ab73fa6a5f009abbe7601caf50242ee866af9833147fb09dd0c59fdf5f8e7ae29daa3ed407741b12a42e1bb72a6eefb19e09082e8dd5749c74a9e2c4671983315dbf261fb8f9f415e49037356b035548e87c507e88172c0d391b0a1eded8b2cb8934118deaf095c07f31c6725a8c08e9548b818d31d695c37cdd3a47b5a6ba35ebee2840a3892b5256788870a16cc73817427601a11f5b6c3f1c16996ab095099e89aae802f4f9e3b4c505daaac3587dcc2828e8cfea4a7c07bee6ef850eaaf1ff6cb7d7ec082b8a278f10361f38d7ac321cce0137a1d60709bbcdd5589fea405a49b4f156fa6ce93019a8b3b08e50eb4d6aa5d7ea7d3c8de5265bc9da6d7b58c3d599d0cba35a08f9ab40f4524552ce1504d549fc5ff8451d7dc43f877e1e5c2211fa56291d9f996
+#------------------------------------------------------------------------------
+###
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# local_detection_nix.inc
+#
+# Revision: 1.75
+#
+# @library local_detection_nix.inc
+#
+###
+
+##
+#
+#  Namespace ldnix
+#    Encapsulates local detection on Linux routines and objects.
+#
+##
+namespace ldnix
+{
+  #pragma const
+  var _PACKAGE_LIST_KEY = "Host/nix/packages";
+  #pragma const(false)
+
+  var strings_supported = "Unknown";
+  var general_bin_dirs = [ '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin', '/usr/local/sbin' ];
+
+  var unit_tests = {enabled : false};
+
+  ##
+  #
+  # Object target
+  #   Simple data structure containing data required to do a package list search.
+  #
+  ##
+
+  object pkg_target
+  {
+    var app;
+    var regex;
+    var snapcraft_pkg_name;
+    var extra;
+    var extra_no_report;
+
+    ##
+    # Constructs a target object used in package search.
+    #
+    # @remark If you only need the package name, you can use a regex without second capturing group.
+    # @anonparam [app:string] Name of the application contained in the package.
+    # @anonparam [regex:string] Regular expression with one or two capturing groups - first one for package name and second for version.
+    #                           This regex is for querying data stored under kb Host/nix/packages, or other data with similar format.
+    # @anonparam [snapcraft_pkg_name:string] This is the package name as it appears in the package manager.
+    #             This parameter can be useful when we need to query scratchpad for information regarding a package, where the package name and version,
+    #             as well as other information are stored separately in different fields. An example can be seen from canonical_snapcraft_packages_nix_installedn.nasl.
+    # @anonparam [extra:array] Array of additional extra data passed to any package objects found during search.
+    # @anonparam [extra_no_report:array] Array of additional extra_no_report data passed to any package objects found during search.
+    ##
+    function pkg_target()
+    {
+      this.app = _FCT_ANON_ARGS[0];
+      this.regex = _FCT_ANON_ARGS[1];
+      this.snapcraft_pkg_name = _FCT_ANON_ARGS[2];
+      this.extra = _FCT_ANON_ARGS[3];
+      this.extra_no_report = _FCT_ANON_ARGS[4];
+    }
+  }
+
+  ##
+  #
+  # Object executable
+  #   Simple data structure containing data required to register a detected software executable
+  #
+  ##
+
+  object installation
+  {
+    var app;
+    var path;
+    var version;
+    var extra;
+    var extra_no_report;
+    var is_package;
+    var fa_app_name;
+    var is_snapcraft_package;
+
+    ##
+    # Constructs an installation object.
+    #
+    # @anonparam [app:string] Name of the application.
+    # @anonparam [path:string] Exact path to executable catalog or a package name.
+    # @anonparam [version:string] String representing the version of the executable.
+    # @anonparam [is_package:boolean] Flag telling if path argument is a package name, defaults to false.
+    # @anonparam [extra:array] Optional array of additional data passed to register_install() as "extra" argument.
+    # @anonparam [extra_no_report:array] Optional array of additional data passed to register_install() as "extra_no_report" argument.
+    # @anonparam [fa_app_name:string] Optional app name for use by frictionless agents
+    ##
+    function installation()
+    {
+      this.app = _FCT_ANON_ARGS[0];
+      this.path = _FCT_ANON_ARGS[1];
+      this.version = _FCT_ANON_ARGS[2];
+      this.is_package = _FCT_ANON_ARGS[3];
+      this.extra = _FCT_ANON_ARGS[4];
+      this.extra_no_report = _FCT_ANON_ARGS[5];
+      this.fa_app_name = _FCT_ANON_ARGS[6];
+      this.is_snapcraft_package = _FCT_ANON_ARGS[7];
+      if(isnull(this.is_package)) this.is_package = false;
+      if(isnull(this.is_snapcraft_package)) this.is_snapcraft_package = false;
+      if(isnull(this.extra)) this.extra = {};
+      if(isnull(this.extra_no_report)) this.extra_no_report = {};
+    }
+
+    ##
+    # Adds any extra info to the object. Existing values will be overwritten by new ones if any keys were already in the object's extra array.
+    #
+    # @param [extra:array] A string:string array that will be added to object's extra array. Can be passed anonymously.
+    ##
+    public function add_extra(extra)
+    {
+      if(isnull(extra))
+        extra = _FCT_ANON_ARGS[0];
+      foreach(var key in keys(extra))
+      {
+        this.extra[key] = extra[key];
+      }
+    }
+
+    ##
+    # Adds any extra_no_report info to the object. Existing values will be overwritten by new ones if any keys were already in the object's extra_no_report array.
+    #
+    # @param [extra_no_report:array] A string:string array that will be added to object's extra_no_report array. Can be passed anonymously.
+    ##
+    public function add_extra_no_report(extra)
+    {
+      if(isnull(extra))
+        extra = _FCT_ANON_ARGS[0];
+      foreach(var key in keys(extra))
+      {
+        this.extra_no_report[key] = extra[key];
+      }
+    }
+
+    public function add_fa_app_name(fa_app_name)
+    {
+      if(isnull(fa_app_name))
+        fa_app_name = _FCT_ANON_ARGS[0];
+      this.fa_app_name = fa_app_name;
+    }
+  }
+
+  ##
+  # Simple wrapper to make run_cmd_template a drop in replacement for
+  # info_send_cmd
+  #
+  # @param [template:string] arguments are presented as $<argument_number>$ in template
+  # @param [args:list] list of arguments (optional)
+  # @param [timeout:integer] timeout in seconds (optional)
+  # @param [nosudo:boolean] Disables sudo in ssh_cmd
+  # @param [force_priv_escl:boolean] Passes through to ssh_cmd() to be passed to
+  #                        sshlib if wrapper functions are enabled
+  #
+  # @return The data returned by the command, or NULL if an error occurred.
+  ##
+  function run_cmd_template_wrapper(template,args,timeout,nosudo,force_priv_escl)
+  {
+    var resp, errmsg;
+
+    # Used for mocking return values
+    #  - Example: ldnix::unit_tests['ldnix::run_cmd_template_wrapper']["strings '$1$'"]['["/usr/bin/curl"]']  = 'curl 8.4.0'
+    if (unit_tests[FUNCTION_NAME][template][serialize(args)])
+      return unit_tests[FUNCTION_NAME][template][serialize(args)];
+
+    if (empty_or_null(timeout))
+      resp = run_cmd_template(template:template,args:args,nosudo:nosudo,force_priv_escl:force_priv_escl);
+    else
+      resp = run_cmd_template(template:template,args:args, timeout:timeout,nosudo:nosudo,force_priv_escl:force_priv_escl);
+
+    if (resp['error'] == HLF_OK)
+      resp = resp['data'];
+    else
+    {
+      errmsg = 'Error returned: ' + resp['error'];
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:errmsg);
+      resp = NULL;
+    }
+    return resp;
+  }
+
+
+
+  ##
+  #  Determines if an installation (denoted by full path to file)
+  #   is associated with an OS-supported package.
+  #
+  #  @param [binpath:str] Exact path to the file to check
+  #       Examples: '/usr/share/tomcat/bin/catalina-tasks.xml', '/usr/bin/ssh'
+  #  @param [match_strings:list] List of strings that match expected 'rpm -qf' output
+  #        Example:
+  #          match_strings = [ 'nginx-' ]
+  #          Response from package manager:  'nginx-1.16.1-1.el7|1\n'
+  #       Usually, only 1 string is needed.  Example: ['tomcat-'] for Apache Tomcat
+  #        Sometimes, multiple strings can match.  Example ['-sun', '-oracle'] for Java.
+  #        This is why this argument must be a list.
+  #
+  #  @remark Example of use of function from nbin/detection_scripts/nginx_nix_installed.nasl
+  #  -- start --
+  #
+  #  var match_strings = [ 'nginx-' ];
+  #  pkgret = ldnix::get_package_association(binpath: path,
+  #                                          match_strings:match_strings);
+  #
+  #  if (!empty_or_null(pkgret) && pkgret[path].managed)
+  #     extra['Managed by OS'] = "True";
+  #
+  #  -- end --
+  #
+  #  @return data_structure with results of evaluation or NULL if error encountered
+  #
+  #  @remark Example of returned data structure:
+  #  make_nested_array(
+  #  '/usr/share/tomcat/bin/catalina-tasks.xml', make_nested_array(
+  #      'managed', 1,
+  #      'response', 'tomcat-7.0.76-12.el7_8.noarch',
+  #      'rhel_uncertain', 0
+  #  )
+  #
+  #  Note, the above data structure is returned because
+  #   there are times when we cannot just return 'TRUE' (see rhel_uncertain below)
+  #   and must provide more detail.  The data structure allows for this.
+  #
+  ##
+  function get_package_association(binpath, match_strings)
+  {
+    var managed,           # binary variable for storing answer
+        rhel_uncertain,    # special-case variable
+        pkg_chk,           # package manager query to run
+        buf,               # response returned by target
+        response,          # var to hold response from package manager query
+        packages,          # var list of parsed packages
+        package,           # var used for parsed package
+        match_item,        # var used in match_strings foreach loop
+        match_found,       # flag to indicate success
+        msg,               # used for spad_log calls/verification
+        ret,               # var returned by function
+        error,             # flag used to indicate an error was encountered
+        lines,             # used for processing lines of output
+        sections,          # used for processing sections of individual lines
+        section;           # used for processing specific sections for a line
+
+    var snapcraft_package_file = FALSE;
+    var pattern, match, matches, line;
+
+    # validation begins
+    if (empty_or_null(binpath))
+    {
+      msg = 'Invalid binpath arg.';
+      if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug"))
+        return msg;
+      else
+      {
+        dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg:msg);
+        return NULL;
+      }
+    }
+
+    # Reject strings that match dirs or have no path
+    if ("/" >!< binpath || binpath =~ "\/$")
+    {
+      msg = 'Suspicious path found in binpath arg.';
+      if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug"))
+        return msg;
+      else
+      {
+        dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg:msg);
+        return NULL;
+      }
+    }
+
+    # check file association for snapcraft package
+    if (binpath =~ "^/snap" || binpath =~ "^/var/lib/snapd/snap")
+    {
+      pattern = strcat("(^(/snap|/var/lib/snapd/snap)/"
+                    + "([^/]+)/" # snap package name
+                    + "([^/]+)/)" # package revision
+                    + ".*/(.*)$"); # file name
+
+      match = pregmatch(string:binpath, pattern:pattern);
+      if (empty_or_null(match)) return NULL;
+
+      var tmp_path = match[1];
+      var parent_package_name = match[3];
+      var file_name = match[5];
+
+      var search_string = file_name;
+
+      var shared_lib = pregmatch(string:file_name, pattern:"^(lib.*)\.so(\.([0-9.]+))?");
+      if (shared_lib)
+      {
+        var shared_lib_name = shared_lib[1];
+        search_string = shared_lib_name;
+      }
+
+      var manifest_file = tmp_path + 'snap/manifest.yaml';
+      dbg::detailed_log(lvl:2, msg:strcat('Searching "', search_string, '" in ', manifest_file));
+
+      var res = get_kb_item('Unit_Tests/local_detection_nix/get_package_association_deb_pkg_chk_response');
+      if (empty_or_null(res))res = ldnix::run_cmd_template_wrapper(template:"grep -- '- $1$=' $2$", args:[search_string, manifest_file]);
+      if (empty_or_null(res)) return NULL;
+
+      dbg::detailed_log(lvl:2, msg:'Packages search result: ' + res);
+
+      # According to observation, there is usually only one version installed.
+      # To start things simple, only the first instance will be kept if mulptiple are found.
+      var installed_packages = list_uniq(split(res, keep:FALSE));
+      var installed_package = installed_packages[0];
+
+      dbg::detailed_log(lvl:2, msg:'Installed package found: '+ installed_package);
+
+      var package_version = pregmatch(string:installed_package, pattern:strcat("\-\s+", search_string, "=(.*)"));
+      if (!empty_or_null(package_version)) package_version = package_version[1];
+
+      managed = TRUE;
+      snapcraft_package_file = TRUE;
+
+      response = {
+        'package_name': search_string,
+        'package_version': package_version,
+        'parent_package_name': parent_package_name
+      };
+
+      if (get_kb_item('Unit_Tests/local_detection_nix/get_package_association_debug'))
+          return response;
+    }
+    else
+    {
+      if (!empty_or_null(match_strings) && typeof_ex(match_strings) != 'list')
+      {
+        msg = 'Argument match_strings must be a list.';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug"))
+          return msg;
+        else
+        {
+          dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg:msg);
+          return NULL;
+        }
+      }
+
+      # validation ends
+
+
+      ############################################################
+      #
+      #  Determine if the specified file is associated with
+      #   a package.
+      #
+      #  Example:
+      #   While searching for Apache Tomcat, we found file
+      #   /usr/share/tomcat/bin/catalina-tasks.xml
+      #   Running 'rpm -qf /usr/share/tomcat/bin/catalina-tasks.xml'
+      #    results in 'tomcat-7.0.76-12.el7_8.noarch'
+      #
+      #  By contrast,
+      #  Running 'touch /usr/share/tomcat/bin/test.xml;
+      #           rpm -qf	/usr/share/tomcat/bin/test.xml'
+      #   results in 'file /usr/share/tomcat/bin/test.xml is not owned by any package'
+      #
+      #  Platforms that do not use RPM implement this in other ways (see below)
+      #
+      #  The following code was originally found in sun_java_jre_installed_unix.nasl
+      #   and has been fully tested for
+      #
+      #   RHEL6, RHEL7, RHEL8,
+      #   OpenSuSE15, OpenSuSELeap42,
+      #   CentOS6, CentOS7, CentOS8,
+      #   Oracle Linux,
+      #   Ubuntu, Debian,
+      #   Solaris10, Solaris11, HP-UX, AIX
+      #
+      #  Please see unit_tests/local_detection_nix/get_package_association_test.nasl
+      #   for example output for the above platforms
+      ##
+      managed = NULL;
+      rhel_uncertain = 0;
+      response = "";
+      packages = [];
+      match_item = "";
+      error = false;
+
+
+      var path = binpath;
+
+      # run_cmd_template_wrapper expects args to be a list.  Convert binpath to a list
+      binpath = make_list(binpath);
+
+      var rpms, keys, dpkgs;
+      rpms = get_kb_list("Host/*/rpm-list");
+      keys = keys(rpms);
+      if(!isnull(keys))
+        rpms = rpms[keys[0]];
+
+      dpkgs = get_kb_list("Host/*/dpkg-l");
+      keys = keys(dpkgs);
+      if(!isnull(keys))
+        dpkgs = dpkgs[keys[0]];
+
+      # check to see if the install was installed via a native package management software
+      if(!isnull(rpms))
+      {
+        pkg_chk = 'rpm -qf $1$';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return pkg_chk;
+
+        buf = get_kb_item("Unit_Tests/local_detection_nix/get_package_association_pkg_chk_response");
+        if (empty_or_null(buf))
+          buf = ldnix::run_cmd_template_wrapper(template:pkg_chk, args:binpath);
+
+        if(buf)
+        {
+          ##
+          #  Special cases begin
+          ##
+
+          # Special case for CS-29753 / RES-126419 (rpm packages with '-fcs' e.g jdk)
+          if(!isnull(rpms) &&
+              ('-fcs' >< buf) &&
+              ("is not owned by any package" >!< buf) &&
+              ("No such file or directory" >!< buf)
+            )
+          {
+            managed = 0;          # An exception for Redhat fcs added 2020-03 as per CS-29753
+            rhel_uncertain = 1;   # An additional note - this should be thought of as rpm_uncertain, not specific to RHEL
+            response = buf;
+            dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'Suppressing Redhat fcs-related instance',
+                              msg_details:{"Path":{"lvl": 3, "value": binpath}});
+          }
+
+          ##
+          #  End of special cases
+          ##
+
+          # confirms that the file is not associated with a package
+          if ("is not owned by any package" >< buf)
+          {
+            dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'File is not owned by any package.', msg_details:{"Path":{"lvl": 3, "value": binpath}});
+            managed = 0;
+            error = true;
+          }
+
+          # file not found
+          else if ("No such file or directory" >< buf)
+          {
+            dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'File was not found.', msg_details:{"Path":{"lvl": 3, "value": binpath}});
+            managed = 0;
+            error = true;
+          }
+
+          # check each of the match_strings provided
+          else if (!empty_or_null(match_strings))
+          {
+            foreach match_item (match_strings)
+            {
+              if (match_item >< buf && empty_or_null(managed))
+              {
+                managed = 1;
+                response = buf;
+                dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'File is owned by a package.',
+                  msg_details:{
+                    "Path":{"lvl": 3, "value": binpath},
+                    "Response":{"lvl": 3, "value": buf}});
+                break;
+              }
+            }
+          }
+          # Attempt to match on all packages
+          else
+          {
+            # Used for basic, loose validation of results below to avoid unexpected errors
+            #  - We cannot just use the package as the package may be slightly different
+            #  - Example:
+            #    - rpm -qf output : SecurityCenter-5.23.1-5.el7.x86_64
+            #    - packages KB    : SecurityCenter-5.23.1-5.el7
+            #    - section        : SecurityCenter-5
+            lines = split(buf, sep:'\n', keep:FALSE);
+            foreach line (lines)
+            {
+              sections = split(line, sep:'.', keep:FALSE);
+
+              if (sections[0] >< get_kb_item('Host/nix/packages'))
+              {
+                managed = 1;
+                package = line;
+                append_element(var:packages, value:package);
+
+                dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'File is owned by a package.',
+                  msg_details:{
+                    "Path" : {"lvl": 3, "value": binpath},
+                    "Package" : {"lvl": 3, "value": package}
+                  }
+                );
+              }
+            }
+            response = buf;
+          }
+
+          if (empty_or_null(managed))
+            managed = 0;
+        }
+      }
+      else if(!isnull(dpkgs))
+      {
+        # Resource: https://www.cyberciti.biz/faq/equivalent-of-rpm-qf-command/
+        pkg_chk = 'dpkg -S "$1$"';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return pkg_chk;
+
+        buf = get_kb_item("Unit_Tests/local_detection_nix/get_package_association_deb_pkg_chk_response");
+        if (empty_or_null(buf))
+          buf = ldnix::run_cmd_template_wrapper(template:pkg_chk, args:binpath);
+
+
+        if (!empty_or_null(buf) && "no path found matching pattern" >< buf)
+        {
+          dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'File is not owned by any package.', msg_details:{"Path":{"lvl": 3, "value": binpath}});
+          managed = 0;
+          error = true;
+        }
+        else if (!empty_or_null(buf))
+        {
+          # check each of the match_strings provided
+          if (!empty_or_null(match_strings))
+          {
+            foreach match_item (match_strings)
+            {
+              if (match_item >< buf)
+              {
+                managed = 1;
+                response = buf;
+                dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'File is owned by a package.',
+                  msg_details:{
+                    "Path":{"lvl": 3, "value": binpath},
+                    "Package":{"lvl": 3, "value": buf}});
+                break;
+              }
+            }
+          }
+          # Attempt to match on all packages
+          else
+          {
+            # Used for basic validation of results below to avoid unexpected errors
+            #  - Example:
+            #    - dpkg -S output : nessusagent: /opt/nessus_agent/sbin/nessusd
+            #    - packages KB    : ii   nessusagent  10.4.1  amd64  The Nessus Client Agent
+            lines = split(buf, sep:'\n', keep:FALSE);
+            foreach line (lines)
+            {
+              sections = split(line, sep:':', keep:FALSE);
+
+              if (sections[0] >< get_kb_item('Host/nix/packages'))
+              {
+                managed = 1;
+                package = sections[0];
+                append_element(var:packages, value:package);
+                dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'File is owned by a package.',
+                  msg_details:{
+                    "Path" : {"lvl": 3, "value": binpath},
+                    "Package" : {"lvl": 3, "value": package}
+                  }
+                );
+              }
+            }
+            response = buf;
+          }
+        }
+        if (empty_or_null(managed))
+          managed = 0;
+      }
+      # macOS
+      #  - Check the three main package managers along with a system file check.
+      else if ( get_kb_item('Host/MacOSX/Version') )
+      {
+        # macOS Installer
+        response = ldnix::associations::associate_path_with_macos_installer_package(path:path);
+
+        # macOS system file
+        if (empty_or_null(response))
+          response = ldnix::associations::associate_path_with_macos_system(path:path);
+
+        # Homebrew
+        if (empty_or_null(response))
+          response = ldnix::associations::associate_path_with_homebrew_package(path:path);
+
+        # MacPorts
+        if (empty_or_null(response))
+          response = ldnix::associations::associate_path_with_macports_package(path:path);
+
+        if (!empty_or_null(response))
+        {
+          managed = 1;
+          append_element(var:packages, value:response);
+        }
+      }
+      else if ( get_kb_item("Host/HP-UX/swlist") )
+      {
+        pkg_chk = 'swlist | grep "$1$" && echo MANAGED';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return pkg_chk;
+
+        buf = get_kb_item("Unit_Tests/local_detection_nix/get_package_association_hpux_pkg_chk_response");
+        if (empty_or_null(buf))
+          buf = ldnix::run_cmd_template_wrapper(template:pkg_chk ,args:binpath);
+
+        if (!empty_or_null(buf) && buf =~ "\d\.\d")
+        {
+          managed = 1;
+          response = buf;
+          dbg::detailed_log(
+            lvl: 3,
+            src: FUNCTION_NAME,
+            msg:'File found to be managed due to inclusion in "swlist" output',
+            msg_details:{"Path":{"lvl": 3, "value": binpath}});
+        }
+        else
+        {
+          # this may be a bit slow
+          buf = sh_commands::find('/var/adm/sw/products', '-xautofs', '-tenb_fstype_exclusions', '-tenb_path_exclusions', '-name', 'INFO', '-exec', 'grep -il "' + binpath[0] + '" \'{}\' \\;');
+          if (buf[0] == sh_commands::CMD_OK)
+          {
+            if ( "/var/adm/sw/products/" >< buf[1] )
+            {
+              managed = 1;
+              response = buf[1];
+              dbg::detailed_log(
+                lvl: 3,
+                src: FUNCTION_NAME,
+                msg:'File found to be managed due to association with "/var/adm/sw/products/"',
+                msg_details:{"Path":{"lvl": 3, "value": binpath}});
+
+              # Attempt to match on all packages if 'match_strings' is absent.
+              if (empty_or_null(match_strings))
+              {
+                # Used for basic validation of results below to avoid unexpected errors
+                #  - Example:
+                #    - dpkg -S output : nessusagent: /opt/nessus_agent/sbin/nessusd
+                #    - packages KB    : ii   nessusagent  10.4.1  amd64  The Nessus Client Agent
+                lines = split(response, sep:'\n', keep:FALSE);
+                foreach line (lines)
+                {
+                  matches = pregmatch(string:line, pattern:'^/var/adm/sw/products/([^/]+)/');
+
+                  if (!empty_or_null(matches))
+                  {
+                    package = matches[1];
+                    append_element(var:packages, value:package);
+                    dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'File is owned by a package.',
+                      msg_details:{
+                        "Path" : {"lvl": 3, "value": binpath},
+                        "Package" : {"lvl": 3, "value": package}
+                      }
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (empty_or_null(managed))
+          managed = 0;
+      }
+      else if ( get_kb_item("Host/Solaris11/pkg-list") )
+      {
+        managed = 0;
+        pkg_chk = 'pkg search -l -H -o pkg.name "$1$" && echo MANAGED';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return pkg_chk;
+
+        buf = get_kb_item("Unit_Tests/local_detection_nix/get_package_association_sol11_pkg_chk_response");
+        if (empty_or_null(buf))
+          buf = ldnix::run_cmd_template_wrapper(template:pkg_chk, args:binpath);
+
+        if ( buf )
+        {
+          if ( "MANAGED" >< buf )
+          {
+            # Pull out only packages
+            #  - Example response:
+            #    web/curl
+            #    MANAGED
+            #
+            #  - Example response with warnings:
+            #    system/xopen/xcu4
+            #    system/core-os
+            #    text/gnu-grep
+            #    pkg: Search performance is degraded.
+            #    Run 'pkg rebuild-index' to improve search speed.
+            #    MANAGED
+            lines = split(buf, keep:FALSE);
+
+            foreach line (lines)
+            {
+              # Basic validation of results to avoid unexpected errors/lines being returned
+              if (line =~ '^(MANAGED$|pkg:|Run )')
+                continue;
+
+              if (line >< get_kb_item('Host/nix/packages'))
+              {
+                package = line;
+
+                dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'File is owned by a package.',
+                  msg_details:{
+                    "Path" : {"lvl": 3, "value": binpath},
+                    "Package" : {"lvl": 3, "value": package}
+                  }
+                );
+
+                append_element(var:packages, value:package);
+              }
+            }
+
+            response = buf;
+            managed = 1;
+            dbg::detailed_log(lvl: 3, src: FUNCTION_NAME, msg:'File found to be managed due to pkg search output',
+              msg_details: {
+                "Path" : {"lvl": 3, "value": binpath},
+                "Response" : {"lvl": 3, "value": response}
+              }
+            );
+          }
+        }
+      }
+      else if ( get_kb_item("Host/Solaris/showrev") )
+      {
+        managed = 0;
+
+        # Dev Note: Unlike Solaris 11, can't use "&& echo MANAGED" to verify on Solaris 10 as it will _always_ echo MANAGED
+        # Example output:
+          # # pkgchk -l -p  /opt/csw/bin/curl
+          # Pathname: /opt/csw/bin/curl
+          # Type: regular file
+          # Expected mode: 0755
+          # Expected owner: root
+          # Expected group: bin
+          # Expected file size (bytes): 227556
+          # Expected sum(1) of contents: 53976
+          # Expected last modification: Oct 26 07:24:51 2022
+          # Referenced by the following packages:
+          #         CSWcurl
+          # Current status: installed
+
+        pkg_chk = 'pkgchk -l -p "$1$"';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return pkg_chk;
+
+        buf = get_kb_item("Unit_Tests/local_detection_nix/get_package_association_sol10_pkg_chk_response");
+        if (empty_or_null(buf))
+          buf = ldnix::run_cmd_template_wrapper(template:pkg_chk, args:binpath);
+
+        if ( buf )
+          if ( "Referenced by the following packages" >< buf )
+          {
+            response = buf;
+            managed = 1;
+
+            # Attempt to parse the package from the response.
+            # - Note: usually only one package has been observed to associated with a file but including support for multiple packages.
+            pattern = 'Referenced by the following packages:\\s+(.*)Current status';
+            matches = pregmatch(string:buf, pattern:pattern, multiline:true);
+            if (!empty_or_null(matches))
+            {
+              lines = split(matches[1], keep:FALSE);
+
+              foreach line (lines)
+              {
+                package = trim(line);
+                append_element(var:packages, value:package);
+              }
+            }
+
+            dbg::detailed_log(
+              lvl: 3,
+              src: FUNCTION_NAME,
+              msg:'File found to be managed due to pkgchk output',
+              msg_details:{"Path":{"lvl": 3, "value": binpath}});
+          }
+      }
+      else if ( get_kb_item("Host/AIX/lslpp") )
+      {
+        # Example:
+        #  # lslpp -w /usr/bin/ssh
+        #  File                                        Fileset               Type
+        #  ----------------------------------------------------------------------------
+        #  /usr/bin/ssh                                openssh.base.client   File
+        managed = 0;
+        pkg_chk = 'lslpp -w "$1$"';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return pkg_chk;
+
+        buf = get_kb_item("Unit_Tests/local_detection_nix/get_package_association_aix_pkg_chk_response");
+        if (empty_or_null(buf))
+          buf = ldnix::run_cmd_template_wrapper(template:pkg_chk, args:binpath);
+
+        if ( buf )
+        {
+          if ( binpath[0] >< buf )
+          {
+            managed = 1;
+            response = buf;
+            dbg::detailed_log(
+              lvl: 3,
+              src: FUNCTION_NAME,
+              msg:'File found to be managed due to lslpp output',
+              msg_details:{"Path":{"lvl": 3, "value": binpath}});
+
+
+            lines = split(buf, keep:FALSE);
+
+            foreach line (lines)
+            {
+              # Line should start with the absolute path (e.g. /usr/bin/ssh)
+              pattern = strcat('^\\s*', binpath[0], '\\s+(.+)\\s\\s');
+
+              matches = pregmatch(string:line, pattern:pattern);
+              if (!empty_or_null(matches))
+              {
+                package = trim(matches[1]);
+                append_element(var:packages, value:package);
+              }
+            }
+          }
+        }
+      }
+      else
+      {
+        msg = 'This target does not appear to be supported';
+        if (get_kb_item("Unit_Tests/local_detection_nix/get_package_association_debug_pkg_chk"))
+          return msg;
+
+        dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg:msg);
+        return NULL;
+      }
+      # End of Package-Management-assessing code
+    }
+
+    # Fall back to
+    if (empty_or_null(managed))
+      managed = 0;
+
+    # Rather than trying to parse a version string from the response,
+    #  just report the package-manager response and
+    #  allow downstream plugins to work with that data if necessary.
+
+    # Return what we found
+    ret = make_array();
+    ret[binpath].managed = managed;
+    if (snapcraft_package_file) ret[binpath]['snapcraft_package_file'] = TRUE;
+    ret[binpath].response = response;
+    ret[binpath].rhel_uncertain = rhel_uncertain;
+
+    if (!empty_or_null(packages))
+      ret[binpath].packages = packages;
+
+    dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg:'Returning the following:', msg_details:{"Return value":{"lvl": 2, "value": ret}});
+
+    return ret;
+  }
+
+  ##
+  #  Validates untrusted path data
+  #
+  #  @remark This function will resolve relative paths,
+  #   then (if owned_by_root flag is true) inspect file ownership,
+  #   then (if an allowlist is specified) check paths against the allowlist,
+  #   then (by default) check paths against default denylist of /tmp, /var/tmp, /home/, /Users (or a specified denylist)
+  #
+  # @param [paths:list] paths to validate (often returned from remote cmd output)
+  # @param [use_allowlist:list] use specified allowlist
+  # @param [use_denylist:list] use specified denylist or FALSE to disable denylist check
+  # @param [owned_by_root:boolean] (optional) if true, file permissions are checked, restricting to only files owned by root
+  #
+  # @return [list] paths which have now been validated
+  ##
+  function validate_untrusted_paths_nix(paths, use_allowlist, use_denylist, owned_by_root)
+  {
+    var path, logging;
+    var fix_paths = [];
+
+    if (typeof_ex(paths) != 'list')
+    {
+      logging = 'Error: invalid paths format (should be list): ' + obj_rep(paths);
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+      return;
+    }
+
+    var testargs = get_kb_item("Unit_Tests/hostlevel_funcs/info_send_safe_cmd_args");
+    if (!empty_or_null(testargs))
+      paths = testargs;
+
+    logging = 'Paths to validate: ' + obj_rep(paths);
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+
+    paths = resolve_relative_paths_linux(args:paths);
+    if (get_kb_item("Unit_Tests/hostlevel_funcs/report_resolved_path"))
+      return paths;
+
+    # If denylist is empty or disabled and no other checks specified, issue warning
+    if (!owned_by_root && empty_or_null(use_allowlist) && (empty_or_null(use_denylist) || !use_denylist))
+    {
+      logging = 'WARNING untrusted paths not filtered by allowlist OR denylist AND ownership unchecked!!!';
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+    }
+
+    # Warn if both allowlist and denylist are used (although this may be valid)
+    if (!empty_or_null(use_allowlist) && !empty_or_null(use_denylist))
+    {
+      logging = 'WARNING untrusted paths filtered by both allowlist AND denylist.';
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+    }
+
+    if (owned_by_root)
+    {
+      logging = 'Allowing only files owned by root.';
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+
+      fix_paths = [];  # Reset, just in case
+
+      foreach path (paths)
+      {
+        var perms = get_file_permissions(file:path);
+        if (!empty_or_null(perms) && !perms['error'])
+        {
+          if (!empty_or_null(perms['user']) &&
+              perms['user'] == 'root')
+          {
+            append_element(var:fix_paths, value:path);
+          }
+          else
+          {
+            logging = strcat('Rejecting path ', path, ' due to lack of root ownership');
+            dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+	  }
+        }
+      }
+      paths = fix_paths;
+    }
+
+    if (!empty_or_null(use_allowlist))
+    {
+      if(typeof_ex(use_allowlist) != 'list')
+      {
+        logging = 'Error: invalid allowlist: ' + obj_rep(use_allowlist);
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+      }
+
+      logging = 'Using allowlist.';
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+
+      fix_paths = [];  # Reset, just in case
+
+      ##
+      #  Verify that resolved paths are allowed
+      ##
+      foreach path (paths)
+      {
+        if(!nix_path_allowed_via_allowlist(path:path, nix_allowlist:use_allowlist))
+        {
+          logging = strcat('Rejecting path ', path, ' due to lack of allowlist match');
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+        }
+        else
+        {
+          append_element(var:fix_paths, value:path);
+        }
+      }
+      paths = fix_paths;
+    }
+
+    # use_denylist can be disabled by setting flag equal to FALSE
+    if (!empty_or_null(use_denylist))
+    {
+      if (!use_denylist)
+      {
+        logging = 'Denylist disabled';
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+      }
+      else
+      {
+        if(typeof_ex(use_denylist) != 'list')
+        {
+          logging = 'Error: invalid denylist: ' + obj_rep(use_denylist);
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+        }
+
+        logging = 'Using denylist.';
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+
+        fix_paths = [];  # Reset, just in case
+
+        ##
+        #  Verify that resolved paths are not forbidden
+        ##
+        foreach path (paths)
+        {
+           if(!nix_path_excluded_via_denylist(path:path, nix_denylist:use_denylist))
+           {
+             logging = strcat('Rejecting path ', path, ' due to denylist match');
+             dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:logging);
+           }
+           else
+           {
+             append_element(var:fix_paths, value:path);
+           }
+        }
+        paths = fix_paths;
+      }
+    }
+
+    return paths;
+  }
+
+
+  ##
+  #  Resolve relative links in path if present
+  #  @param [args:list] list of paths to inspect
+  #  @return [list] same args list, but with relative links resolved
+  ##
+  function resolve_relative_paths_linux(args)
+  {
+    var fixed_args = make_list();
+    var arg, narg;
+    var orig_arg_pos = 0;
+
+    foreach arg (args)
+    {
+      if (!empty_or_null(arg) &&
+          ".." >< arg)
+      {
+
+        # Discard invalid paths that START with ../
+        if (pregmatch(string:arg, pattern:"^(\.\.\/).+$"))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Bad path discarded: ' + arg);
+          continue;
+        }
+
+        # Change trailing /.. to /../
+        if (pregmatch(string:arg, pattern:"^.+\/\.\.$"))
+        {
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Path modified from ' + arg + ' to ' + arg + '/');
+          arg = arg + '/';
+        }
+
+        var newargs = NULL;
+        newargs = make_list();
+        var skipcount = 0;
+        var argparts = NULL;
+        argparts = split(arg, sep:'/', keep:TRUE);
+        var argscount = NULL;
+        argscount = len(argparts);
+
+        var newargpos = argscount;
+        while (argscount > -1)
+        {
+          if (!empty_or_null(argparts[argscount]))
+          {
+            if (skipcount > 0)
+            {
+              # sequential relative paths: /dir1/../../dir2/
+              if (argparts[argscount] == "../") skipcount = skipcount + 2;
+
+              skipcount--;
+            }
+            else if (!empty_or_null(argparts[argscount]) &&
+                     argparts[argscount] != "../")
+            {
+              newargs[newargpos] = argparts[argscount];
+            }
+            else
+            {
+              skipcount = 1;
+            }
+            newargpos--;
+          }
+          argscount = argscount - 1;
+        }
+
+        var newargstr = "";
+        foreach narg (newargs)
+        {
+          if (!empty_or_null(narg)) newargstr = newargstr + narg;
+        }
+        if (!empty_or_null(newargstr))
+        {
+          fixed_args[orig_arg_pos] = newargstr;
+          dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Resolved to path: ' + newargstr);
+        }
+      }
+      else
+      {
+        # No relative path found.  No need to modify.
+        fixed_args[orig_arg_pos] = arg;
+      }
+      orig_arg_pos++;
+    }
+
+    return fixed_args;
+  }
+
+  ##
+  # Performs a search on package list passed to it or contained under the Host/nix/packages KB key.
+  # @remark Unless pkg_list argument is used, Host/nix/packages kb entry, set by unix_enum_sw.nasl, must be present.
+  #
+  # @param [targets:list] A list of pkg_target objects. Can be passed anonymously.
+  # @param [pkg_list:list] An optional list of installed packages, e.g. output of dpkg -l or rpm -qa. Defaults to Host/nix/packages KB value.
+  # @return [list] A list of installation objects - one for every matching package found.
+  ##
+  function search_packages(targets, pkg_list)
+  {
+    if (empty_or_null(targets)) targets = _FCT_ANON_ARGS[0];
+    if (empty_or_null(targets))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'targets'.");
+      return NULL;
+    }
+
+    if(isnull(pkg_list)) pkg_list = get_kb_item(_PACKAGE_LIST_KEY);
+    if(isnull(pkg_list)) dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Missing pkg_list and KB item Host/nix/packages');
+
+    var canonical_snapcraft_pkg_enumerated = get_kb_item('Host/canonical_snapcraft/packages/enumerated');
+
+    if (isnull(pkg_list) && !canonical_snapcraft_pkg_enumerated)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Missing pkg_list, Host/nix/packages and snap packages.');
+      return NULL;
+    }
+
+    var results = [], result;
+    foreach(var target in targets)
+    {
+      if (!empty_or_null(pkg_list))
+      {
+        var grep_res = pgrep(string:pkg_list, pattern:target.regex);
+        grep_res = split(grep_res, keep:false);
+
+        foreach(var match in grep_res)
+        {
+            var matches = pregmatch(string: match, pattern: target.regex);
+
+            if(empty_or_null(matches) || empty_or_null(matches[1]))
+                continue;
+            var package = matches[1];
+            var version = matches[2];
+            if(empty_or_null(version)) version = UNKNOWN_VER;
+
+            append_element(var: results,
+              value: new ldnix::installation(target.app, package, version, true, target.extra, target.extra_no_report));
+        }
+      }
+
+      if (canonical_snapcraft_pkg_enumerated)
+      {
+        result = canonical_snapcraft::query_snapcraft_package(pkg_name:target.snapcraft_pkg_name);
+        if (!empty_or_null(result))
+        {
+          result = result[0];
+          dbg::detailed_log(lvl:2, msg:'Package found in Snapcraft: ' + obj_rep(result));
+          append_element(var: results,
+            value: new ldnix::installation(target.app, result.name, result.version, false, target.extra, target.extra_no_report, NULL, true));
+        }
+      }
+    }
+    return results;
+  }
+
+##
+# Searches version in package matching the target binary found by get_package_association() and other package installs of target software found by search_packages().
+#
+# @param [packages:list reference] A reference to the list of ldnix::installation objects found by search_packages().
+# @param [version_regex:string] A regex used to extract version string from package name. Optional.
+# @param [matching_package:array] A package associated with target binary - returned by get_package_association().
+#
+# return [string] A version string, if found, UNKNOWN_VER otherwise.
+##
+function get_version_from_associated_package(&packages, version_regex, matching_package)
+{
+  if (empty_or_null(packages))
+  {
+    dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'packages'");
+    return NULL;
+  }
+  if (empty_or_null(matching_package))
+  {
+    dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'matching_package'");
+    return NULL;
+  }
+
+  var version = UNKNOWN_VER;
+
+  # This should work if the associated package response contains version string
+  var match = NULL;
+  var binpath = keys(matching_package);
+  binpath = binpath[0];
+  var response = matching_package[binpath].response;
+  if(!empty_or_null(version_regex)) match = pregmatch(pattern:version_regex, string:response);
+  if(!empty_or_null(match))
+  {
+    version = match[1];
+  }
+  else
+  {
+    # This should work in other cases - we'll match the package name with get_package_association() response and grab the package version
+    foreach(var package in packages)
+    {
+      # path field of ldnix::installation is actually the package name when installs come from search_packages()
+      if (package.path >< response)
+      {
+        version = package.version;
+        break;
+      }
+    }
+  }
+
+  return version;
+}
+
+##
+# Finds all files matching a wildcard path, then matches their names against a regex to extract a version string from it.
+#
+# @param [wildcard_path:string] A path pattern containing a wildcard that should match target file.
+# @param [regex:string] A regex with a single capturing group that will be matched against THE WHOLE PATH and captures the version string in it.
+#
+# @remark wildcard_path can possibly expand into a list of multiple paths - regex will be tested against each of them until there's a match or the list is exhausted.
+#
+# @return A version string, if found, UNKNOWN_VER, if there was no match, or NULL, if any argument is missing or no files match wildcard pattern.
+##
+function get_version_from_filename(wildcard_path, regex)
+{
+  if(empty_or_null(wildcard_path))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'wildcard_path'");
+    return NULL;
+  }
+  if(empty_or_null(regex))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'regex'");
+    return NULL;
+  }
+
+  var version = UNKNOWN_VER;
+  var paths = ldnix::expand_wildcard_path(pattern:wildcard_path);
+
+  if(empty_or_null(paths)) return NULL;
+
+  # The results are a list, but we only need one match
+  foreach(var path in paths)
+  {
+    var version_match = pregmatch(pattern:regex, string:path);
+    if(!empty_or_null(version_match))
+    {
+      version = version_match[1];
+      break;
+    }
+  }
+  return version;
+}
+
+  ##
+  # Calls "which" *nix utility to lookup an executable path for a given command.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [command:string] Command to get an executable path for.
+  # @return A list of paths found by which utility or NULL if error/none were found.
+  ##
+  function get_command_path(command)
+  {
+    var which_cmd, which_result, path, which, which_synt;
+    path = NULL;
+
+    if(empty_or_null(command))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'command'.");
+      return NULL;
+    }
+
+    # The following prevents command injection
+    which_synt = which_supported();
+    if (empty_or_null(which_synt))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'which' binary not supported.");
+      return NULL;
+    }
+
+    which_result = get_kb_item("Unit_Tests/local_detection_nix/get_command_path_response");
+    if (empty_or_null(which_result))
+      which_result = ldnix::run_cmd_template_wrapper(template:"$1$ $2$ 2>/dev/null", args:[which_synt,command]);
+
+    if (empty_or_null(which_result))
+    {
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "Command was not found in the specified users PATH on the target.",
+        msg_details: {
+          "Command": {"lvl": 1, "value": command}});
+      return NULL;
+    }
+    else
+    {
+      path = split(which_result, keep:false);
+      var valpath = make_list();
+      foreach (var thispath in path)
+      {
+        if ('no ' >< thispath && ' in ' >< thispath)
+          continue;
+        else if ('not found' >< thispath)
+          continue;
+        else if (command >< thispath && thispath =~ "^/")
+          append_element(var:valpath, value:thispath);
+        else
+          continue;
+      }
+      path = valpath;
+    }
+    if (!empty_or_null(path))
+    {
+      dbg::detailed_log(
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "Successfully returning",
+        msg_details: {
+          "Path": {"lvl": 2, "value": obj_rep(path)}});
+      return path;
+    }
+    else
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No results found.");
+      return NULL;
+    }
+  }
+
+  ##
+  # Checks a list of catalogs for existence of a given executable.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [paths:list] List of paths to be checked.
+  # @param [bin:string] Name of the executable to look for.
+  # @return A list of executables' paths found or NULL if none were found.
+  ##
+  function check_default_paths(paths, bin)
+  {
+    var ret, file;
+
+    ret = [];
+    foreach(var path in paths)
+    {
+      file = path;
+      if(!empty_or_null(bin)) file = append_path(path:path, value:bin);
+
+      if(file_exists(file))
+      {
+        append_element(var:ret, value:file);
+      }
+    }
+
+    if(empty_or_null(ret)) return NULL;
+    return ret;
+  }
+
+  ##
+  # Performs a find command for a binary under given set of paths.
+  # @remark info_connect() must be called before using this function!
+  # @remark add command_builder_init.nasl as a script dependency.
+  #
+  # @param [paths:list] List of paths or a flattened string with at least one path to perform find in.
+  # @param [bin:string] Executable name pattern to look for.
+  # @param [timeout:integer] Timeout for find call, defaults to 240.
+  # @param [depth:int] Depth of search, defaults to 5.
+  # @param [excluded:list] Optional list of paths with at least one path to exclude from find call.
+  # @param [follow:boolean] Decides whether the command should follow symlinks or treat them as files. Defaults to TRUE.
+  # @param [sanitize_result:boolean] If TRUE, find_cmd will invoke command_builder::validate_no_injection
+  # @param [exec_file_only:boolean] If TRUE, find_cmd will only return executable file(s). Otherwise, results could include directories.
+  #
+  # @return A list of executables' paths found or NULL if none were found.
+  ##
+  function find_executable(paths, bin, timeout, depth, excluded, follow, sanitize_result, exec_file_only)
+  {
+    if(empty_or_null(bin))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'bin'");
+      return NULL;
+    }
+
+    # Set sanitize_result to on by default
+    if (empty_or_null(sanitize_result))
+      sanitize_result = TRUE;
+
+    var file;
+    var ret = NULL;
+    var start = NULL;
+    if(is_list(paths)) start = join(paths, sep:" ");
+    else start = paths;
+    if(isnull(timeout)) timeout = 240;
+    if(isnull(depth)) depth = 5;
+    if(isnull(follow)) follow = TRUE;
+    if(isnull(exec_file_only)) exec_file_only = FALSE;
+
+    var fnd = find_cmd(
+      path_patterns   : ["*/" + bin],
+      start           : start,
+      timeout         : timeout,
+      exclude_paths   : excluded,
+      exit_on_fail    : FALSE,
+      maxdepth        : depth,
+      follow          : follow,
+      sanitize_result : sanitize_result
+      );
+
+    if (fnd[0] != FIND_OK)
+    {
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "find_cmd failed",
+        msg_details: {
+          "Code": {"lvl": 1, "value":fnd[0]},
+          "Error": {"lvl": 1, "value":fnd[1]}});
+      return NULL;
+    }
+
+    if (!empty_or_null(fnd[1]))
+    {
+      ret = list_uniq(split(fnd[1], keep:false));
+      if (exec_file_only)
+      {
+        ret = collib::filter(ret, f:function() { return !ldnix::is_directory(_FCT_ANON_ARGS[0]) && ldnix::file_executable(_FCT_ANON_ARGS[0]); });
+        ret = collib::map(ret, f:function() { return ldnix::read_link(_FCT_ANON_ARGS[0]); });
+        ret = list_uniq(ret);
+      }
+    }
+
+    dbg::detailed_log(
+      lvl: 2,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning ",
+      msg_details: {
+        "ret": {"lvl": 2, "value": obj_rep(ret)}});
+    return ret;
+  }
+
+  ##
+  # Performs a find command for a set of binaries under given set of paths.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [paths:list] List of paths or a flattened string with at least one path to perform find in.
+  # @param [bins:list] List of executable names to look for.
+  # @param [timeout:integer] Timeout for find call, defaults to 240.
+  # @param [depth:integer] Depth of search, defaults to 5.
+  # @param [excluded:list] Optional list of paths with at least one path to exclude from find call.
+  # @param [follow:boolean] Decides whether the command should follow symlinks or treat them as files. Defaults to TRUE.
+  #
+  # @return A list of executables' paths found or NULL if none were found.
+  ##
+  function find_executables(paths, bins, timeout, depth, excluded, follow)
+  {
+    if(empty_or_null(bins))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'bins'");
+      return NULL;
+    }
+
+    var ret = NULL;
+
+    var start = NULL;
+    if(is_list(paths)) start = join(paths, sep:" ");
+    else start = paths;
+
+    if(isnull(timeout)) timeout = 240;
+    if(isnull(depth)) depth = 5;
+    if(isnull(follow)) follow = TRUE;
+
+    var patterns = [];
+    foreach(var bin in bins)
+    {
+      append_element(var:patterns, value:"*/" + bin);
+    }
+
+    var fnd = find_cmd(
+      path_patterns : patterns,
+      start         : start,
+      timeout       : timeout,
+      exclude_paths : excluded,
+      exit_on_fail  : FALSE,
+      maxdepth      : depth,
+      follow        : follow
+      );
+
+    if (fnd[0] != FIND_OK)
+    {
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "find_cmd failed",
+        msg_details: {
+          "Code": {"lvl": 1, "value":fnd[0]},
+          "Error": {"lvl": 1, "value":fnd[1]}});
+      return NULL;
+    }
+
+    if (!empty_or_null(fnd[1]))
+    {
+      ret = list_uniq(split(fnd[1], keep:false));
+    }
+    dbg::detailed_log(
+      lvl: 2,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning",
+      msg_details: {
+        "ret": {"lvl": 2, "value": obj_rep(ret)}});
+    return ret;
+  }
+
+  ##
+  # Performs a locate command on the target system. Uses a --basename check.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [bin:string] Name of the executable to look for or a regex matching the name.
+  #            (this data is considered 'trusted' since it is supplied by plugin developer)
+  # @param [regex:boolean] Flag telling if bin parameter is a regex (POSIX ERE format), defaults to false.
+  # @param [basename:boolean] Flag telling if locate should be run with --basename option, defaults to false.
+  # @param [timeout:integer] Timeout for locate call, defaults to 240.
+  # @param [validate:boolean] Flag telling if locate should recheck results, defaults to true
+  #
+  # @return A list of executables' paths found or NULL if none were found.
+  ##
+  function locate_executable(bin, regex, basename, timeout, validate)
+  {
+    var cmd, results, valpath, binregex;
+    if (empty_or_null(bin))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME,msg: "Missing required argument 'bin'");
+      return NULL;
+    }
+
+    if (!locate_supported())
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"locate not supported.");
+      return NULL;
+    }
+
+    if(isnull(regex)) regex = false;
+    if(isnull(basename)) basename = false;
+    if(isnull(validate)) validate = true;
+
+    if(isnull(timeout)) timeout = 240;
+
+    cmd = "locate -e ";
+    if(basename) cmd += "--basename ";
+    if(regex)
+    {
+      cmd += "--regex ";
+
+      if(
+        !get_kb_item("Host/CentOS/release") &&
+        !get_kb_item("Host/RedHat/release")
+      )
+        cmd += "--regextype posix-extended ";
+    }
+    cmd += '"' + bin + '" 2>/dev/null';
+
+    if (get_kb_item("Unit_Tests/local_detection_nix/check_command"))
+      return cmd;
+
+    results = get_kb_item("Unit_Tests/local_detection_nix/locate_executable_response");
+    if (empty_or_null(results))
+      results = ldnix::run_cmd_template_wrapper(template:cmd, timeout:timeout);
+
+    if(isnull(results))
+      return NULL;
+
+    results = split(results, keep:FALSE);
+
+    ##
+    #  Validation
+    #  Ensure that each result contains '/'
+    #   and ends with <bin>
+    #
+    #  Note: can be disabled
+    ##
+    if (validate)
+    {
+      valpath = make_list();
+      var binmod;
+      foreach (var thispath in results)
+      {
+        #  Regex 'anchors' may have already been supplied and must be handled
+        var firstchar = pregmatch(string:bin, pattern:"^(.)(.*)$");
+        if (!empty_or_null(firstchar) && firstchar[1] == "^")
+          binmod = firstchar[2];
+        else
+          binmod = bin;
+
+        var lastchar = pregmatch(string:bin, pattern:"^.*(.)$");
+        if (!empty_or_null(lastchar) && lastchar[1] != "$")
+           binregex = binmod + '$';
+        else
+           binregex = binmod;
+
+        if ("/" >< thispath && thispath =~ binregex)
+        {
+          # example: binary '/' and 'ssh' should always be present
+          #        and last in the returned result '/usr/bin/ssh'
+          # Note: not currently checking for exactly '/ssh'
+          append_element(var:valpath, value:thispath);
+        }
+      }
+      results = valpath;
+    }
+
+    ##
+    #  Filepath Exclusion - exclude matching results with a log message
+    ##
+    var has_user_filepath_exclusions = FALSE;
+    var init_kb = "Host/sh_commands_find/cmd_init";
+    if (!get_kb_item(init_kb))
+    {
+      var init_result = sh_commands_find::init_find(cache_only:TRUE);
+
+      if (init_result[0] == sh_commands::CMD_FAIL)
+      {
+        dbg::detailed_log(
+          lvl: 1,
+          src: FUNCTION_NAME,
+          msg: "Unable to successfully call init_find()",
+          msg_details: {
+            "Init result": {"lvl": 1, "value": obj_rep(init_result)}});
+      }
+    }
+
+    var kb_name = 'Host/sh_commands_find/user_filepath_exclusions';
+    var kb_value = get_kb_item(kb_name);
+    if (isnull(kb_value))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg: "Error: user_filepath_exclusions returned unexpected value.");
+    }
+    else if (!kb_value)
+    {
+      dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:"user_filepath_exclusions not specified.");
+    }
+    else
+    {
+      var noexcpath = make_list();
+
+      var exclude_paths;
+      has_user_filepath_exclusions = TRUE;
+      var user_filepath_exclusions = split(kb_value, keep:FALSE);
+
+      if (!empty_or_null(user_filepath_exclusions) && has_user_filepath_exclusions != FALSE)
+      {
+        dbg::detailed_log(
+          lvl: 3,
+          src: FUNCTION_NAME,
+          msg: "user_filepath_exclusions from user input",
+          msg_details: {
+            "Paths": {"lvl": 3, "value": obj_rep(user_filepath_exclusions)}});
+        exclude_paths = user_filepath_exclusions;
+        for(var idx in exclude_paths)
+          exclude_paths[idx] = ldnix::files::file_glob_to_regex(glob:exclude_paths[idx]);
+      }
+
+      foreach (thispath in results)
+      {
+        var excmatch = FALSE;
+        foreach var epath (exclude_paths)
+        {
+          if(preg(string:thispath, pattern:epath))
+          {
+            excmatch = TRUE;
+            dbg::detailed_log(
+              lvl: 2,
+              src: FUNCTION_NAME,
+              msg: "Skipping path due to filepath exclusion.",
+              msg_details: {
+                "Path": {"lvl": 2, "value": thispath}});
+          }
+        }
+        if (excmatch == FALSE)
+        {
+          append_element(var:noexcpath, value:thispath);
+        }
+      }
+      results = noexcpath;
+    }
+    dbg::detailed_log(
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning ",
+      msg_details: {
+        "Results": {"lvl": 3, "value": obj_rep(results)}});
+    return results;
+  }
+
+  ##
+  # Calls 'stat -c%Y' or 'stat -f %m' on the file to retrieve its modification time as unixtime.
+  #
+  # @return Modification time as a unixtime integer if successful
+  # NULL if the command fails.
+  ##
+  function get_file_modification_time(path)
+  {
+    var stat_template = 'stat -c%Y $1$ 2>/dev/null';
+    if(get_kb_item("Host/FreeBSD/release") || get_kb_item("Host/MacOSX/Version"))
+      stat_template = 'stat -f %m $1$ 2>/dev/null';
+
+    var res = ldnix::run_cmd_template_wrapper(template:stat_template, args:[path]);
+    if(empty_or_null(res))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'stat' command failed.");
+      return NULL;
+    }
+    return int(res);
+  }
+
+  ##
+  # Calls 'stat -c%s' or 'stat -f %z' on the file to retrieve its size in bytes.
+  #
+  # @return Integer size in bytes if successful
+  # NULL if the command fails.
+  ##
+  function get_file_size(path)
+  {
+    var stat_template = 'stat -c%s $1$ 2>/dev/null';
+    if(get_kb_item("Host/FreeBSD/release") || get_kb_item("Host/MacOSX/Version"))
+      stat_template = 'stat -f %z $1$ 2>/dev/null';
+
+    var res = ldnix::run_cmd_template_wrapper(template:stat_template, args:[path]);
+    if(empty_or_null(res))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'stat' command failed.");
+      return NULL;
+    }
+    return int(res);
+  }
+
+  ##
+  # Calls 'locate -S' to find the locate db file, then calls 'stat -c%Y' or 'stat -f %m' on the file to retrieve its modification time as unixtime.
+  #
+  # @return Modification time as a unixtime integer if successful, -1 if locate is supported, but database doesn't exist,
+  # NULL if locate isn't supported or any used command fails.
+  ##
+  function get_locate_db_modification_time()
+  {
+    if (!locate_supported())
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"locate not supported.");
+      return NULL;
+    }
+
+    var locate_cmd = 'locate -S';
+
+    var path_regex = "Database (.*):";
+    var res = ldnix::run_cmd_template_wrapper(template:locate_cmd);
+    if(empty_or_null(res))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'locate -S' failed.");
+      return NULL;
+    }
+    if('No such file or directory' >< res)
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"'locate' database does not exist.");
+      return -1;
+    }
+    var path = pregmatch(string:res, pattern:path_regex);
+    if(empty_or_null(path))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Database path not found in 'locate -S' output.");
+      return NULL;
+    }
+    path = path[1];
+
+    return get_file_modification_time(path: path);
+  }
+
+  ##
+  # Extracts version string from a given executable using strings utility + regex matching. Falls back to binary grep when strings utility is not available.
+  # @remark info_connect() must be called before using this function!
+  # @remark If you want to use the same regex for both strings and binary grep, pass a POSIX ERE expression as regex argument and leave grep_regex blank.
+  #
+  # @param [path:string] Exact path to the target binary.
+  # @param [regex:string] Regex with first capturing group matching the version number. Should be a valid nasl regex.
+  #        If no grep_regex is present, regex will be used as grep_regex as well.
+  # @param [grep_regex:string] Optional regex with first capturing group matching the version number. Must be a valid POSIX ERE regex, not just any nasl regex!
+  #        Used with binary grep when strings is unavailable as a fallback.
+  # @param [icase:boolean] Flag setting whether regex matching should be case insensitive. Defaults to false.
+  # @param [skip_strings:boolean] Flag setting whether the functions should not try to use strings and only perform binary grep. Defaults to FALSE.
+  # @param [only_matching:boolean] Flag setting whether grep should return only the matches or the whole lines that contain them. Defaults to FALSE.
+  #
+  # @return A version string, if found, UNKNOWN_VER, if there was no match, or NULL, if any argument is missing or target file doesn't exist.
+  ##
+  function get_version_from_bin(path, regex, grep_regex, icase, skip_strings, only_matching, &collection_metadata)
+  {
+    if(empty_or_null(path))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'path'");
+      return NULL;
+    }
+    if(empty_or_null(regex))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required argument 'regex'");
+      return NULL;
+    }
+    if(empty_or_null(grep_regex)) grep_regex = regex;
+
+    if(isnull(icase)) icase = FALSE;        # pass arg value '1' to set as TRUE
+
+    var result = "";
+    var out_err;
+
+    if(!get_kb_item("Unit_Tests/local_detection_nix/file_exists") &&
+       !file_exists(path))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Target file does not exist");
+      return NULL;
+    }
+
+    # The following is a-typical:
+    # var 'cmd' will be assembled, and then is checked via unit tests.
+    # 'cmd' may contain a regular expression.  This data
+    # is provided by the plugin writer, so should be considered 'trusted'
+    var cmd = "";
+    var os = tolower(get_kb_item("Host/OS"));
+    var sol_chk = solaris_check();
+
+    if(!skip_strings && strings_supported())
+    {
+      cmd = "strings '$1$' 2>/dev/null";
+    }
+    else if(os =~ 'solaris' || sol_chk =~ "solaris")
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Unable to determine version on Solaris operating system without strings utility.");
+      return UNKNOWN_VER;
+    }
+    else
+    {
+      cmd = "grep -aE";       # Legacy behavor, and we should fall back on this if "Host/<whatever>" is not known
+      if(icase) cmd += "i";
+      if(only_matching) cmd += 'o';
+      regex = grep_regex;
+      cmd += strcat(" '", regex, "' $1$ 2>/dev/null");
+    }
+
+    if(get_kb_item("Unit_Tests/local_detection_nix/check_command"))
+      return cmd;
+
+    var output = get_kb_item("Unit_Tests/local_detection_nix/get_version_from_bin_response");
+    # Only 'path' is untrusted,  Assembled 'cmd' is passed as template, and untrusted 'path' is validated
+    if(empty_or_null(output))
+      output = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+
+    if(empty_or_null(output))
+    {
+      # rerun command in hopes of understanding error
+      cmd = str_replace(string:cmd, find:'/dev/null', replace:'&1');
+      output = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+      out_err = 'function unsuccessful.  Error ' + obj_rep(output);
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:out_err);
+      return UNKNOWN_VER;
+    }
+
+    var version_candidate = pregmatch(string:output, pattern:regex, icase:icase);
+    if(empty_or_null(version_candidate))
+    {
+      result = UNKNOWN_VER;
+    }
+    else
+    {
+      result = version_candidate[1];
+      collect_version_file_info(path: path, regex: regex, collection_metadata: collection_metadata);
+    }
+    dbg::detailed_log(
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning",
+      msg_details: {
+        "Result": {"lvl": 3, "value": obj_rep(result)}});
+    return result;
+  }
+
+  ##
+  # Extracts version numbers from given executables using strings utility + regex matching. Falls back to binary grep when strings utility is not available.
+  # @remark info_connect() must be called before using this function!
+  # @remark If you want to use the same regex for both strings and binary grep, pass a POSIX ERE expression as regex argument and leave grep_regex blank.
+  #
+  # @param [paths:list] List of paths to be checked.
+  # @param [bin:string] Path of target binary file RELATIVE to the paths passed. Can be omitted if paths point straight to binaries.
+  # @param [regex:string] Regex with first capturing group matching the version number. Should be a valid nasl regex.
+  #        If no grep_regex is present, regex will be used as grep_regex as well.
+  # @param [grep_regex:string] Optional regex with first capturing group matching the version number. Must be a valid POSIX ERE regex, not just any nasl regex!
+  #        Used with binary grep when strings is unavailable as a fallback.
+  # @param [icase:boolean] Flag setting whether regex matching should be case insensitive. Defaults to false.
+  # @param [skip_strings:boolean] Flag setting whether the functions should not try to use strings and only perform binary grep. Defaults to FALSE.
+  # @param [all_matches:boolean] will match every instance of the regex pattern and store matches in an array.
+  #
+  # @return An array of path:installation found or NULL if any argument is missing. The array might be empty or contain some UNKNOWN_VER values.
+  ##
+  function get_versions_from_bin(paths, bin, regex, grep_regex, icase, skip_strings, all_matches)
+  {
+    if(empty_or_null(paths))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'paths'");
+      return NULL;
+    }
+
+    if (typeof(paths) != 'array')
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Argument 'paths' must be an array");
+      return NULL;
+    }
+
+    if(empty_or_null(regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing missing required argument 'regex'");
+      return NULL;
+    }
+    if(empty_or_null(grep_regex)) grep_regex = regex;
+
+    if(isnull(icase)) icase = FALSE;
+
+    var results = {};
+    var os = tolower(get_kb_item("Host/OS"));
+    dbg::detailed_log(
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "The OS string (lowercase)",
+      msg_details: {
+        "OS": {"lvl": 3, "value": obj_rep(os)}});
+    var sol_chk = solaris_check();
+    var out_err;
+
+    foreach(var path in paths)
+    {
+      var target_path = path;
+      if(!empty_or_null(bin)) target_path = append_path(path:path, value:bin);
+
+      if(!get_kb_item("Unit_Tests/local_detection_nix/file_exists") &&
+         !file_exists(target_path))
+        continue;
+
+      # The following is a-typical:
+      # var 'cmd' will be assembled, and then is checked via unit tests.
+      # 'cmd' may contain a regular expression.  This data
+      # is provided by the plugin writer, so should be considered 'trusted'
+      var cmd = "";
+      if(!skip_strings && strings_supported())
+      {
+        cmd = "strings '$1$' 2>/dev/null";
+        dbg::detailed_log(
+          lvl: 2,
+          src: FUNCTION_NAME,
+          msg: "Command is set to",
+          msg_details: {
+            "Command": {"lvl": 2, "value": obj_rep(cmd)}});
+      }
+      else if(os =~ 'solaris' || sol_chk =~ 'solaris')
+      {
+        dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg: "Unable to determine version on Solaris operating system without strings utility.");
+        var new_paths = paths;
+        foreach(var new_path in new_paths)
+        {
+          results[new_path] = UNKNOWN_VER;
+        }
+        return results;
+      }
+      else
+      {
+        cmd = "grep -aE";       # Legacy behavor, and we should fall back on this if "Host/<whatever>" is not known
+        if(icase) cmd += "i";
+        regex = grep_regex;
+        cmd += strcat(" '", regex, "' $1$ 2>/dev/null");
+        dbg::detailed_log(
+          lvl: 2,
+          src: FUNCTION_NAME,
+          msg: "Command is set to",
+          msg_details: {
+            "Command": {"lvl": 2, "value": obj_rep(cmd)}});
+      }
+
+      if(get_kb_item("Unit_Tests/local_detection_nix/check_command"))
+        return cmd;
+
+      var output = get_kb_item("Unit_Tests/local_detection_nix/get_versions_from_bin_response");
+      # Only 'path' is untrusted,  Assembled 'cmd' is passed as template, and untrusted 'path' is validated
+      if (empty_or_null(output))
+        output = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+
+      if (empty_or_null(output))
+      {
+        # rerun command in hopes of understanding error
+        cmd = str_replace(string:cmd, find:'/dev/null', replace:'&1');
+        output = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+        out_err = 'function unsuccessful.  Error ' + obj_rep(output);
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:out_err);
+        results[path] = UNKNOWN_VER;
+        continue;
+      }
+
+      var version_candidate = pregmatch(string:output, pattern:regex, icase:icase);
+      if (empty_or_null(version_candidate))
+      {
+        results[path] = UNKNOWN_VER;
+      }
+      else if (all_matches)
+      {
+        var version_candidates = [];
+        var lines = pgrep(string:output, pattern:regex, icase:icase);
+        foreach var line (split(lines))
+        {
+          version_candidate = pregmatch(string:line, pattern:regex, icase:icase);
+          if (version_candidate)
+          {
+            append_element(var:version_candidates, value:version_candidate);
+          }
+        }
+        results = version_candidates;
+      }
+      else
+      {
+        results[path] = version_candidate[1];
+      }
+    }
+    dbg::detailed_log(
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning",
+      msg_details: {
+        "Result": {"lvl": 3, "value": obj_rep(results)}});
+    return results;
+  }
+
+  ##
+  # Check if the remote OS is a Solaris OS.
+  #
+  # @return The name of the OS in a string, FALSE if it's not a Solaris OS.
+  ##
+  function solaris_check()
+  {
+    var os = get_kb_item("Host/OS");
+    if (!empty_or_null(os) && os =~ "solaris")
+      return os;
+
+    var solrel = get_kb_item("Host/Solaris/release");
+    if (!empty_or_null(solrel))
+      return strcat('solaris ', solrel);
+
+    var sol11rel = get_kb_item("Host/Solaris11/release");
+    if (!empty_or_null(sol11rel))
+      return strcat('solaris ', sol11rel);
+
+    var solver = get_kb_item("Host/Solaris/version");
+    if (!empty_or_null(solver))
+      return strcat('solaris ', solver);
+
+    var sol11ver = get_kb_item("Host/Solaris11/version");
+    if (!empty_or_null(sol11ver))
+      return strcat('solaris ', sol11ver);
+
+    var solrev = get_kb_item("Host/Solaris/showrev");
+    if (!empty_or_null(solrev))
+      return strcat('solaris ', solrev);
+
+    return FALSE;
+  }
+
+
+  ##
+  # Extracts version string from a given text file using regex matching.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [path:string] Exact path to the target text file.
+  # @param [regex:string] Regex with first capturing group matching the version number.
+  #        Should be a valid nasl regex. If grep is used, it must be a valid POSIX ERE regex as well.
+  # @param [no_regex:string] For proper Solaris support, a pattern may include a string pattern, but does not include a regex pattern (see next example)
+  #
+  # @remark Example config line on target "Apache Tomcat Version 8.5.54"
+  #                   param regex "Apache Tomcat Version ([0-9\.-]+)"
+  #                param no_regex "Apache Tomcat Version"
+  # Note: For Solaris, the 'no_regex' matches the config line.  We can then use pregmatch to get the version string (because Solaris won't do both in one step)
+  #
+  # @param [grep:boolean] Flag setting whether grep should be called to filter out the results before passing them to nasl code. Defaults to true.
+  # @param [icase:boolean] Flag setting whether regex matching should be case insensitive. Defaults to false.
+  # @param [perl:boolean] Flag setting whether grep patterns should be Perl regular expressions. Defaults to false. Only makes sense to use when grep is set to true.
+  #
+  # @return A version string, if found, UNKNOWN_VER, if there was no match, or NULL, if any argument is missing or target file doesn't exist.
+  ##
+  function get_version_from_cfg(path, regex, no_regex, grep, icase, perl, &collection_metadata)
+  {
+    var os = get_kb_item("Host/OS");
+    var sol_chk = solaris_check();
+
+    if(empty_or_null(path))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'path'");
+      return NULL;
+    }
+    if(isnull(regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'regex'");
+      return NULL;
+    }
+    if((os =~ "solaris" || sol_chk =~ "solaris") && isnull(no_regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'no_regex'");
+      return NULL;
+    }
+
+    if(!get_kb_item("Unit_Tests/local_detection_nix/file_exists") &&
+       !file_exists(path))
+      return NULL;
+
+    # Default values
+    if(isnull(grep)) grep = TRUE;
+    if(isnull(icase)) icase = FALSE;
+    if(isnull(perl)) perl = FALSE;
+
+    var result = "";
+    var cmd = "";
+    ##
+    #  BOTH conditions that follow tested and working for
+    #   Solaris, AIX, CentOS, more common
+    ##
+    if(grep_supported() && grep)
+    {
+      if (os =~ "solaris" || sol_chk =~ "solaris")
+        cmd = "grep";
+      else if (perl)
+        cmd = "grep -P";
+      else
+        cmd = "grep -E";
+
+      if(icase) cmd += " -i";
+      if (os =~ "solaris" || sol_chk =~ "solaris")
+        cmd += strcat(" '", no_regex, "' $1$ 2>/dev/null");
+      else
+        cmd += strcat(" '", regex, "' $1$ 2>/dev/null");
+    }
+    else
+    {
+      # use cat instead of grep
+      cmd = "cat '$1$' 2>/dev/null";
+    }
+    if (get_kb_item("Unit_Tests/local_detection_nix/check_command"))
+      return cmd;
+
+    var grep_res =  get_kb_item("Unit_Tests/local_detection_nix/grep_response");
+    if (empty_or_null(grep_res))
+      grep_res = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+
+    if (empty_or_null(grep_res))
+      return UNKNOWN_VER;
+    var version_candidate = pregmatch(string:grep_res, pattern:regex, icase:icase);
+    if (empty_or_null(version_candidate))
+    {
+      result = UNKNOWN_VER;
+    }
+    else
+    {
+      collect_version_file_info(path:path, regex:regex, collection_metadata:collection_metadata);
+      result = version_candidate[1];
+    }
+    dbg::detailed_log(
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning",
+      msg_details: {
+        "Result": {"lvl": 3, "value": obj_rep(result)}});
+    return result;
+  }
+
+  ##
+  # Collect data about the provided path for the collection_metadata, and track the metadata and regex for this path
+  #
+  # @param [path:string] absolute path to file used to extract version
+  # @param [regex:string] regex used to extract the version
+  # @param [collection_metadata:collection_metadata::collection_metadata] collection metadata object
+  #
+  # @return NULL
+  ##
+  function collect_version_file_info(path, regex, &collection_metadata)
+  {
+      if(typeof_ex(collection_metadata) == "collection_metadata::collection_metadata")
+      {
+        var size = get_file_size(path: path);
+        var mtime = get_file_modification_time(path: path);
+        collection_metadata.add_version_file_with_regex_helper(path: path, regex:regex, size:size, last_modified: mtime);
+      }
+      return NULL;
+  }
+
+  ##
+  # Extracts version numbers from text files using regex matching.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [paths:list] List of paths to be checked.
+  # @param [cfg_path:string] Path of target text file RELATIVE to the paths passed. Can be omitted if paths point straight to text files.
+  # @param [regex:string] Regex with first capturing group matching the version number. Should be a valid nasl regex.
+  #        If grep is used, it must be a valid POSIX ERE regex as well.
+  # @param [no_regex:string] For proper Solaris support, a pattern may include a string pattern, but does not include a regex pattern (see next example)
+  #
+  # @remark Example config line on target "Apache Tomcat Version 8.5.54"
+  #                   param regex "Apache Tomcat Version ([0-9\.-]+)"
+  #                param no_regex "Apache Tomcat Version"
+  # Note: For Solaris, the 'no_regex' matches the config line.  We can then use pregmatch to get the version string (because Solaris won't do both in one step)
+  #
+  # @param [grep:boolean] Flag setting whether grep should be called to filter out the results before passing them to nasl code. Defaults to true.
+  # @param [icase:boolean] Flag setting whether regex matching should be case insensitive. Defaults to false.
+  #
+  # @return An array of path:version pairs found or NULL if any argument is missing. The array might be empty or contain some UNKNOWN_VER values.
+  ##
+  function get_versions_from_cfg(paths, cfg_path, regex, no_regex, grep, icase)
+  {
+    var os, sol_chk;
+    if(empty_or_null(paths))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'paths'");
+      return NULL;
+    }
+    if (typeof(paths) != 'array')
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Argument 'paths' must be an array");
+      return NULL;
+    }
+    if(isnull(regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'regex'");
+      return NULL;
+    }
+    if(isnull(no_regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'no_regex'");
+      return NULL;
+    }
+
+    var strings = FALSE;    # pass arg value '1' to set as TRUE
+    if(isnull(icase)) icase = FALSE;        # pass arg value '1' to set as TRUE
+
+    var results = {};
+    foreach(var path in paths)
+    {
+      var target_path = path;
+      if(!empty_or_null(cfg_path)) target_path = append_path(path:path, value:cfg_path);
+
+      if(!get_kb_item("Unit_Tests/local_detection_nix/file_exists") &&
+         !file_exists(target_path))
+        continue;
+
+      var cmd = "";
+      ##
+      #  BOTH conditions that follow tested and working for
+      #   Solaris, AIX, CentOS, more common
+      ##
+      if(grep_supported() && grep)
+      {
+        os = get_kb_item("Host/OS");
+	sol_chk = solaris_check();
+        if (os =~ "solaris" || sol_chk =~ "solaris")
+          cmd = "grep";
+        else
+          cmd = "grep -E";
+
+        if(icase) cmd += " -i";
+
+        if (os =~ "solaris" || sol_chk =~ "solaris")
+          cmd += strcat(" '", no_regex, "' $1$ 2>/dev/null");
+        else
+          cmd += strcat(" '", regex, "' $1$ 2>/dev/null");
+      }
+      else
+      {
+        # use cat instead of grep
+        cmd = "cat '$1$' 2>/dev/null";
+      }
+      if (get_kb_item("Unit_Tests/local_detection_nix/check_command"))
+        return cmd;
+
+      var grep_res = get_kb_item("Unit_Tests/local_detection_nix/grep_response");
+      if (empty_or_null(grep_res))
+        grep_res = ldnix::run_cmd_template_wrapper(template:cmd, args:[target_path]);
+
+      if (empty_or_null(grep_res))
+      {
+        results[path] = UNKNOWN_VER;
+        continue;
+      }
+
+      var version_candidate = pregmatch(string:grep_res, pattern:regex, icase:icase);
+      if (empty_or_null(version_candidate))
+        results[path] = UNKNOWN_VER;
+      else
+        results[path] = version_candidate[1];
+    }
+    dbg::detailed_log(
+      lvl: 3,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning",
+      msg_details: {
+        "Result": {"lvl": 3, "value": obj_rep(results)}});
+    return results;
+  }
+
+  ##
+  # Builds a path:installation array ready to pass to register_software.
+  #
+  # @param [app:string] Name of the application.
+  # @param [versions:array] A path:version array, ideally created by any of get_versions_from_*() functions.
+  #
+  # @return A path:installation array.
+  ##
+  function build_installs_array(app, versions)
+  {
+    if(empty_or_null(app))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'app'");
+      return NULL;
+    }
+    if(isnull(versions))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'versions'");
+      return NULL;
+    }
+
+    var results = {};
+    foreach(var path in keys(versions))
+    {
+      results[path] = new ldnix::installation(app, path, versions[path], false);
+    }
+    return results;
+  }
+
+  ##
+  # Registers any number of detected installations using register_install() calls.
+  # @remark Any plugin that successfully calls this function must also call report_installs() before exiting!
+  #
+  # @param [cpe:string] Mandatory CPE string of the registered software.
+  # @param [vendor:string] Mandatory Vendor string of the registered software.
+  # @param [product:string] Mandatory Product string of the registered software.
+  # @param [installs:list] A list or array of installation objects to register. Can be passed anonymously.
+  # 
+  # @return True if the installations were registered successfully, false + error printout otherwise.
+  ##
+  function register_software(cpe, vendor, product, installs)
+  {
+    if(isnull(cpe))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'cpe'");
+      return false;
+    }
+
+    if(isnull(vendor))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'vendor'");
+      return false;
+    }
+
+    if(isnull(product))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'product'");
+      return false;
+    }
+
+    if(isnull(installs)) installs = _FCT_ANON_ARGS[0];
+
+    if(empty_or_null(installs))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "No installs passed to register");
+      return false;
+    }
+    foreach(var install in installs)
+    {
+      var registered_path = install.path;
+
+      if (install.is_snapcraft_package)
+        registered_path += ' (via snapcraft package manager)';
+      if (install.is_package)
+        registered_path += ' (via package manager)';
+
+      var register_res = register_install(
+        app_name:install.app,
+        vendor:vendor,
+        product:product,
+        path:registered_path,
+        version:install.version,
+        cpe:cpe,
+        fa_app_name: install.fa_app_name,
+        extra:install.extra,
+        extra_no_report:install.extra_no_report
+      );
+      if(register_res != IF_OK)
+      {
+        dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "register_install error");
+        return false;
+      }
+
+    }
+    return true;
+  }
+
+  ##
+  # Checks if a given file or directory exists on the target system.
+  #
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [file:string] File path to be checked. Can be passed anonymously.
+  # @param [exclude_dirs:boolean] Boolean which determines if directories are excluded or not
+  #
+  # @return [boolean True if file exists, false otherwise.
+  ##
+  function file_exists(file, exclude_dirs)
+  {
+    if(isnull(file)) file = _FCT_ANON_ARGS[0];
+    if(empty_or_null(file))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'file'");
+      return FALSE;
+    }
+    if (!exclude_dirs) exclude_dirs = false;
+
+    var cmd;
+    var found;
+
+    ##
+    #  "test -f ..." seems to be supported everywhere
+    #  OS Tested: CentOS, Ubuntu, MacOS, AIX, Solaris10, Solaris11
+    ##
+    if (exclude_dirs)
+      cmd = '[ -f "$1$" ] && echo "found"';
+    else
+      cmd = '[ -f "$1$" ] || [ -d "$1$" ] && echo "found"';
+
+    found = get_kb_item("Unit_Tests/local_detection_nix/file_exists_response");
+    if (empty_or_null(found))
+      found = ldnix::run_cmd_template_wrapper(template:cmd, args:[file], timeout:600);
+
+    if (found =~ "^found")
+      found = TRUE;
+    else
+      found = FALSE;
+    dbg::detailed_log(
+      lvl: 2,
+      src: FUNCTION_NAME,
+      msg: "Successfully returning",
+      msg_details: {
+        "Result": {"lvl": 2, "value": found}});
+    return found;
+  }
+
+
+  ##
+  #  Looks for one or more strings in supplied content
+  #  Returns each occurrence, as well as customizable surrounding context
+  #
+  #  The innovation in this function is that rather than logging
+  #  a large configuration file, we can search for the strings we care about
+  #  and log less.  This function is intended to help with 'next generation'
+  #  asset detection methods.
+  #
+  #  This function is also intended to be a tool.
+  #  In the future, we may come to understand that when we use spotlight
+  #   on software X, it returns one thing for version A, but something else for version B,
+  #   possibly helping us to differentiate between them.
+  #
+  #  @param [content:string] Mandatory content in which to search for the string(s)
+  #  @param [strings:array] array of strings to search for in content
+  #  @param [lines_before:integer] optional number of lines preceeding each match (default 2)
+  #  @param [lines_after:integer] optional number of lines proceeding each match (default 2)
+  #  @param [use_regex:boolean] optional TRUE/FALSE.  param strings can contain regex if TRUE
+  #                     note: this is intended to be a safeguard
+  #
+  #  @return variable length data structure (depends on number of matches found)
+  #
+  #  @remark Warning: This function is not designed to find strings or regular expressions
+  #           which span multiple lines.  Use pregmatch() instead.
+  #
+  #  @remark Warning: Be careful to only search for uncommon strings
+  #  (gathering 5 lines surrounding each occurrence of 'the' could overwhelm a system)
+  #
+  ##
+  function spotlight(content, strings, lines_before, lines_after, use_regex)
+  {
+    var linenum, matchlines, matches, matchcontent, match_count;
+    var ret, lines, line, string, this_line, i, j, k, index;
+
+    if (empty_or_null(content))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Passed content was empty");
+      return NULL;
+    }
+
+    if (empty_or_null(strings))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "string array empty");
+      return NULL;
+    }
+    else if (typeof(strings) != 'array')
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "strings data not in expected array form");
+      return NULL;
+    }
+
+    if (empty_or_null(lines_before))
+      lines_before = 2;
+
+    if (empty_or_null(lines_after))
+      lines_after = 2;
+
+    if (lines_before < 0)
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "lines_before was passed an invalid value");
+      return NULL;
+    }
+
+    if (lines_after < 0)
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "lines_after was passed an invalid value");
+      return NULL;
+    }
+
+    if (empty_or_null(use_regex))
+      use_regex  = FALSE;
+
+    # look for strings in content and save line numbers
+    linenum = 0;
+    matches = 0;
+    lines = split(content, keep:TRUE);
+    foreach line (lines)
+    {
+      foreach string (strings)
+      {
+        if (use_regex && line =~ string)
+        {
+          matchlines[string][matches] = linenum;
+          matches++;
+        }
+        else if (string >< line)
+        {
+          matchlines[string][matches] = linenum;
+          matches++;
+        }
+      }
+      linenum++;
+    }
+
+    # if matches were found, gather surrounding content
+    if (matches > 0)
+    {
+      foreach string (strings)
+      {
+        match_count = 0;
+        # the 'sort' aspect of the following is fairly important
+        foreach index (sort(keys(matchlines[string])))
+        {
+          matchcontent = NULL;
+
+          for (var offset = -lines_before; offset <= lines_after; offset++)
+          {
+            var line_index = matchlines[string][index] + offset;
+            matchcontent += lines[line_index];
+          }
+
+          ret[string][match_count]['matching_line'] = lines[matchlines[string][index]];
+          ret[string][match_count]['context']= matchcontent;
+          match_count++;
+        }
+      }
+      dbg::detailed_log(
+        lvl: 3,
+        src: FUNCTION_NAME,
+        msg: "Returning matches",
+        msg_details: {
+          "Result": {"lvl": 3, "value": obj_rep(ret)}});
+      return ret;
+    }
+    else
+    {
+      # no matches
+      return NULL;
+    }
+  }
+
+
+  ##
+  # Checks running process list passed as argument or taken from Host/ps_auxww kb entry for any commands matching a regex.
+  # @remark Unless ps argument is used, Host/ps_auxww kb entry, set by linux_process_information.nasl, must be present.
+  #
+  # @param [regex:string] A nasl regex used to match lines from 'ps auxww' output.
+  # @param [ps:string] Optional ps output to parse. Defaults to Host/ps_auxww KB entry if not used.
+  #
+  # @return NULL, if (ps and KB entry) or regex is missing, otherwise a list of commands (not whole ps output lines!) matching the regex, possibly empty.
+  ##
+  function check_process(regex, ps)
+  {
+    if(empty_or_null(regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'regex'");
+      return NULL;
+    }
+
+    if(empty_or_null(ps)) ps = get_kb_item("Host/ps_auxww");
+
+    if(empty_or_null(ps))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required KB entry 'Host/ps_auxww'");
+      return NULL;
+    }
+
+    var matches = pgrep(pattern:regex, string:ps);
+    var match_lines = split(matches);
+    var output = [];
+    foreach(var line in match_lines)
+    {
+      # Macos - ps auxww   - 'root              243   0.0 10.3  4785152 433616   ??  Ss   Tue12AM  26:39.67 /Path/to/program\n'
+      # Macos - ps auxww   - 'root              55071   0.0  0.0  4424260   3240   ??  Ss    1:53pm   0:00.03 /Path/to/program\n'
+      # Linux - ps auxww   - 'root       40220  0.0  0.0   8700   840 ?        S    16:10   0:00 sleep 180'
+      # Solaris 10 ps -ef  - 'root   531     1   0   Jun 09 ?           4:32 /usr/lib/ssh/sshd'
+      # AIX   - ps auxww   - 'root      5112010  0.0  0.0 1280 1392      - A      Oct 30  0:06 /usr/sbin/sshd'
+
+      var cmd = NULL;
+      var sol_chk;
+      # Host/*/release doesn't exist on Macos
+      # For backwards compat reasons, leave this check first
+      var os = get_kb_item("Host/MacOSX/Version");
+      if(!isnull(os))
+      {
+        # Mac OS X
+        cmd = pregmatch(pattern:"(?:[\w:]{5,7})\s+\d{1,2}\:\d{2}(?:\.\d{2})\s+(.*)", string:line);
+      }
+      else
+      {
+        # else, perform check depending on which non-Mac OS...
+
+        os = get_kb_item("Host/OS");
+        sol_chk = solaris_check();
+
+        # Solaris 10 ps -ef:  'root   531     1   0   Jun 09 ?           4:32 /usr/lib/ssh/sshd'
+        if (os =~ "solaris 10" || sol_chk =~ "solaris 10")
+          cmd = pregmatch(pattern:"^\s+\w+\s+\d+\s+\d+\s+\d+\s+\w+\s+\d+\s+\D+\d+:\d+\s+([\S]+)$", string:line);
+
+        # AIX: 'root      5112010  0.0  0.0 1280 1392      - A      Oct 30  0:06 /usr/sbin/sshd'
+        else if (os =~ "aix")
+          cmd = pregmatch(pattern:"^\w+\s+\d+\s+[0-9\.]+\s+[0-9\.]+\s+\d+\s+\d+\s+-\s+\w+\s+\w+\s+\d+\s+\d+:\d+\s+([\S]+)\s+", string:line);
+
+        # fall back to default (Linux)
+        else
+          cmd = pregmatch(pattern:"(?:(?:\d{1,2}\:\d{1,2})|(?:\w{5})|(?:\d{4}))\s+\d{1,6}\:\d{2}\s+(.*)", string:line);
+
+      }
+
+      if (!empty_or_null(cmd) && !empty_or_null(cmd[1]))
+        cmd = cmd[1];
+      else
+        continue;
+
+      append_element(var:output, value:cmd);
+    }
+    return output;
+  }
+
+  ##
+  # Attempts to find the socket descriptors associated with a pid
+  # on the remote host
+  #
+  # @param [pid:string] A string of digits representing a Linux process id
+  #
+  # @return NULL if pid is missing or other error. Returns string output of 'ls -la /proc/[pid]/fd' otherwise
+  ##
+  function _run_get_fds(pid)
+  {
+    if(empty_or_null(pid))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing arguemnt 'pid'");
+      return NULL;
+    }
+    if(pid =~ "^.*\D.*$")
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Bad argument 'pid'");
+      return NULL;
+    }
+    var fd = run_cmd_template(template:'ls -la /proc/$1$/fd | grep socket 2>/dev/null', args:[pid]);
+    if(fd['error'] != 0 || empty_or_null(fd['data']))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Unable to find file descriptors");
+      return NULL;
+    }
+    return fd['data'];
+  }
+
+  ##
+  # Parses output of ls -la /proc/[pid]/fd to find inodes
+  #
+  # @param [fd:string] A string containing output of ls -la /proc/[pid]/fd
+  #
+  # @return NULL if fd is missing or no inodes found. Returns list of inodes otherwise
+  ##
+  function _get_socket_inodes(fd)
+  {
+    var match;
+    if(empty_or_null(fd))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing arguemnt 'fd'");
+      return NULL;
+    }
+    var inodes;
+    inodes = make_list();
+    fd = split(fd);
+    foreach var line (fd)
+    {
+      match = pregmatch(pattern:"^.*socket:\[([\d]+)\]$", string:line);
+      if(!empty_or_null(match))
+        append_element(var:inodes, value:match[1]);
+    }
+    if(empty_or_null(inodes))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Unable to find inodes");
+      return NULL;
+    }
+    return inodes;
+  }
+
+  ##
+  # Attempts to find the connection for the passed protocol on the remote host
+  #
+  # @param [proto:string] string containing the protocol to look for
+  #
+  # @return NULL if proto is missing, command fails, no connections. Returns output
+  # of 'cat /proc/net/[proto]' otherwise
+  ##
+  function _run_get_proto_connections(proto)
+  {
+    if(empty_or_null(proto))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing arguemnt 'proto'");
+      return NULL;
+    }
+
+    #find the open ports/addresses from /proc/net/[tcp|udp]
+    var contents = run_cmd_template(template:'cat /proc/net/$1$ 2>/dev/null', args:[proto]);
+
+    if(contents['error'] != 0 || empty_or_null(contents['data']))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Unable to find inodes");
+      return NULL;
+    }
+    return contents['data'];
+  }
+
+  ##
+  # Parses the output of 'cat /proc/net/[proto]' to find ip/port info
+  # associated with the passed inodes
+  #
+  # @param [inodes:list] list of inodes
+  # @param [connections:string] string containing output of 'cat /proc/net/[proto]'
+  #
+  # @return NULL if no inodes were matched, a list of {ip, port} otherwise
+  ##
+  function _get_ips_from_inodes(inodes, connections)
+  {
+    if(empty_or_null(inodes) || empty_or_null(connections))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing arguments");
+      return NULL;
+    }
+
+    var ips, result, inode, line, match;
+
+    connections = split(connections);
+    ips = make_list();
+    result = NULL;
+    foreach inode (inodes)
+    {
+      foreach line (connections)
+      {
+        match = pregmatch(pattern:" +[^ ]+ +([^ ]+:[^ ]+) +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(" + inode + ") .*$", string:line);
+        #just matched on the inode and address
+        if(!empty_or_null(match))
+        {
+          result = split(match[1], sep:':', keep:FALSE);
+          result[0] = convert_hex_ip(ip:result[0]);
+          result[1] = hex2dec(xvalue:result[1]);
+          if(empty_or_null(result[0]) || result[1] == 0)
+          {
+            dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg: "Unable to interpret ip or port");
+            break;
+          }
+          append_element(var:ips, value:{'ip':result[0],'port':result[1]});
+          break;
+        }
+      }
+    }
+    if(empty_or_null(ips)) return NULL;
+    return ips;
+  }
+
+  ##
+  # Attempts to find the port and ip address that a process is using on a remote system.
+  # Uses the passed pid to find a list of socket inodes in the file discriptors (/proc/[pid]/fd)
+  # Then matches the inodes in /proc/net/[proto]
+  # Assumes successful ssh connection has already been established
+  #
+  # @param [pid:string] A string of digits representing a Linux process id
+  # @param [proto:string] Optional. The protocol to look for. Defaults to tcp
+  #
+  # @return NULL if pid is missing or other error. Returns a list of {'port':xxxx, 'ip':'y.y.y.y'} otherwise
+  ##
+  function pid_to_ip(pid, proto)
+  {
+    if(empty_or_null(pid))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'pid'");
+      return NULL;
+    }
+    if(pid =~ "^.*\D.*$")
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Bad argument 'pid'");
+      return NULL;
+    }
+    if(empty_or_null(proto)) proto = 'tcp';
+
+    var fd = NULL;
+    var contents = NULL;
+
+    fd = _run_get_fds(pid:pid);
+    if(empty_or_null(fd)) return NULL;
+
+    var inodes = _get_socket_inodes(fd:fd);
+    if(empty_or_null(inodes)) return NULL;
+
+    var connections = _run_get_proto_connections(proto:proto);
+    if(empty_or_null(connections)) return NULL;
+
+    var ips = _get_ips_from_inodes(inodes: inodes, connections: connections);
+
+    if(empty_or_null(ips))
+      return NULL;
+    return ips;
+  }
+
+  ##
+  # Converts a hex formatted ipv4 address into human-readable form
+  #
+  # @param [ip:string] An 8 character hexadecimal string
+  #
+  # @return NULL if ip is missing or not an 8-char hex string, otherwise a string containing an ip address
+  ##
+  function convert_hex_ip(ip)
+  {
+    if(empty_or_null(ip))
+      return NULL;
+    local_var badcar = pgrep(pattern: "^.*[^0-9A-Fa-f].*$", string:ip);
+    if(strlen(ip) != 8 || !empty_or_null(badcar))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Invalid ip address");
+      return NULL;
+    }
+    local_var ip_string = NULL;
+    ip_string = strcat(hex2dec(xvalue:substr(ip, 6, 7)), '.',
+                       hex2dec(xvalue:substr(ip, 4, 5)), '.',
+                       hex2dec(xvalue:substr(ip, 2, 3)), '.',
+                       hex2dec(xvalue:substr(ip, 0, 1)));
+    return ip_string;
+  }
+
+  ##
+  # Normalize File System Path
+  #
+  # @param [path:string] The path to normalize
+  #
+  # @return NULL, if parameter is NULL, otherwise returns a string with all white spaces escaped (i.e. '\ ') .
+  ##
+  function normalize_path(path)
+  {
+    var p, match;
+
+    if(isnull(path))
+    {
+      p = _FCT_ANON_ARGS[0];
+      if(isnull(p))
+      {
+        dbg::detailed_log(lvl: 1, src:SCRIPT_NAME, msg:"Missing required parameter 'path'.");
+        return NULL;
+      }
+    }
+    else
+    {
+      p = path;
+    }
+
+    match = pregmatch(string:p, pattern:"\s");
+    if(!isnull(match))
+      p = preg_replace(string:p, pattern:"(\s+)", replace:"\\1");
+
+    return p;
+  }
+
+  ##
+  #  Determines if the ``strings`` binary is supported
+  #  @return TRUE if ``strings`` is supported, FALSE otherwise
+  ##
+  function strings_supported()
+  {
+    var supported, str_chk;
+    supported = get_kb_item("Host/cmd/strings_supported");
+    if (empty_or_null(supported))
+    {
+      dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg: "Attempting to determine if 'strings' is supported.");
+      str_chk = get_kb_item("Unit_Tests/local_detection_nix/strings_response");
+      if (empty_or_null(str_chk))
+        str_chk = ldnix::run_cmd_template_wrapper(template:'strings -h 2>&1');
+      dbg::detailed_log(
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "string check returned",
+        msg_details: {
+          "Response": {"lvl": 2, "value": obj_rep(str_chk)}});
+      if (!empty_or_null(str_chk) && "Usage:" >< str_chk)
+        supported = TRUE;      # matches CentOS/AIX/Solaris
+      else
+        supported = FALSE;
+
+      replace_kb_item(name:"Host/cmd/strings_supported", value:supported);
+    }
+    return supported;
+  }
+
+
+  ##
+  #  Determines if the ``locate`` binary is supported
+  #  @return TRUE if ``locate`` is supported, FALSE otherwise
+  ##
+  function locate_supported()
+  {
+    var supported, loc_chk;
+    supported = get_kb_item("Host/cmd/locate_supported");
+    if (empty_or_null(supported))
+    {
+      dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg: "Attempting to determine if 'locate' is supported.");
+      loc_chk = get_kb_item("Unit_Tests/local_detection_nix/locate_response");
+      if (empty_or_null(loc_chk))
+        loc_chk = ldnix::run_cmd_template_wrapper(template:'locate ssh 2>&1');
+      dbg::detailed_log(
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "locate check returned",
+        msg_details: {
+          "Response": {"lvl": 2, "value": obj_rep(loc_chk)}});
+      if (!empty_or_null(loc_chk) && "locate:" >< loc_chk && " not found" >< loc_chk)
+        supported = FALSE;      # locate not found message
+      else if (!empty_or_null(loc_chk) && "/ssh" >< loc_chk)
+        supported = TRUE;       # Successful response for ssh
+      else
+        supported = FALSE;      # Either ssh is not installed (unlikely) or something else went wrong
+
+      replace_kb_item(name:"Host/cmd/locate_supported", value:supported);
+    }
+    return supported;
+  }
+
+  ##
+  #  Determines if the ``which`` binary is supported
+  #  @return NULL (if error), "FALSE" (if unsupported) or, the appropriate syntax to use for which
+  #   (either 'which' or 'which -a')
+  ##
+  function which_supported()
+  {
+    var supported, which_chk;
+    supported = get_kb_item("Host/cmd/which_supported");
+    if (empty_or_null(supported))
+    {
+      dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg: "Attempting to determine if 'which' is supported.");
+      which_chk = get_kb_item("Unit_Tests/local_detection_nix/which_response");
+      if (empty_or_null(which_chk))
+        which_chk = ldnix::run_cmd_template_wrapper(template:'which cat 2>&1');
+      dbg::detailed_log(
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "which check returned",
+        msg_details: {
+          "Response": {"lvl": 2, "value": obj_rep(which_chk)}});
+      if (!empty_or_null(which_chk) && "which:" >< which_chk && " not found" >< which_chk)
+        supported = FALSE;      # AIX which not found message
+      else if (!empty_or_null(which_chk) && "/cat" >< which_chk)
+        supported = TRUE;       # Successful response
+      else
+        supported = FALSE;      # Either not installed or something else went wrong
+
+      if (supported)
+      {
+        var which_synt;
+        # establish how to run 'which' command for UNIX/Linux
+        if (
+          get_kb_item("Host/HP-UX/version") ||
+          get_kb_item("Host/Solaris/Version") ||
+          get_kb_item("Host/Solaris11/Version") ||
+          get_kb_item("Host/FreeBSD/release") ||
+          get_kb_item("Host/AIX/version")
+        ) which_synt = "which";
+        else
+          which_synt = "which -a";
+
+        supported = which_synt;
+      }
+      replace_kb_item(name:"Host/cmd/which_supported", value:supported);
+    }
+    return supported;
+  }
+
+
+  ##
+  #  Determines if the ``grep`` binary is supported
+  #  @return TRUE if ``grep`` is supported, FALSE otherwise
+  #
+  #  @remark Even though this function leverages
+  #   bin_supported(), in the future it may need to become more
+  #   complicated due to variations in how grep is implemented on
+  #   different operating systems
+  ##
+  function grep_supported()
+  {
+    var supported, grep_chk;
+    supported = get_kb_item("Host/cmd/grep_supported");
+    if (empty_or_null(supported))
+    {
+      dbg::detailed_log(lvl: 2, src: FUNCTION_NAME, msg: "Attempting to determine if 'grep' is supported.");
+      supported = get_kb_item("Unit_Tests/local_detection_nix/grep_response");
+      if (empty_or_null(supported))
+        supported = bin_supported(bin:'grep');
+
+      replace_kb_item(name:"Host/cmd/grep_supported", value:supported);
+    }
+    return supported;
+  }
+
+
+  ##
+  #  Determines if a given binary is installed/supported
+  #
+  #  @remark Not to be used for 'strings', 'which', 'grep' or 'locate'
+  #    (they have their own functions above)
+  #
+  #  @remark intended to be used to establish ONCE if a given
+  #    binary is present on the target.  Mostly important
+  #    for binaries that will be called more than once
+  #    and are not guaranteed to be present, like locate.
+  #
+  #  @return TRUE if supported, FALSE or NULL if error
+  ##
+  function bin_supported(bin)
+  {
+    if (empty_or_null(bin))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'bin'");
+      return NULL;
+    }
+
+    if (bin == 'strings' ||
+        bin == 'which' ||
+        bin == 'locate')
+    {
+      dbg::detailed_log(
+        lvl: 1,
+        src: FUNCTION_NAME,
+        msg: "Disallowed argument for 'bin'. Use its dedicated function instead.",
+        msg_details: {
+          "bin": {"lvl": 1, "value": bin}});
+      return NULL;
+    }
+
+    var supported, bin_chk, res, which_res, loc_res, which_synt, chk_regex;
+
+    supported = get_kb_item("Host/cmd/" + bin + "_supported");
+    if (empty_or_null(supported))
+    {
+      dbg::detailed_log(
+        lvl: 2,
+        src: FUNCTION_NAME,
+        msg: "Attempting to determine if bin is supported.",
+        msg_details: {
+          "bin": {"lvl": 2, "value": bin}});
+      # assume that it is not supported
+      supported = FALSE;
+
+      chk_regex = "/" + bin + "$";
+
+      ##
+      #  use both 'which <bin>' and 'locate <bin>' for determination
+      #  report success if either are successful
+      ##
+      which_synt = which_supported();
+      if (which_synt)
+      {
+        bin_chk = get_kb_item("Unit_Tests/local_detection_nix/bin_response");
+        if (empty_or_null(bin_chk))
+          bin_chk = ldnix::run_cmd_template_wrapper(template:'$1$ $2$ 2>&1', args:[which_synt,bin]);
+        dbg::detailed_log(
+          lvl: 3,
+          src: FUNCTION_NAME,
+          msg: "Checked bin with which",
+          msg_details: {
+            "bin": {"lvl": 3, "value": bin},
+            "Response": {"lvl": 3, "value": obj_rep(bin_chk)}});
+        which_res = split(bin_chk, keep:false);
+        foreach (res in which_res)
+        {
+          if (!empty_or_null(res) && res =~ chk_regex)
+            supported = TRUE;            # Successful response for bin
+          else
+            continue;           # Either bin is not installed or something else went wrong
+        }
+      }
+      if (!supported && locate_supported())
+      {
+        bin_chk = get_kb_item("Unit_Tests/local_detection_nix/bin_response");
+        if (empty_or_null(bin_chk))
+          bin_chk = ldnix::run_cmd_template_wrapper(template:'locate $1$ 2>&1', args:[bin]);
+        dbg::detailed_log(
+          lvl: 3,
+          src: FUNCTION_NAME,
+          msg: "Checked bin with locate",
+          msg_details: {
+            "bin": {"lvl": 3, "value": bin},
+            "Result": {"lvl": 3, "value": obj_rep(bin_chk)}});
+        loc_res = split(bin_chk, keep:false);
+        foreach (res in loc_res)
+        {
+          if (!empty_or_null(res) && res =~ chk_regex)
+            supported = TRUE;            # Successful response for bin
+          else
+            continue;           # Either bin is not installed or something else went wrong
+        }
+      }
+
+      replace_kb_item(name:"Host/cmd/" + bin + "_supported", value:supported);
+    }
+        dbg::detailed_log(
+          lvl: 2,
+          src: FUNCTION_NAME,
+          msg: "Verdict for the bin",
+          msg_details: {
+            "bin": {"lvl": 2, "value": bin},
+            "supported": {"lvl": 2, "value": supported}});
+    return supported;
+  }
+
+  ##
+  # Returns permissions of a file using ``ls -l`` command.
+  #
+  # @param [file:string] Path to the file for which permissions are desired
+  #
+  # @return permissions, user and group ownership
+  ##
+  function get_file_permissions(file)
+  {
+    if(empty_or_null(file)) file = _FCT_ANON_ARGS[0];
+
+    var ret = {};
+    if(empty_or_null(file))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"Missing required parameter 'file'.");
+      ret['error'] = 1;
+      return ret;
+    }
+
+    var cmd = "ls -l '$1$'";
+    var result = get_kb_item("Unit_Tests/local_detection_nix/ls_-l_response");
+    if (empty_or_null(result))
+      result = ldnix::run_cmd_template_wrapper(template:cmd, args:[file]);
+
+    if (empty_or_null(result))
+    {
+      dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:"No response from ls -l");
+      ret['error'] = 1;
+      return ret;
+    }
+
+    # First capture group: permissions
+    # Second capture group: user ownership
+    # Third capture group: group ownership
+    var item_regex = "^([-dlbcrwxsStT]*)[\.]?\s+\d+\s+([\S]+)\s+([\S]+)\s+\d+";
+    var items = pregmatch(string:result, pattern:item_regex);
+    if (!empty_or_null(items) && !empty_or_null(items[0]))
+    {
+      if (!empty_or_null(items[0]) &&
+          !empty_or_null(items[1]) &&
+          !empty_or_null(items[2]) &&
+          !empty_or_null(items[3]))
+      {
+        ret['error'] = HLF_OK;
+        ret['permissions'] = items[1];
+        ret['user'] = items[2];
+        ret['group'] = items[3];
+        ret['full'] = items[0];
+      }
+    }
+    return ret;
+  }
+
+  ##
+  # Returns the full contents of a file using ``cat`` command.
+  #
+  # @param [file:string] Path to the file we want to read.
+  #
+  # @return Full text content of the target file.
+  ##
+  function get_file_contents(file)
+  {
+    if(empty_or_null(file)) file = _FCT_ANON_ARGS[0];
+    var unit_test = get_one_kb_item("Unit_Tests/local_detection_nix/get_file_contents_response");
+    if (!isnull(unit_test))
+      return unit_test;
+    var cmd = strcat("cat '$1$' 2>/dev/null");
+    var result = ldnix::run_cmd_template_wrapper(template:cmd, args:[file]);
+    return result;
+  }
+
+  ##
+  # Appends a new part to a path while inserting or preserving single slashes between the appended parts as needed.
+  #
+  # @param [path:string] The path that is to be extended.
+  # @param [value:string] The new part that is to be appended to the path.
+  # @param [allow_null:boolean] If true then allows to append value to NULL resulting in value being returned (DEFAULT: false)
+  #
+  # @remark Example: 'path' + 'part', 'path/' + 'part', 'path' + '/part' and 'path/' + '/part will all result in the same 'path/part'.
+  #
+  # @return The new, extended path, unmodified path when value is empty/missing or NULL when the path is empty/missing.
+  ##
+  function append_path(path, value, allow_null)
+  {
+    if (!allow_null) allow_null = false;
+    if (!path && !value) return NULL;
+    if (allow_null && !path) return value;
+    if (empty_or_null(path)) return NULL;
+    if (empty_or_null(value)) return path;
+
+    path = trim(path, rchars:'/');
+    value = trim(value, lchars:'/');
+    return strcat(path, '/', value);
+  }
+
+  ##
+  # Takes an arbitrary number of strings and constructs a path from them by appending them in the order they were passed.
+  # Makes sure each part is separated from another by exactly one slashes, regardless of whether the parts itself start or end with slashes.
+  #
+  # @anonparam [path:string] The path to which the parts need to be appended.
+  # @anonparam [parts:strings] Any number of strings that will be used to build the path.
+  #
+  # @return [string] The constructed path
+  #
+  # @remark Example: construct_path('/opt', '/nessus', 'bin/') call will result in '/opt/nessus/bin' path.
+  ##
+  function construct_path()
+  {
+    var parts = _FCT_ANON_ARGS;
+    var path = _FCT_ANON_ARGS[0];
+    var len = max_index(parts);
+    for(var i = 1; i < len; i += 1)
+    {
+      path = append_path(path:path, value:parts[i]);
+    }
+    return path;
+  }
+
+
+  ##
+  # Simple wrapper over readlink -e call - expands symlinks in the path recursively and returns the path only if all path components exist.
+  #
+  # @remark Currently no suport for macOS, as Mac's readlink supposedly does not have an '-e' option.
+  #
+  # @param [path:string] Path to expand. Can be passed anonymously.
+  #
+  # @return [string] Expanded path that the original path was pointing to.
+  ##
+  function read_link(path)
+  {
+    if(isnull(path)) path = _FCT_ANON_ARGS[0];
+    if(empty_or_null(path))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'path'");
+      return NULL;
+    }
+    if(get_kb_item("Host/MacOSX/Version"))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "macOS not currently supported");
+      return path;
+    }
+    var cmd = "readlink -e $1$ 2>/dev/null";
+    var result = ldnix::run_cmd_template_wrapper(template:cmd, args:[path]);
+    result = chomp(result);
+    return result;
+  }
+
+  ##
+  # Process a list of paths by calling read_link() on each one.
+  #
+  # @param [list:list] List of paths.
+  #
+  # @return [list] List of paths parsed by read_link(). Empty list if read_link() returns NULL for all items.
+  ##
+  function read_link_list(list)
+  {
+    var item, link, ret = [];
+    foreach item(list)
+    {
+      link = read_link(path:item);
+      if(link) append_element(var:ret, value:link);
+    }
+    return ret;
+  }
+
+  ##
+  # Checks if a given file is executable.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [file:string] File path to be checked. Can be passed anonymously.
+  #
+  # @return [boolean] True if file is executable, false otherwise.
+  ##
+  function file_executable(file)
+  {
+    if(isnull(file)) file = _FCT_ANON_ARGS[0];
+    if(empty_or_null(file))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'file'");
+      return FALSE;
+    }
+
+    var cmd = '[ -x \'$1$\' ] && echo "executable"';
+    var found = ldnix::run_cmd_template_wrapper(template:cmd, args:[file]);
+
+    return found =~ "^executable\s?";
+  }
+
+  ##
+  # Checks if a given file is a directory.
+  # @remark info_connect() must be called before using this function!
+  #
+  # @param [file:string] File path to be checked. Can be passed anonymously.
+  #
+  # @return [boolean] True if file is a directory, false otherwise.
+  ##
+  function is_directory(file)
+  {
+    if(isnull(file)) file = _FCT_ANON_ARGS[0];
+    if(empty_or_null(file))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'file'");
+      return FALSE;
+    }
+    var cmd = '[ -d \'$1$\' ] && echo "is_directory"';
+    var found = get_kb_item('Unit_Tests/local_detection_nix/is_directory_response');
+    if (empty_or_null(found))
+    {
+      found = ldnix::run_cmd_template_wrapper(template:cmd, args:[file]);
+    }
+
+    return (found =~ "^is_directory\s?");
+  }
+
+  ##
+  # Strip binary directories ('/bin' and '/sbin) from the end of the directory
+  # unless its in the excluded list.
+  #
+  # @param [dir:string] directory to remove binary directories from
+  # @param [excluded_bin_dirs:list] optional directories to not strip binary directory from;
+  #                             defaults to the general binary directories (e.g. /usr/sbin)
+  #
+  # @return [string] directory with binary directory removed
+  ##
+  function strip_bin_dir(dir, excluded_bin_dirs)
+  {
+    var stripped_dir;
+
+    if (isnull(excluded_bin_dirs))
+      excluded_bin_dirs = general_bin_dirs;
+
+    if (contains_element(var:excluded_bin_dirs, value:dir))
+      stripped_dir = dir;
+    else
+      stripped_dir = preg_replace(string:dir, pattern:"(.*)/s?bin$", replace:"\1", icase:TRUE);
+
+    return stripped_dir;
+  }
+
+  ##
+  # Uses 'ls -1 pattern' to return all filepaths matching a given path with possible wildcards.
+  #
+  # @remark Will not work properly when the wildcard expands to multiple different directories, as they will be listed separately.
+  # @remark See example below.
+  #
+  # @param [pattern:string] A path that might contain wildcards. Can be passed anonymously.
+  #
+  # @return A (possibly empty) list of files that match a given pattern or null if pattern is missing.
+  ##
+  function expand_wildcard_path(pattern)
+  {
+    if(isnull(pattern)) pattern = _FCT_ANON_ARGS[0];
+    if(empty_or_null(pattern))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'pattern'");
+      return NULL;
+    }
+
+    var cmd = strcat("ls -1 $1$ 2>/dev/null");
+    var results = ldnix::run_cmd_template_wrapper(template:cmd, args:[pattern]);
+    if(empty_or_null(results)) return [];
+    else return split(results, keep:FALSE);
+  }
+
+  /*
+    Say we have /etc/httpd catalog with conf, conf.d and conf.modules.d subdirectories.
+    Good example:
+    ls -1 /etc/httpd/conf.modules.d./*.conf will result in a single list of files:
+      /etc/httpd/conf.modules.d/00-base.conf
+      /etc/httpd/conf.modules.d/00-dav.conf
+      /etc/httpd/conf.modules.d/00-lua.conf
+
+    Bad example:
+    ls -1 /etc/httpd/* will result in enumerating multiple wildcard-level catalogs separately:
+      /etc/httpd/conf:
+      httpd.conf
+      magic
+
+      /etc/httpd/conf.d:
+      autoindex.conf
+      README
+      userdir.conf
+      welcome.conf
+
+      /etc/httpd/conf.modules.d:
+      00-base.conf
+      00-dav.conf
+      00-lua.conf
+
+    Fixed example:*/
+  # ls -1 /etc/httpd/*/*/ if we need to enumerate all files across multiple catalogs at once:
+  /*  /etc/httpd/conf.d/autoindex.conf
+      /etc/httpd/conf.d/README
+      /etc/httpd/conf.d/userdir.conf
+      /etc/httpd/conf.d/welcome.conf
+      /etc/httpd/conf/httpd.conf
+      /etc/httpd/conf/magic
+      /etc/httpd/conf.modules.d/00-base.conf
+      /etc/httpd/conf.modules.d/00-dav.conf
+      /etc/httpd/conf.modules.d/00-lua.conf
+
+  */
+
+  ##
+  # Retrieves all files from all installed packages, filters them with a POSIX extended regex using grep, then stores the results in a Scratchpad table.
+  #
+  # @param [regex:string] Regex that will be used to filter the files. Must be a valid POSIX extended regex (limited in comparison to standard NASL regexes)!
+  # @param [table_name:string] Name of an SQL table to create and store the results in.
+  #
+  # @return [boolean] TRUE if the function succeeds to retrieve and store the results.
+  #         FALSE if any arg is missing, the table already exists, OS isn't supported or the filterign results were empty.
+  ##
+  function store_all_filtered_package_files(regex, table_name)
+  {
+    var cmd = '';
+
+    if(get_kb_item("ldnix/package_files_stored/" + table_name)) return FALSE;
+
+    if(empty_or_null(regex))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'regex'");
+      return FALSE;
+    }
+    if(empty_or_null(table_name))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'table_name'");
+      return FALSE;
+    }
+
+    var rpms, keys, dpkgs;
+    rpms = get_kb_list("Host/*/rpm-list");
+    keys = keys(rpms);
+    if(!isnull(keys))
+      rpms = rpms[keys[0]];
+
+    dpkgs = get_kb_list("Host/*/dpkg-l");
+    keys = keys(dpkgs);
+    if(!isnull(keys))
+      dpkgs = dpkgs[keys[0]];
+
+    if(!isnull(rpms))
+    {
+      cmd = "for pkg in $(rpm -qa); do rpm -ql ${pkg} 2>/dev/null | grep '$1$'; done";
+    }
+    else if(!isnull(dpkgs))
+    {
+      cmd = "for pkg in $(dpkg --get-selections | grep -v 'deinstall' | cut -f1); do dpkg -L ${pkg} 2>/dev/null | grep -E '$1$'; done";
+    }
+    else
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Unsupported OS, exiting.");
+      return FALSE;
+    }
+
+    var results = ldnix::run_cmd_template_wrapper(template:cmd, args:[regex]);
+    if(empty_or_null(results)) return FALSE;
+
+    query_scratchpad(strcat("CREATE TABLE IF NOT EXISTS ", table_name, " (id INTEGER PRIMARY KEY AUTOINCREMENT, filepath TEXT);"));
+
+    foreach(var file in results)
+    {
+      query_scratchpad(strcat("INSERT INTO ", table_name, "(filepath) VALUES (?);"), file);
+    }
+    replace_kb_item(name:"ldnix/package_files_stored/" + table_name, value:TRUE);
+    return TRUE;
+  }
+
+  ##
+  # Combines get_package_files() and search_package_file_list() to perform a search through all files of the target package.
+  #
+  # @param [file:string] A filename or a regex to search for. If it's a filename, it will be matched
+  #        against the end of each filepath. Otherwise, a regex will be matched against whole filepaths.
+  # @param [is_regex:boolean] A flag informing whether file is a regex or a plain string.
+  # @param [package:string] Name of the package to pull files from.
+  #
+  # @return A (possibly empty) list of files found or NULL if any mandatory argument is missing.
+  ##
+  function find_package_files(file, is_regex, package)
+  {
+    var file_list = get_package_files(package:package);
+    return search_package_file_list(file:file, is_regex:is_regex, file_list:file_list);
+  }
+
+  ##
+  # Searches through a list of package files returned by get_package_files() and returns a list of matching files.
+  #
+  # @param [file:string] A filename or a regex to search for. If it's a filename, it will be matched
+  #        against the end of each filepath. Otherwise, a regex will be matched against whole filepaths.
+  # @param [is_regex:boolean] A flag informing whether file is a regex or a plain string, defaults to FALSE.
+  # @param [file_list:list] A lists of files returned by get_package_files().
+  #
+  # @return A (possibly empty) list of files found or NULL if any mandatory argument is missing.
+  ##
+  function search_package_file_list(file, is_regex, file_list)
+  {
+    if(empty_or_null(file))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'file'");
+      return NULL;
+    }
+    if(empty_or_null(file_list))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'file_list'");
+      return NULL;
+    }
+    if(empty_or_null(is_regex)) is_regex = FALSE;
+
+    var res = NULL;
+    if(is_regex)
+    {
+      res = collib::filter(f:function() { return _FCT_ANON_ARGS[1] =~ _FCT_ANON_ARGS[0]; }, file_list, args:[file]);
+    }
+    else
+    {
+      res = collib::filter(f:function(){ return right(_FCT_ANON_ARGS[1], strlen(_FCT_ANON_ARGS[0])) == _FCT_ANON_ARGS[0];}, file_list, args:[file]);
+    }
+    return res;
+  }
+
+  ##
+  # Retrieves a list of all files created by a target package using rpm -ql or dpkg -L. Other package managers are not currently supported.
+  #
+  # @param [package:string] Name of the package to pull files from.
+  #
+  # @return A list of all files from the target package, if successful, NULL otherwise.
+  ##
+  function get_package_files(package)
+  {
+    if(empty_or_null(package))
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Missing required argument 'package'");
+      return NULL;
+    }
+    var template = '';
+    var rpms, keys, dpkgs;
+    rpms = get_kb_list("Host/*/rpm-list");
+    keys = keys(rpms);
+    if(!isnull(keys))
+      rpms = rpms[keys[0]];
+
+    dpkgs = get_kb_list("Host/*/dpkg-l");
+    keys = keys(dpkgs);
+    if(!isnull(keys))
+      dpkgs = dpkgs[keys[0]];
+
+    if(!isnull(rpms))
+    {
+      template = 'rpm -ql $1$ 2>/dev/null';
+    }
+    else if(!isnull(dpkgs))
+    {
+      template = 'dpkg -L $1$ 2>/dev/null';
+    }
+    else
+    {
+      dbg::detailed_log(lvl: 1, src: FUNCTION_NAME, msg: "Unsupported OS, exiting.");
+      return NULL;
+    }
+    return split(ldnix::run_cmd_template_wrapper(template:template, args:[package]), keep:FALSE);
+  }
+
+  ##
+  # Performs initial KB checks, inspecting if local checks are enabled and if host is Unix/Linux.
+  # Exits the plugin if local checks are disabled or if the OS is not supported.
+  # MacOS is treated as unsupported by default.
+  #
+  # @remark Also enables SSH wrappers if they are supported.
+  #
+  # @param [exclude_macos:boolean] Flag deciding whether plugin supports MacOS. Defaults to TRUE.
+  #
+  # @return NULL, but can cause the plugin to exit altogether.
+  ##
+  function init_plugin(exclude_macos)
+  {
+    if(empty_or_null(exclude_macos)) exclude_macos = TRUE;
+
+    if (!get_kb_item("Host/local_checks_enabled"))
+      audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+    if (!get_kb_item("Host/uname"))
+      audit(AUDIT_OS_NOT, 'Linux or Unix');
+    if(exclude_macos && get_kb_item('Host/MacOSX/Version'))
+      audit(AUDIT_OS_NOT, 'supported');
+
+    enable_ssh_wrappers();
+  }
+
+  ##
+  # Simplifies a path by resolving changes of directory levels i.e. paths containing /../ and removes patterns such as /./ or // within a path.
+  #
+  # @param [path:string] The path to be simplified.
+  #
+  # @return simplified path, NULL if path is NULL.
+  ##
+  function simplify_path(path)
+  {
+    if (!path) return NULL;
+    var path_array = split(path, sep:'/', keep:false);
+    var new_path_array = [];
+
+    var absolute = false;
+    if (path[0] == '/') absolute = true;
+
+    for (var i = 0; i < max_index(path_array); i++)
+    {
+      if ((path_array[i] == '') || path_array[i] == '.')
+      {
+        delete_element(idx:i, var:path_array);
+        i--;
+      }
+      else if (path_array[i] == '..')
+      {
+        if (i == 0)
+        {
+          if (!absolute) continue;
+          delete_element(idx:i, var:path_array);
+          i = -1;
+        }
+        else if (path_array[i - 1] == '..')
+        {
+          continue;
+        }
+        else
+        {
+          delete_element(idx:i - 1, endidx:i, var:path_array);
+          i -= 2;
+        }
+      }
+    }
+    var new_path;
+    foreach var entry (path_array) new_path = append_path(path:new_path, value:entry, allow_null:true);
+
+    if (absolute) new_path = '/' + new_path;
+    if (path[strlen(path) - 1] == '/' && new_path) new_path += '/';
+    if (!new_path) new_path = './';
+
+    return new_path;
+  }
+}

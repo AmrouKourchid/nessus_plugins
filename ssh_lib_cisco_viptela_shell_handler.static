@@ -1,0 +1,77 @@
+#TRUSTED 28e953d5989fbbdc48070d69631bce249c6c0ded63b8b9ae151893eb81fb23a30004d348ae74b5f8dc75119237484e6c10947f3b7bbe9b8404122a4f1fd8ccedab4876e0f599bef9dec68ba0d60eb16d009f295646822cd336364580904a3295fa3127ab4f71520d6ce4557cb957bf9c75b03203f58dfb919f9a34cba393f5a64550cb8c222e204f6022f13fe245e3a436ead327f97d6befa50fbe8f0ad3a4894448018a727d8d878251572e055bfc55971db7d1a12c42c2d681eb391ddf30b131bce64a11d1cee1526148d09d7f9d1a023529f8fae0563f7f17501ed6b194eb45590764d67114ada504b592f1af7cc8b07941098c8b9a4d38dbf908a106f18549885f8616558f23e046b7b708347ceab466dc4bbf1f7be42adceb5462d05376b13a00071dab0cec019ee968202d662700c3142c2c525ce59e92fb89fe49ca3fc922f6fae4ad66ce9a971a5373dd559e06743878af9fb27b9c3dacd6135de69cbb374861c4fdcb2b5001d54cbb464ab608af0ece5238059ef94f95c0bcbaa47e5b902dcf11967daf6f63332a9c4ab62698213d2991b168f74a8bea5080e4e52280ae714c311e920ceb1f2f9e69740eb9add01a2e697593152bb3dd958444d1a6869d5956ae068fce94e2a2fcd34ac92aa8564136a22b2e9fe65b3aaf1bdd40d64da265a15f81dce09b02605731972ba5f8cdc016eed7b82da918ce8ee6fc1490
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+###
+
+##
+# Cisco viptela shell handler
+##
+
+
+namespace sshlib
+{
+  global_var VIPTELA_SHELL   = 'Cisco Viptela CLI';
+
+  object cisco_viptela_shell_handler : sshlib::basic_shell_handler
+  {
+    var objname = 'cisco_viptela_shell_handler::';
+
+    ##
+    # run given command using basic_shell_handler
+    #
+    # @param session SSH session in case reconnection is needed
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    # @param cmd_shell The global var for the viptela shell that should
+    #                  be used to run the command (optional, default VIPTELA_MODE)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(&session, &channel, command, force_priv_escl,
+      cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+      var obj_ch_id = '[channel ' + channel.local_channel + ']: ';
+      var msg, res;
+      # Check channel and replace if necessary; replace_shell() will
+      # set applicable error if it fails
+      channel.set_shell_handler(shell_handler:this);
+      if (!channel_usable_for_shell_command(channel:channel))
+      {
+        if (!session_replace_shell(session:session, channel:channel))
+        {
+          msg = 'Did not run command due to session error.\nCommand : ' + command + '\nSession error : "' + last_error + '"';
+          session.set_error(msg);
+          return msg;
+        }
+      }
+
+      dbg::detailed_log(lvl:1, src:fn, msg:'Command to run : ' + command);
+
+      # Suppressing pagination for Cisco viptela shell
+      command = "paginate false;" + command;
+
+      dbg::detailed_log(lvl:1, src:fn, msg:'Running command "' + command + '" using Cisco viptela shell "' + VIPTELA_SHELL + '"');
+
+      var ret = super.run_command(
+        channel                : channel,
+        command                : command,
+        cmd_timeout_min        : cmd_timeout_min,
+        inactivity_timeout_min : inactivity_timeout_min);
+
+      return ret;
+    }
+  }
+}

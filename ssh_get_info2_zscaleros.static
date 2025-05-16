@@ -1,0 +1,116 @@
+#TRUSTED 02e81f31f7b9f49d93fa4c966bf1862bcdef0e74138f5941e3f577d1b332c2b4a9932087a0248509fb5944d606306988ed19c0e88f2fae6469f85a5e455048fd5a4ec8eabffb0dffaa98cf11007b257122d974d8a685c6ffe85ef53fd0d2c51631384abe686423fc1c50a00b2e25066b02779f22514f6bdee900174ccba2eb548d4b2ef00a70f0d55e6fefbecf6f4100863d2d20ed26ebfbd7f66c1a5f53f55504c534a82634bc2214d0945568decd4d18e18ecbf5e28c0b00c8c166e03b802e79280588ac7c6e53f207ddace163f63c76bdeb48ff04a5df4d3ee28e180af87be2e2decb5bd45f13af76abcb84a720f845822066e4bc0e64bf1b8e0495e73d0ac89d11033bc346a8761a4fb18f039d86bf35c3e05d7fa88abe454b33ef3b17d9ea695ec5b76be8e137207b972856614d97f8b9596253c28a940a2aa6157dd85ce97a73d837b9f269ddb8f75ffca2c8a3f88e8e61ffe404e6931cf040b47710d6bfd0c9c57c37beea21350331597285cfba73b7494bb81d6a328c260f2f1804f2d234e46e930df3e90a5eea26e250ef554e2c8eddd458e57b96633c63335cacbd954353e9e5555ee3d1f7af5a8b936d3ddc2047feae8b3deefb5aff452cf01cde33ff96711ee8f243e0e7266ae5851ccd94278b07adc9d09592f6c23c779fe4f9e93a0c3ac42e4e708afa4bf1a1992cf370a61c90b59b8fc1bb42f1d44a485fe2
+#TRUST-RSA-SHA256 8ccebbdfae85a187cd41fd612ccc7fac7fbb348b9e04f77db7ce74bd6308f44d341de04ecd8a56fbec40c8da4837d25eb1835b6ccf98239972c783bb4a68cd023ce38ed5f4d8d72c1118abcdaead5036826658a0db965efbaf26108f07ec14ab43970698d4323cae992432d43aec9d45d81ad204982347da252654e881873b53716475798329c1fe1de70f595bf82a8e31e67bc5d241db33b104fcc68f8d1328306b26528b68d29077765523b1d3454a78a085a636bf2860e2c232ed442e51690106a3a80f0ffa8fdb6abf74d9708f308a0553190cc5ed3cae4b9ec3f64115ea118f09ebe56228db82f4b1d91901c20e79bb9508e36a70332bcf520d62a7adceae7f2e6246831bd67cb941ba1bfec5ed5237762b359778aa8b50265cb460a29758036cadfd3b1107c37b743bff9e60b041f569adb36f536d48aa0c7512c2303a99192d6b58a17763707388ae35158633161c127369bce49195af98c6523d0cd6c727ce8b8b7661f12a4d43d1cff0460b5cf68ca6dc71bcbb97349471be2577d2e54d55d480d90e3ca6b27adc2b27497f1892b2f8c707589ed8dd3aa30b35642fd1642a9d1d12dace295696ce9b03f1ec89a35925226932c15cc7ef07dfbc82c238ded6c9cbd68cf783d510f9dd5cc6f2a273caaad2bda59a71ebba21cb9ea822aff7b170bf052c3b9076e2ba5439d8c76ca9c83acc66e4c0db0f71a4e2139684
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.9
+
+
+function zscaleros_pre_check_fail()
+{
+  # we've already checked that the host is not ZscalerOS previously,
+  # so don't recheck
+  if(host_info_key_val['host_not_zscaleros'])
+    return TRUE;
+
+  # General checks that target is not Linux/UNIX
+  if (not_nix()) return TRUE;
+
+  # Not zscaler if one of the following devices
+  if (is_cisco_ucos() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+    return TRUE;
+
+  # Check uname output for errors or mismatch
+  if (uname_error_or_mismatch(regex:zscaleros_check['test_cmd_regex']))
+    return TRUE;
+
+  return FALSE;
+}
+
+# callback for systems with "ZscalerOS" in uname
+function handle_zscaleros(session, use_shell_handler, &channel, cmd_res)
+{
+  if (empty_or_null(host_info_key_val['uname-a_reported'])) {
+    report += '\nThe output of "uname -a" is :\n' + cmd_res;
+    host_info_key_val['uname-a_reported'] = TRUE;
+  }
+
+  replace_kb_item(name:"Host/uname", value:cmd_res);
+
+  report += '\nThe remote operating system is ZscalerOS.\n';
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+  failure_kb_msg =
+    'OS Security Patch Assessment is not supported for ZscalerOS. Zscaler does\n' +
+    'not disclose vulnerabilities in ZscalerOS using publicly available\n' +
+    'security advisories.';
+  failure_kb_type = lcx::ISSUES_INFO;
+
+  report += '\n' + failure_kb_msg + '\n';
+
+  # setup for commands to fetch package information
+  if ( session )
+  {
+    session.clear_cmd_error();
+  }
+  # per vendor this command should always work
+  local_var or_failed = " || echo FAILED_WITH_ERROR_CODE $?";
+  local_var pkginfo_cmd = '';
+  local_var buf = '';
+  local_var pkg_report = '';
+  foreach pkginfo_cmd ( make_list( '/usr/sbin/pkg -N info', '/usr/local/sbin/pkg -N info' ) )
+  {
+    buf = run_command( cmd: pkginfo_cmd + or_failed, session: session, use_shell_handler: use_shell_handler, channel: channel );
+    if ( empty_or_null( buf ) || "FAILED_WITH_ERROR_CODE" >< buf )
+    {
+      # oops, command failed, report what happened
+      pkg_report += '\n' + 'Output of "' + pkginfo_cmd + '" is:';
+      if ( !empty_or_null( session.cmd_error ) )
+      {
+        # stderr has detailed info like: pkg: pkg is not installed
+        pkg_report += session.cmd_error;
+      }
+      else
+      {
+        # sometimes stderr is not available, so go with process exit code
+        pkg_report += buf;
+      }
+      buf = "";
+    }
+  }
+  if ( empty_or_null( buf ) )
+  {
+    # only report errors if no package buffer can be collected
+    report += pkg_report;
+  }
+  else
+  {
+    # report any packages found
+    buf = str_replace( find:'\t', replace:"  ", string:buf );
+    replace_kb_item( name:"Host/Zscaler/pkg_info", value:buf );
+  }
+  if ( session )
+  {
+    session.clear_cmd_error();
+  }
+}
+
+function handle_not_zscaleros(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  store_and_report_uname(cmd_res:cmd_res, session:session,
+                         use_shell_handler:use_shell_handler);
+  host_info_key_val['host_not_zscaleros'] = TRUE;
+}

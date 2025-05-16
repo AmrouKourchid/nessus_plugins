@@ -1,0 +1,2240 @@
+#TRUSTED 81b791a37bde5fe89ad96599533dfd091e8dbccac7a4aa7d83d5564c6eb5df72e80562bb478aab46d1bea31878ccc71facf46f8266d7c143f4d2096dbb0e921e1dd423f1a236e1f7d908d6e962a6d1bc539fd10153f70d917d50f05dba952ca43cf47669d9e7bcb0c5581b4fab1f0b428eadf0e95b2475d8edf0a0122838d9ab5657a0385df425198f4b49c1fd74785a59e625372646951d9f940952ae3da08ed7573ef7a2dc13e046dfbf353c97b383d51da1bed8f27ced096aa0a9e04650a9b74029d09305885ba0d843ee12c974b1f59fa6b7bff169e8342085a59649df0479ff28e77b6e0691a54fd85a444fe3aff4414c59f6f5cb9c9de03b453b70518b8390e8be2fa9f58fb2400f878e796fc6a9ff6dfd7978891a72e4f249f6574f55c537c604b9efba215f460f5ba00203fe3782fca6cbc0e3e178aaa99a1c2ba81934ee5bb1c4321d0aa1cd0e76739d9b8f88147baee166cd757af9df3f0ba6bae3c95e01dbf6609483bf1697f7ce0ef2aa17a066d30aab4e87eff3ed0dc96be56c7f845e91ef929f3c5a651517da2651a22ae0c8f5e8c852e03d2c9c93429b0d48abcd8ee65530fc7f542b02148e216fd05a9301b23262bb44a271e1d70b873504f217d72ed01d89aa132357ebd2a87daecdedf4de53bd830c83a1ee6bb7ae134df7089ac70226646241d27b3a7a323348ebfa2ab4f53432d724aaf3a4cbad3837
+#TRUST-RSA-SHA256 a7e54e44f10462811359ceb230ec1e352ecb498e36a8d93f07fdb79aaa43ae3c1aafdc711aa21a7d3520a4d5d486ba07c3b0bd9578128cad52a9df7b39c3e17b7b67d301a74c8fb824a0b90dce1f3884a730dc6bce34d8de797f7fd3eaa2b78f401ff196e7c21cebff97a242b5625be4c134b92a669d456e58719d2b3cfbd798a178c34c26436ba5d7d8995a652261193fb8b48e8e0304fd071979f107d0c72a57a965b1c9d673d96df6abcfd294e69d54179e0b14d6917824d8f817993ff7bb179b640da204a041e508e24ceab63deec39dfc37840ee4a7cde95b92203a943b069fcbfdb4ae20f70c942da180fc4d96d44511d1447dc7f13e9b89342ca524e1326c6ff425a862eff74f9d93522b873ba7058bb786beddb7ac9f428448aa264401f741830344c94ce604be41d5d9d17b0f74e31113aed2707a1f1d33eb46b42d34d384021714feb449845f3ddad925bdb74401d175900d8f4d3662ef565c65ce50b1613d15813e1078e3aca1b60046ff1b1e006ada43aad45dc1e5667413bca74590ecb6d94aca91ce0451b048eea59ff45ab768797bac16e09a2f574d7cb7417ff2f8f81d2ae0ebdcb2b482141eb3f3150e83f0c164d91e398b7e6b4601397ec42a925889a6d27ca4891ce20726464e1266d4dbc658c68c9ca493e92c8453c16b1aace34678644c7e8aa750a0abd5cc8fedbd8a34d23afdbbfca7a01dad3321
+###
+# (C) Tenable Network Security, Inc.
+#
+# integration_helpers.static
+# Revision: 1.035
+#
+###
+
+##
+# Integrations Common Library
+#
+# This library is for common function / objects that are shared in multiple 
+# integrations. These are NASL integration specific, for the NASL integration
+# team. Modification of these functions could break multiple integrations.
+#
+##
+namespace integrations
+{
+  namespace errors
+  {
+    # Can be expanded as needed
+    var INTEGRATION_FAILED = 1;
+    var LOGIN_CRED_FAILED = 2;
+    var ESC_CRED_FAILED = 3;
+    var API_LOGIN_FAILED = 4;
+    var LIST_ACCOUNTS_FAILED = 5;
+    var CHECKOUT_FAILED = 6;
+    var SERVER_NO_RESPONSE = 7;
+    var ACCOUNT_NOT_FOUND = 8;
+    var NULL_ACCOUNT = 9;
+  }
+
+  object IntegrationConfig
+  {
+    var host;
+    var port;
+    var username;
+    var password;
+    var ssl;
+    var ssl_verify;
+    var debug;
+    var headers;
+    var int_name;
+    var ssh_key;
+    var cert;
+    var key;
+    var passphrase;
+    var md5_cert;
+    var md5_key;
+    var use_error_handling = FALSE;
+
+
+    ##
+    # Base Init function designed to be overwritten in subclass
+    #
+    # @return [boolean] TRUE 
+    ##
+    public function init()
+    {
+      # Abstract method
+      return TRUE;
+    }
+
+    ##
+    # Initalizes the config with specific values
+    #
+    # Base init_with function designed to be overwritten in subclass
+    #
+    # @param [host:string] IP/Hostname of vCenter
+    # @param [port:string] vCenter Port
+    # @param [username:string] Username for vCenter Authentication
+    # @param [password:string] Password for vCenter Authentication
+    # @param [ssl:boolean] Use SSL?
+    # @param [ssl_verify:boolean] Verify SSL?
+    # @param [debug:boolean] Debug?
+    #
+    # @return [boolean] TRUE / FALSE if the configuration is valid
+    #
+    ##
+    public function init_with(host, port, username, password, ssl, ssl_verify, debug)
+    {
+      # Abstract method
+      return TRUE;
+    }
+
+    ##
+    # Validates Objects configuration
+    #
+    # @return [boolean] TRUE|FALSE, based on validation, logs the invalid fields on failure
+    #
+    ##
+    public function validate()
+    {
+      # Abstract method
+      return TRUE;
+    }
+
+    ##
+    # Reads cert and key files and calculates their checksums.
+    #
+    # @remark uses member variables cert and key, and sets md5_cert and md5_key
+    #
+    # @return [boolean] TRUE|FALSE, based on whether the cert and key files exist.
+    #
+    ##
+    public function read_cert_and_key()
+    {
+      var tmp_file;
+
+      if (!(cert && file_stat(cert)))
+      {
+        logger(
+          msg:'Error: Client certificate ('+cert+') not found.', config:this, lvl:1
+        );
+        return FALSE;
+      }
+      if (!(key && file_stat(key)))
+      {
+        logger(
+          msg:'Error: Client certificate private key ('+key+') not found.', config:this, lvl:1
+        );
+        return FALSE;
+      }
+
+      tmp_file = fread(cert);
+      md5_cert = hexstr(MD5(tmp_file));
+      unlink(cert);
+      fwrite(data:tmp_file, file:cert);
+
+      tmp_file = fread(key);
+      md5_key = hexstr(MD5(tmp_file));
+      unlink(key);
+      fwrite(data:tmp_file, file:key);
+
+      return TRUE;
+    }
+
+  }
+
+  ##
+  # Get the running version of SecurityCenter (SC).
+  #
+  # @return [str] The SC version.
+  #
+  ##
+  function get_sc_version()
+  {
+    return get_preference('sc_version');
+  }
+
+    
+  ##
+  # Determine if a plugin is running from the command line
+  #
+  # @return [boolean] True if command line and false if not
+  #
+  ##
+  function is_command_line()
+  {
+    return empty_or_null(get_preference("plugins_folder"));
+  }
+
+  ##
+  # Gets the Global Plugin Debug Level and returns it or zero.
+  # 
+  # @remark *requires* script_require_keys("global_settings/debug_level"); in calling plugin
+  #
+  # @return [integer] Debug Level
+  # 
+  ##
+  function debug_level()
+  {
+    var level = get_kb_item("global_settings/debug_level");
+
+    if (empty_or_null(level))
+    {
+      return 0;
+    }
+
+    return level;
+  }
+
+  ##
+  # Converts a string to all ascii characters with non-ascii
+  # characters converted to their hexadecimal values.
+  #
+  # @remark This will work with UTF-8 but not UTF-16, because it
+  # relies on the fact that ASCII is a subset of UTF-8; it is
+  # not a subset of UTF-16.
+  #
+  # @param [data:string] The data to substitute.
+  # @return [data] The data with non-ascii characters converted to hex.
+  #
+  ##
+  function convert_to_ascii_and_hex(data)
+  {
+    var ret = '';
+    var byte;
+    var i;
+    for (i=0; i<len(data); i++)
+    {
+      byte = data[i];
+      if (byte <= '\x7f')
+      {
+        # is an ASCII character
+        ret += byte;
+      }
+      else
+      {
+        # is not an ASCII character
+        ret += '\\x' + hexstr(byte);
+      }
+    }
+    return ret;
+  }
+
+  ##
+  # Truncates a log message based on the max_to_show size
+  #
+  # @param [message:string] Message to truncate
+  # @param [max_to_show:int] Max characters to show before truncate, default 1024*10
+  #
+  # @return [string] Truncated Message, NULL on Error
+  # 
+  ##
+  function truncate_log(message, max_to_show)
+  {
+    if (empty_or_null(message))
+    {
+      return NULL;
+    }
+
+    if (empty_or_null(max_to_show))
+    {
+      max_to_show = 1024 * 10;
+    }
+
+    var actual = strlen(message);
+      
+    if (actual > max_to_show)
+    {
+      message = substr(message, 0, max_to_show) + "...";        
+      message += " (" + max_to_show + "/" + actual + " bytes)";
+    }
+
+    return message;
+  }
+
+  ##
+  # Returns the size of a given array, by looping the top level keys, o(n) performance
+  # 
+  # @param [array:array] Array to get the size / length of
+  #
+  # @return [integer] array size, zero if empty
+  #
+  ##
+  function array_size(array)
+  {
+    var size = 0;
+
+    foreach (var key in keys(array))
+    {
+      size++;
+    }
+
+    return size;
+  }
+
+  ##
+  # Returns TRUE if string starts with any of the given patterns.
+  #
+  # @param [string:string] string to test
+  # @anonparam [patterns:string] patterns to match
+  #
+  # @return [boolean] TRUE if string starts with one of the patterns.
+  #
+  ##
+  function starts_with(string)
+  {
+    var pattern;
+    foreach pattern (_FCT_ANON_ARGS)
+    {
+      if (pattern == substr(string, 0, strlen(pattern) - 1))
+      {
+        return TRUE;
+      }
+    }
+    return FALSE;
+  }
+
+  ##
+  # Log a request to a REST API
+  # @param [config:array] A config object.
+  # - Requires: host, port, ssl
+  # @param [method:string] The HTTP method to use (e.g. GET or POST).
+  # @param [command:string] The URL endpoint.
+  #
+  # @return [boolean] TRUE
+  ##
+  function _log_request(config, method, command)
+  {
+    var protocol, url;
+
+    if (!integrations::starts_with(string:command, 'http://', 'https://'))
+    {
+      # Only work out the leading http://HOST:PORT portion if command does
+      # not already include it.
+      protocol = 'http';
+      if (config.ssl)
+      {
+        protocol += 's';
+      }
+      protocol += '://';
+      url = protocol + config.host + ':' + config.port + command;
+    }
+    else
+    {
+      url = command;
+    }
+    logger(
+      lvl:2,
+      msg:'Sending ' + method + ' request to ' + url,
+      config:config
+    );
+
+    return TRUE;
+  }
+
+  ##
+  # Handle request parameters in REST API calls
+  # @param [config:array] A config object
+  # - Requires: host, port, ssl, verify, cert, key, passphrase, int_name, and a scrubber if applicable.
+  # @param [method:string] The HTTP method to use (e.g. GET or POST).
+  # @param [command:string] The API call to make, e.g. "login"
+  # @param [headers:array] Any headers required on the call
+  # @param [data:string] body for the request
+  # @param [json:boolean] Should the data be encoded as json... Fixes weird error (bad types 24:31)
+  #
+  # @return result of call.
+  ##
+  function _request_handler(config, method, headers, data, command, json)
+  {
+    var res;
+
+    if (!empty_or_null(config.command_prefix))
+    {
+      command = config.command_prefix + command;
+    }
+
+    _log_request(config:config, method:method, command:command);
+
+    if (!empty_or_null(json) && json && !empty_or_null(data) && data)
+    {
+      data = json_write(path_store(data));
+    }
+    if (!empty_or_null(config.username) || !empty_or_null(config.password))
+    {  
+      res = http_send_recv3(
+        target       : config.host,
+        method       : method,
+        item         : command,
+        port         : config.port,
+        username     : config.username,
+        password     : config.password,
+        data         : data,
+        add_headers  : headers,
+        transport    : ssl_transport(ssl:config.ssl, verify:config.ssl_verify),
+        exit_on_fail : FALSE,
+        fetch404 : TRUE
+      );
+    }
+    else if (empty_or_null(config.cert))
+    {  
+      res = http_send_recv3(
+        target       : config.host,
+        method       : method,
+        item         : command,
+        port         : config.port,
+        data         : data,
+        add_headers  : headers,
+        transport    : ssl_transport(ssl:config.ssl, verify:config.ssl_verify),
+        exit_on_fail : FALSE,
+        fetch404 : TRUE
+      );
+    } 
+    else 
+    {
+      res = http_send_recv3(
+        target       : config.host,
+        method       : method,
+        item         : command,
+        data         : data,
+        port         : config.port,
+        add_headers  : headers,
+        transport    : ssl_transport(ssl:config.ssl, verify:config.ssl_verify),
+        client_cert  : config.cert,
+        client_private_key : config.key,
+        client_private_key_password : config.passphrase,
+        exit_on_fail : FALSE,
+        fetch404 : TRUE
+      );
+    }
+
+    return res;
+  }
+
+  ##
+  # Handle response from REST API calls
+  #
+  # @param [config:array] A config object
+  # @param [res:array] response from api call
+  # @param [hide_response_body:bool] Should the response body be hidden from logs?
+  #
+  # @return [array] success, body, and/or message
+  ##
+  function _response_handler(config, res, hide_response_body)
+  {
+    var response, res_headers, body, parsed_header;
+
+    if (isnull(res))
+    {
+      if (config.use_error_handling)
+      {
+        return dbg::raise_error(
+          msg:'Server did not respond to request. '
+              'Please check host/port connectivity and SSL.',
+          code:integrations::errors::SERVER_NO_RESPONSE
+        );
+      }
+      return {
+        success: FALSE,
+        message: "Server did not respond to request."
+      };
+    }
+
+    response = res[0];
+    res_headers = res[1];
+    body = res[2];
+    parsed_header = parse_header(header:response);
+
+    logger(msg: "Response ~ " + response, lvl:3, config:config);
+    logger(msg: "Response Headers ~ " + res_headers, lvl:3, config:config);
+    if (hide_response_body)
+    {
+      logger(msg: "Response Body ~ **REMOVED**", lvl:3, config:config);
+    }
+    else
+    {
+      logger(msg: "Response Body ~ " + body, lvl:3, config:config);
+    }
+
+    if (res_headers =~ "Content-Type: application/json")
+    {
+      body = json_read(body);
+      body = body[0];
+    }
+    else
+    {
+      body = body;
+    }
+    
+    if (_response_success(code:parsed_header.code))
+    {
+      return {
+        success: TRUE,
+        header: parsed_header,
+        response_code: response,
+        body: body
+      };
+    }
+    else
+    {
+      if (config.use_error_handling)
+      {
+        return dbg::raise_error(msg:'Request failed due to HTTP response: ' + parsed_header.code, code:int(parsed_header.code));
+      }
+      return {
+        success: FALSE,
+        header: parsed_header,
+        response_code: response,
+        message: body
+      };
+    }
+  }
+
+  ##
+  # Check HTTP code from REST API calls
+  #
+  # @param [code:string] HTTP response code
+  #
+  # @return [boolean] TRUE if code is successful, else FALSE.
+  ##
+  function _response_success(code)
+  {
+    # A list of HTTP codes to be considered successful
+    # See: https://www.rfc-editor.org/rfc/rfc9110#name-successful-2xx
+    var success_codes = [
+      '200', # OK
+      '201', # Created
+      '202', # Accepted
+      '203', # Non-Authoritative Information
+      '204', # No Content
+    ];
+    var success_code;
+    foreach success_code (success_codes)
+    {
+      if (success_code >< code)
+      {
+        return TRUE;
+      }
+    }
+    return FALSE;
+  }
+
+  ##
+  # Make a REST GET API Call
+  # @param [config:array] A config object.
+  # - Requires: host, port, ssl, verify, cert, key, passphrase, int_name, and a scrubber if applicable.
+  # @param [command:string] The API call to make, e.g. "login"
+  # @param [headers:array] Any headers required on the call
+  # @param [data:string] body for the request
+  # @param [json:boolean] Should the data be encoded as json... Fixes weird error (bad types 24:31)
+  # @param [hide_response_body:bool] Should the response body be hidden from logs?
+  # @return [array] an object with {header: http header, success: TRUE | FALSE, body: the json response}
+  ##
+  function get(config, command, headers, data, json, hide_response_body)
+  {
+    var res, method, result;
+
+    method = "GET";
+
+    res = _request_handler(config:config, method:method, headers:headers, command:command, json:json);
+    return _response_handler(config:config, res:res, hide_response_body:hide_response_body);
+  }
+
+  ##
+  # Make a REST POST API Call
+  # @param [config:array] A config object.
+  # - Requires: host, port, ssl, verify, cert, key, passphrase, int_name, and a scrubber if applicable.
+  # @param [command:string] The API call to make, e.g. "login"
+  # @param [headers:array] Any headers required on the call
+  # @param [data:string] body for the request
+  # @param [json:boolean] Should the data be encoded as json... Fixes weird error (bad types 24:31)
+  # @param [hide_response_body:boolean] Should the response body be hidden from logs?
+  # @return [array] an object with {header: http header, success: TRUE | FALSE, body: the json response}
+  ##
+  function post(config, command, headers, data, json, hide_response_body)
+  {
+    var res, body, result, method;
+
+    method = "POST";
+
+    res = _request_handler(config:config, method:method, headers:headers, command:command, data:data, json:json);
+    return _response_handler(config:config, res:res, hide_response_body:hide_response_body);
+  }
+
+  ##
+  # Make a REST PUT API Call
+  # @param [config:array] A config object.
+  # - Requires: host, port, ssl, verify, cert, key, passphrase, int_name, and a scrubber if applicable.
+  # @param [command:string] The API call to make, e.g. "login"
+  # @param [headers:array] Any headers required on the call
+  # @param [data:string] body for the request
+  # @param [json:boolean] Should the data be encoded as json... Fixes weird error (bad types 24:31)
+  # @param [hide_response_body:boolean] Should the response body be hidden from logs?
+  # @return [array] an object with {header: http header, success: TRUE | FALSE, body: the json response}
+  ##
+  function put(config, command, headers, data, json, hide_response_body)
+  {
+    var res, body, result, method;
+
+    method = "PUT";
+
+    res = _request_handler(config:config, method:method, headers:headers, command:command, data:data, json:json);
+    return _response_handler(config:config, res:res, hide_response_body:hide_response_body);
+  }
+
+  ##
+  # Logs logger
+  # @param [config:array] A config object from a integration.
+  # - Must contain int_name.
+  # - Optional scrubber function reference for removing sensitive data.
+  # - Optional debug to print messages to console.
+  # @param [msg:string] The message to send to manipulate and then send to spad_log
+  # @param [report:boolean] Report error in the UI
+  # @param [lvl:integer] debug level to be passed to detailed_log()
+  ##
+  function logger(config, msg, report, lvl)
+  {
+    if (empty_or_null(lvl))
+      lvl = 3;
+
+    msg = config.scrubber(msg:msg);
+    msg = strip(msg)+'\n';
+    dbg::detailed_log(
+      name:SCRIPT_NAME + "~" + config.int_name,
+      lvl:lvl,
+      msg:msg);
+    
+    
+    if (!empty_or_null(report) && report)
+    {
+      report_error(title:config.int_name, message:msg, severity:1);
+    }
+
+    if (!empty_or_null(config.debug))
+    {
+      display(msg);
+    }
+  }
+
+  ##
+  # Convert a string "yes" or "no" to a boolean
+  # @anonparam [1st:string] the string to be converted
+  # @return [boolean] true iff the param is 'yes', false otherwise
+  ##
+  function boolean()
+  {
+    if (_FCT_ANON_ARGS[0] == 'yes')
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  ##
+  # Parse a HTTP header
+  # @param [header:string] the http header
+  # @return [array] map containing the parse header
+  #         code -> the HTTP code
+  #         message -> the HTTP message
+  ##
+  function parse_header(header) 
+  {
+    var m = pregmatch(pattern: "^HTTP/1\.[01]\s+(\d{1,3})\s+(.*)", string: header);
+    if (!m) 
+    {
+      return {
+        code: '0',
+        message: "Invalid HTTP Header"
+        };
+    }
+    else
+    {
+      return {
+        code: m[1],
+        message: chomp(m[2])
+        };
+    }
+  }
+
+  ##
+  # Removes key:values where values are null in a hash (array in NASL)
+  # @param [array:desc] the array to be cleaned
+  #
+  # @return [array] array containing key:values from the cleaned array
+  ##
+  function clean_hash(array)
+  {
+    var map;
+
+    foreach var key (keys(array))
+    {
+      if (!empty_or_null(array[key]))
+      {
+        map[key] = array[key];
+      }
+      else
+      {
+        continue;
+      }
+    }
+    return map;
+  }
+
+  ##
+  # Creates a uri search string from an array of key:values
+  # @param [array:desc] array containing key:values to create uri search string
+  # @return [string] uri search string
+  ##
+  function uri_search_string(array)
+  {
+    var search_string = "";
+
+    foreach var key (keys(array))
+    {
+      search_string += "&" + key + "=" + array[key];
+    }
+    return search_string;
+  }
+
+  ##
+  # Removes sensitive data from logs
+  # @params [msg:string] msg to remove sensitive data from
+  # @anonparam [regexes:string] the regex string to match
+  # @return [string] cleaned msg
+  ##
+  function scrub(msg)
+  {
+    var max, i;
+
+    max = max_index(_FCT_ANON_ARGS);
+
+    for (i = 0; i < max; i++)
+    {
+      msg = ereg_replace(icase:TRUE, pattern:_FCT_ANON_ARGS[i], replace:'***REMOVED***', string:msg);
+    }
+
+    if('"' >< substr(msg, strlen(msg) - 1))
+    {
+      msg = "*** REMOVED ***";
+    }
+
+    return msg;
+  }
+
+  ##
+  # Looks for key names in an array that contain partial or exact match
+  # 
+  # @param [array:array] the array to search the kv's for the item passed through.
+  # @param [name:string] key string.
+  # @param [exact:boolean] UNUSED.
+  #
+  # @return [boolean] TRUE if the ``name`` is in the keys of ``array``
+  ##
+  function is_key(array, name, exact)
+  {
+    var i, key, counter;
+
+    counter = 0;
+    # Iterate through array and search for item in kv's.
+    foreach key (keys(array))
+    {
+      if (name == key)
+      {
+        counter += counter;
+      }
+      else
+      {
+        counter = 0;
+      }
+    }
+
+    if (counter>0)
+    {
+      return TRUE;
+    }
+    else
+    {
+      return FALSE;
+    }
+  }
+
+  ##
+  # Compares the keys and values of two arrays/hashes.
+  # For example, this is useful when creating a custom hash/array (arr1) and comparing
+  # those kv's to, let's say an array/hash in a JSON reponse; arr2.
+  # 
+  # @param [arr1:array] array to compare against arr2.
+  # @param [arr2:array] array to compare against arr1.
+  #
+  # @return [boolean] TRUE if ``arr1`` contains ``arr2`` or vice-versa
+  ##
+  function compare_kvs(arr1, arr2)
+  {
+    var key, num_of_keys, counter, keys_arr1, keys_arr2;
+
+    arr1 = clean_hash(array:arr1);
+    arr2 = clean_hash(array:arr2);
+    counter = 0;
+    keys_arr1 = array_size(array:arr1);
+    keys_arr2 = array_size(array:arr2);
+
+    foreach key (keys(arr1))
+    {
+      if (arr1[key] == arr2[key])
+        {
+          counter += 1;
+        }
+      }
+
+    if (keys_arr1 == counter || keys_arr2 == counter)
+    {
+      return TRUE;
+    }
+    else
+    {
+      return FALSE;
+    }
+  }
+
+  ##
+  # Parse a URL into parts to be used.
+  #
+  # @param [url:string] url to parse
+  #
+  # @return {ssl:BOOL, target:string, directory:string, port: int} || NULL on fail
+  ##
+  function parse_url(url)
+  {
+    var val, directory, i , ret, target, has_proto_field, loop_start_index, target_component;
+    directory = "";
+    ret = make_array();
+
+    val = split(sep:"/", url, keep:FALSE);
+
+    has_proto_field = true;
+    if (val[0] == "http:")
+    {
+      ret["ssl"] = FALSE;
+    }
+    else if (val[0] == "https:")
+    {
+      ret["ssl"] = TRUE;
+    }
+    else
+    {
+      ret["ssl"] = FALSE;
+      has_proto_field = false;
+    }
+
+    if (has_proto_field)
+    {
+      target_component = val[2];
+    }
+    else
+    {
+      target_component = val[0];
+    }
+
+    if (target_component =~ ":")
+    {
+      target = split(sep:":", target_component, keep:FALSE);
+      ret["target"] = target[0];
+      ret["port"] = int(target[1]);
+    }
+    else
+    {
+      if (ret["ssl"])
+      {
+        ret["port"] = 443;
+      }
+      else
+      {
+        ret["port"] = 80;
+      }
+      ret["target"] = target_component;
+    }
+
+    loop_start_index = 1;
+    if (has_proto_field)
+    {
+      loop_start_index = 3;
+    }
+
+    for (i=loop_start_index;i<max_index(val);i++)
+    {
+      if (empty_or_null(val[i])) 
+      {
+        break;
+      }
+      directory += "/" + val[i];
+    }
+    ret["directory"] = directory += "/";
+
+    return ret;
+  }
+
+  ##
+  # Set Cache.
+  # This will loop all kv keys and store each individually for future reference. Completely dynamic.
+  # @param [secret:string] the secret for the kv item. Used as a key.
+  # @param [kv:array] Object containing all the keys to cache. Looped and stored.
+  ##
+  function set_cache(secret,kv) 
+  {
+    var key;
+    set_global_kb_item(name:"pam/global/"+secret+"/status", value:"success");
+
+    foreach key(keys(kv))
+    {
+      set_global_kb_item(name:"Secret/pam/global/"+secret+"/kv/"+key, value:kv[key]);
+    }
+  }
+
+  ##
+  # Get KV Cache.
+  # This will loop all available keys for a secret and rebuild a kv item from them.
+  # @param [secret:string] the secret for the kv item. Used as a key.
+  # @return [array] an object with {success:TRUE, cached:TRUE, KV:the cached keys}
+  ##
+  function get_cache(secret) 
+  {
+    var cached_password_status, cached_key_list, creds, key, keyname;
+
+    cached_password_status = get_global_kb_item("pam/global/"+secret+"/status");
+
+    if (!empty_or_null(cached_password_status)) 
+    {
+      cached_key_list = get_global_kb_list("Secret/pam/global/"+secret+"/kv/*");
+
+      foreach key (keys(cached_key_list)) 
+      {
+        keyname = pregmatch(string:key, pattern: '([^/]+$)');
+
+        if(!empty_or_null(keyname))
+        {
+          creds['kv'][keyname[0]] = get_global_kb_item(key);
+        }
+      }
+
+      creds['cached'] = TRUE;
+      creds['success'] = TRUE;
+      
+      return creds;
+    }
+  }
+
+  ##
+  # Valid? Checks to see if passed value is !empty_or_null and returns the bool
+  # 
+  # @param [value:any] Value to check if empty or NULL
+  #
+  # @return [boolean] TRUE if value is not empty_or_null FALSE otherwise
+  ##
+  function valid(value)
+  {
+    if (!empty_or_null(value))
+    {
+      return TRUE;
+    }
+
+    return FALSE;
+  }
+
+  # Integrations Status Code
+  # This namespace defines the functions used by the integration_status_settings
+  # and integration_status plugins.
+  namespace status
+  {
+    # For status plugin, define a max of 10 credentials. Integration status
+    # will only ever track the first 10 credentials that are configured. We could consider
+    # boosting this or making it more dynamic, don't know how yet.
+    var MAX_NUM_CREDS = 10;
+
+    # List for defined patch managers
+    var pms = [
+      "Red Hat Satellite 6",
+      "HCL",
+      "SCCM",
+      "WSUS"
+    ];
+
+
+    ##
+    # Given a preference string, check if it represents a PAM integration.
+    #
+    # @param [pref:string] The preference string
+    #
+    # @return [boolean] TRUE or FALSE
+    ##
+    function _is_pam_integration(pref)
+    {
+      var pam_integrations = [
+        'Hashicorp',
+        'CyberArk',
+        'Delinea',
+        'QiAnXin',
+        'Senhasegura',
+        'Wallix',
+        'Arcon',
+        'BeyondTrust',
+        'Fudo'
+      ];
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Checking if cred type '+pref+' is an integration.');
+      foreach(var pam_integration in pam_integrations)
+      {
+        if (pam_integration >< pref)
+        {
+          return TRUE;
+        }
+      }
+      return FALSE;
+    }
+
+    ##
+    # Get the expected pref string prefix for a given credential index.
+    #
+    # @anonparam [integer] The index
+    #
+    # @return [string] The prefix
+    ##
+    function _get_prefix()
+    {
+      var i = _FCT_ANON_ARGS[0];
+      if (i==0)
+      {
+        return "";
+      }
+      return "Additional ";
+    }
+
+    ##
+    # Get the expected pref string postfix for a given credential index.
+    #
+    # @anonparam [integer] The index
+    #
+    # @return [string] The postfix
+    ##
+    function _get_postfix()
+    {
+      var i = _FCT_ANON_ARGS[0];
+      if (i==0)
+      {
+        return " :";
+      }
+      return " ("+i+") :";
+    }
+
+    ##
+    # Create the integrations_credentials table in the scratchpad.
+    #
+    # @return NULL
+    ##
+    function create_credentials_table()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Creating integrations_credentials table.');
+      query_scratchpad('CREATE TABLE IF NOT EXISTS integrations_credentials ('
+                      'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                      'credential_index INTEGER, '
+                      'auth_protocol TEXT, '
+                      'integration TEXT, '
+                      'api_host TEXT, '
+                      'integration_type TEXT);');
+    }
+
+    ##
+    # Insert a credential into the integrations_credentials table.
+    #
+    # @param [credential:array] The credential to insert.
+    #
+    # @return NULL
+    ##
+    function insert_credential(credential)
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Inserting values into integrations_credentials table: ' + obj_rep(credential));
+      query_scratchpad('INSERT INTO integrations_credentials VALUES (null, ?, ?, ?, ?, ?);',
+                      credential.index,
+                      credential.auth_protocol,
+                      credential.integration,
+                      credential.api_host,
+                      credential.integration_type);
+    }
+
+    ##
+    # Detect PAM integration(s) at a credential index.
+    #
+    # @param [index:string] The index at which to detect the integration
+    # @param [pref:string] The preference string with which to identify an integration
+    # @param [auth_protocol] The authentication protocol (e.g. SSH, SMB, Database)
+    #
+    # @return [arra] An associative array describing the PAM integration or NULL
+    ##
+    function detect_pam_integration(index, pref_string, auth_protocol)
+    {
+      var pref = get_preference(pref_string);
+      if (pref && _is_pam_integration(pref:pref))
+      {
+        dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'PAM integration detected at index ' + index + ': ' + pref);
+        return {
+          index:index,
+          auth_protocol:auth_protocol,
+          integration:pref,
+          integration_type:'pam'
+        };
+      }
+      return NULL;
+    }
+
+    ##
+    # Detect vCenter integration
+    #
+    # @param [index:string] The index at which to detect the integration
+    # @param [pref_strings] A list of preference strings that identify vCenter integrations.
+    #
+    # @return [array] An array describing the integration or NULL
+    ##
+    function detect_vcenter_integration(index, pref_strings)
+    {
+      foreach (var pref_string in pref_strings)
+      {
+        var pref = get_preference(pref_string);
+
+        if (pref)
+        {
+          dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'vCenter integration detected at index ' + index);
+          # Need to modify this to allow multiple credentials to pass in.
+          return {
+            index:index,
+            auth_protocol:'vcenter',
+            integration:'VMware vCenter API',
+            api_host:pref,
+            integration_type:'vmware'
+          };
+        }
+      }
+      return NULL;
+    }
+
+    ##
+    # Detect ESXi integration
+    #
+    # @param [index:string] The index at which to detect the integration
+    # @param [pref_strings] A list of preference strings that identify vCenter integrations.
+    #
+    # @return [array] An array describing the integration or NULL
+    ##
+    function detect_esxi_integration(index, pref_strings)
+    {
+      foreach (var pref_string in pref_strings)
+      {
+        var pref = get_preference(pref_string);
+
+        if (pref)
+        {
+          dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'ESXi integration detected at index ' + index);
+          # Need to modify this to allow multiple credentials to pass in.
+          return {
+            index:index,
+            auth_protocol:'esxi',
+            integration:'VMware ESX SOAP API',
+            api_host:pref,
+            integration_type:'vmware'
+          };
+        }
+      }
+      return NULL;
+    }
+
+    ##
+    # Detect RHSS 5 and if found, create a record of it
+    #
+    # @return [dict] A dictionary containing the required elements used to identify
+    #   a rhss5 patch manaager
+    ##
+    function detect_rhss5_integration(index, pref_string)
+    {
+      var pref = get_preference(pref_string);
+
+      if (pref)
+      {
+        dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'Red Hat Satellite Server 5 integration detected at index ' + index);
+        return {
+          index:index,
+          auth_protocol:'patch',
+          integration:pref,
+          integration_type:'pm'
+        };
+      }
+      return NULL;
+    }
+
+    ##
+    # Detect patch management integration
+    #
+    # @return [list] A list of arrays describing the various patch management integrations.
+    ##
+    function detect_patch_integrations()
+    {
+
+      # Focusing on RHSS, HCL, SCCM, and WSUS of the patch managers
+      var pref_strings = [
+        #"Patch Management: Dell KACE K1000 Settings[entry]:K1000 Address :",
+        "Patch Management: Red Hat Satellite 6 Settings[entry]:Satellite 6 Server :",
+        #"Patch Management: IBM Tivoli Endpoint Manager Server Settings[entry]:Web Reports Server :"
+        "Patch Management: HCL BigFix Server Settings[entry]:HCL BigFix Web Reports Server :",
+        "Patch Management: SCCM Server Settings[entry]:SCCM Server :",
+        "Patch Management: WSUS Server Settings[entry]:WSUS Server :"
+        #"Patch Management: Symantec Altiris Settings[entry]:Symantec Altiris Database Server :"
+      ];
+
+      var detected_integrations = [];
+
+      foreach (var pref_string in pref_strings)
+      {
+        var pref = get_preference(pref_string);
+        if (pref)
+        {
+          foreach (var pm in pms)
+          {
+            if(pm >< pref_string)
+            {
+              dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'Detected patch management integration ' + pm);
+              append_element(var:detected_integrations, value:{
+                index:'0',
+                auth_protocol:'patch',
+                integration:pm,
+                integration_type:'pm'
+              });
+            }
+          }
+        }
+      }
+      return detected_integrations;
+    }
+
+    ##
+    # Detect MDM integration
+    #
+    # @return [list] A list of arrays describing the various MDM integrations.
+    ##
+    function detect_mdm_integrations()
+    {
+      var pref_strings = [
+        "AirWatch API Settings[entry]:AirWatch Environment API URL :",
+        "Apple Profile Manager API Settings[entry]:Apple Profile Manager server :",
+        "Blackberry UEM Settings[entry]:Blackberry UEM Hostname :",
+        "Workspace ONE API Settings[entry]:Workspace ONE Environment API URL :",
+        "Good MDM Settings[entry]:GMC Server :",
+        "Intune Settings[entry]:Intune Tenant :",
+        "MobileIron API Settings[entry]:MobileIron VSP Admin Portal URL :",
+        "MaaS360 Settings[entry]:Root URL :"
+      ];
+
+      # Need a nice way to map a integration name to a substring found in the pref_strings
+      var mdms = [
+        "Airwatch",
+        "Apple Profile Manager",
+        "Blackberry UEM",
+        "Good MDM",
+        "Intune",
+        "MaaS360",
+        "MobileIron",
+        "Workspace ONE"
+      ];
+
+      var detected_integrations = [];
+
+      foreach (var pref_string in pref_strings)
+      {
+        var pref = get_preference(pref_string);
+        if (pref)
+        {
+          foreach (var mdm in mdms)
+          {
+            if(mdm >< pref_string)
+            {
+              dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'Detected MDM integration ' + mdm);
+              append_element(var:detected_integrations, value:{
+                index:0,
+                auth_protocol:'mobile',
+                integration:mdm,
+                integration_type:'mdm'
+              });
+            }
+          }
+        }
+      }
+      return detected_integrations;
+    }
+
+    ##
+    # Detect Nutanix Integration
+    #
+    # @param [pref_string:string] A list of preference strings that identify vCenter integrations.
+    #
+    # @return [array] A NASL array containing Nutanix Credential Identifiers
+    ##
+    function detect_nutanix(pref_string)
+    {
+      var pref = get_preference(pref_string);
+
+      if (pref)
+      {
+        dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'Nutanix Prism Central Integration detected.');
+        return {
+          index:0,
+          auth_protocol:'nutanix',
+          integration:'Nutanix Prism Central',
+          api_host:pref,
+          integration_type:'nutanix'
+        };
+      }
+      return NULL;
+    }
+
+    ##
+    # Nutanix Integration Status report
+    #
+    # @return [string] status report
+    ##
+    function report_nutanix()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Querying integrations_credentials table for Nutanix integrations.');
+      var cred = query_scratchpad('SELECT DISTINCT integration, api_host FROM integrations_credentials WHERE auth_protocol = \'nutanix\';');
+      if (empty_or_null(cred))
+      {
+        return NULL;
+      }
+
+      var target_ip = get_host_ip();
+      var nutanix_collection_host = get_global_kb_item("Nutanix/DataCollection/CollectionIP");
+      var clusters = get_global_kb_item("Nutanix/DataCollection/clusters");
+      var report = integration_title(integration:cred[0].integration);
+      var api_host = cred[0].api_host;
+
+      if (target_ip == nutanix_collection_host)
+      {
+        report += 'Tenable will attempt to gather Cluster information from Nutanix Prism Central API.\n'
+                  'Tenable relies on data gathered from this endpoint to add hosts, virtual machines,\n'
+                  'and version information in order to execute vulnerability checks.\n';
+        report += 'Request for Nutanix Prism Central Cluster Information: ' + clusters + '\n';
+        if (clusters != "Success")
+        {
+          report += clusters.msg + '\n';
+          report += get_log_file_hint(
+            integration:cred[0].integration,
+            auth_protocol:'nutanix',
+            integration_type:'nutanix'
+          );
+        }
+      }
+      else
+      {
+        report += 'Target ' + target_ip + ' is managed by Nutanix Prism Central Host ' + api_host + '.\n'
+                  'Please refer to Nutanix Data Collection plugin for target details.';
+      }
+      
+      return report;
+    }
+
+    ##
+    # Detect integrations
+    #
+    # @param [index:integer] The index at which to detect the integration
+    #
+    # @return [list] A list of credentials at the given index
+    ##
+    function detect_integration(index)
+    {
+      var prefix = _get_prefix(index);
+      var postfix = _get_postfix(index);
+      var credentials_at_index = [];
+      var credential;
+
+      credential = detect_pam_integration(index:index, pref_string:'SSH settings[radio]:'+prefix+'SSH password type'+postfix, auth_protocol:'SSH');
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      credential = detect_pam_integration(index:index, pref_string:'Login configurations[radio]:'+prefix+'SMB password type'+postfix, auth_protocol:'SMB');
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      credential = detect_pam_integration(index:index, pref_string:'Database settings[ui_radio]:'+prefix+'Credential Type'+postfix, auth_protocol:'Database');
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      credential = detect_pam_integration(index:index, pref_string:'VMware vCenter API Settings[entry]:'+prefix+'vCenter Authentication Method'+postfix, auth_protocol:'vcenter');
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      credential = detect_pam_integration(index:index, pref_string:'VMware SOAP API Settings[radio]:'+prefix+'ESX Authentication Method'+postfix, auth_protocol:'esxi');
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      credential = detect_vcenter_integration(
+        index:index, pref_strings:['VMware vCenter API Settings[entry]:'+prefix+'VMware vCenter host'+postfix,
+                                  'VMware vCenter SOAP API Settings[entry]:'+prefix+'VMware vCenter host'+postfix]
+      );
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      credential = detect_esxi_integration(
+        index:index, pref_strings:['VMware SOAP API Settings[entry]:'+prefix+'VMware user name'+postfix,
+                                   'VMware SOAP API Settings[radio]:'+prefix+'ESX Authentication Method'+postfix]
+      );
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+      # The Red Hat Satellite Server 5 is an outlier for patch management
+      # integrations and can take multiple credentials (Not sure if this behavior
+      # is recommended but it is technically possible). Therefore we are putting
+      # it in the credential loop to collect up to MAX_CREDENTIALS number of credentials.
+      credential = detect_rhss5_integration(index:index, pref_string:'Patch Management: Red Hat Satellite Server Settings[entry]:Red Hat Satellite server ' + postfix + ':');
+      if (credential)
+      {
+        append_element(value:credential, var:credentials_at_index);
+      }
+
+      return credentials_at_index;
+    }
+
+    ##
+    # Gather all credentials that relate to integrations
+    #
+    # @remark This function returns nothing, but it adds to a
+    #         scratchpad table.
+    #
+    # @return NULL
+    ##
+    function gather_credentials()
+    {
+      create_credentials_table();
+      var credentials;
+      for (var i=0; i<MAX_NUM_CREDS; i++)
+      {
+        dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Integration Status Settings Loop ' + i);
+        credentials = detect_integration(index:i);
+
+        foreach (var credential in credentials)
+        {
+          insert_credential(credential:credential);
+        }
+      }
+
+      # There is no 'index' value for MDM or patch management integrations,
+      # because it is not possible to use more than one MDM or patch management
+      # credential in a scan. So, detecting integrations are done without a credential loop
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Detecting MDM integrations');
+      var mdm_integrations = detect_mdm_integrations();
+      foreach (var mdm_credential in mdm_integrations)
+      {
+        insert_credential(credential:mdm_credential);
+      }
+
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Detecting patch management integrations');
+      var patch_integrations = detect_patch_integrations();
+      foreach (var patch_manager in patch_integrations)
+      {
+        insert_credential(credential:patch_manager);
+      }
+
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Detecting Nutanix Integration');
+      var nutanix_credential = detect_nutanix(pref_string:"Nutanix Settings[entry]:Nutanix host :");
+      if (nutanix_credential)
+      {
+        insert_credential(credential:nutanix_credential);
+      }
+    }
+
+    ##
+    # Get a status report title for an integration.
+    #
+    # @param [integration:string] The integration name
+    #
+    # @return [string] A title with an underline
+    ##
+    function integration_title(integration)
+    {
+      var title = 'Integration: ' + integration + '\n';
+      var title_len = len(title);
+      # match the underline to the length of the title.
+      for (var i=1; i<title_len; i++)
+      {
+        title += '-';
+      }
+      title += '\n';
+      return title;
+    }
+
+    ##
+    # Get a list of pertinent log file names
+    #
+    # @param [auth_protocol:string] The integration auth protocol
+    # @param [integration:string] The integration name
+    # @param [integration_type:string] The integration type
+    # @param [api_host:string] API Host that Tenable communicates with
+    #
+    # @return [list] A list of log file names.
+    ##
+    function _get_log_file_names(auth_protocol, integration, integration_type, api_host)
+    {
+      var filename;
+      var auth_protocol_to_plugins;
+      if (integration_type == 'mdm')
+      {
+        filename = ereg_replace(string:integration, pattern:"\s+", replace:"_");
+        if (!filename)
+        {
+          return NULL;
+        }
+        filename = tolower(filename) + '_collect.log';
+        return [filename];
+      }
+
+      if (integration_type == 'pam')
+      {
+        auth_protocol_to_plugins = {
+          'SSH': 'ssh_settings.nasl~',
+          'SMB': 'logins.nasl~',
+          'Database': 'database_settings.nasl~',
+          'vcenter': 'vmware_vsphere_vcenter_settings.nbin~'
+        };
+        if (!auth_protocol_to_plugins[auth_protocol])
+        {
+          return NULL;
+        }
+        filename = auth_protocol_to_plugins[auth_protocol] + integration;
+        return [filename];
+      }
+
+      if (auth_protocol == 'vcenter')
+      {
+        # Not including auto_discovery, collect has what the user needs.
+        filename = 'vmware_vcenter_collect.nbin~'+api_host;      
+        return [filename];
+      }
+
+      if (auth_protocol == 'esxi')
+      {
+        filename = 'vmware_installed_vibs.log';
+        return [filename];
+      }
+
+      if (auth_protocol == 'nutanix')
+      {
+        filename = 'nutanix_collect.nasl~Nutanix Prism Central';      
+        return [filename];
+      }
+
+      return NULL;
+    }
+
+    ##
+    # Get a text hint displaying pertinent log files
+    #
+    # @param [auth_protocol:string] The integration auth protocol
+    # @param [integration:string] The integration name
+    # @param [integration_type:string] The integration type
+    # @param [api_host:string] API Host that Tenable communicates with
+    #
+    # @return [string] Part of the report to append.
+    ##
+    function get_log_file_hint(auth_protocol, integration, integration_type, api_host)
+    {
+      var log_files = _get_log_file_names(
+        auth_protocol:auth_protocol, integration:integration, integration_type:integration_type, api_host:api_host
+      );
+      if (empty_or_null(log_files))
+      {
+        dbg::detailed_log(
+          lvl:2, src:SCRIPT_NAME, msg:'Unable to determine log file name(s) for ('+integration+'/'+auth_protocol+'/'+integration_type+'/'+api_host+')'
+        );
+        return '';
+      }
+      var message = 'See the following Debugging Log Report log file(s) for more information.\n';
+      foreach (var log_file in log_files)
+      {
+        message += '- ' + log_file + '\n';
+      }
+      return message;
+    }
+
+    ##
+    # Is this host a vCenter?
+    #
+    # @return [boolean]
+    ##
+    function _is_vcenter_host()
+    {
+      var version = get_kb_item("Host/VMware/version");
+      var release = get_kb_item("Host/VMware/release");
+
+      if ("vCenter" >< version || "vCenter" >< release)
+      {
+        return TRUE;
+      }
+
+      return FALSE;
+    }
+
+    ##
+    # Is this host an ESXi?
+    #
+    # @return [boolean]
+    ##
+    function _is_esxi_host()
+    {
+      var version = get_kb_item("Host/VMware/version");
+      var release = get_kb_item("Host/VMware/release");
+
+      if ("ESX" >< version || "ESX" >< release)
+      {
+        return TRUE;
+      }
+
+      return FALSE;
+    }
+
+    ##
+    # Did vCenter API authentication succeed?
+    #
+    # @param [vcenter_host:string] The vCenter host
+    #
+    # @return [boolean]
+    ##
+    function _check_vcenter_auth(vcenter_host)
+    {
+      var auth = get_global_kb_item("Host/vCenter/api_auth/" + vcenter_host);
+
+      if (!auth)
+      {
+        return FALSE;
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Check vCenter authentication
+    #
+    # @param [vcenter_host:string] The vCenter host
+    #
+    # @return [array] An array of booleans for API authentication and VIB success
+    ##
+    function _check_vmware_status(vcenter_host)
+    {
+      var vcenter_auth = _check_vcenter_auth(vcenter_host:vcenter_host);
+      var vibs = get_kb_item("Host/VMware/esxcli_software_vibs");
+
+      if (empty_or_null(vibs))
+      {
+        vibs = FALSE;
+      }
+      else
+      {
+        vibs = TRUE;
+      }
+
+      return
+      {
+        vcenter_auth:vcenter_auth,
+        vibs:vibs
+      };
+    }
+
+    ##
+    # Get a vCenter report
+    #
+    # @return [string] The report
+    ##
+    function report_vcenter_status()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Querying integrations_credentials table for vCenter integrations.');
+      var vcenter_creds = query_scratchpad('SELECT DISTINCT integration, api_host FROM integrations_credentials WHERE integration_type = \'vmware\' AND auth_protocol = \'vcenter\';');
+
+      if (empty_or_null(vcenter_creds))
+      {
+        return NULL;
+      }
+
+      var report = integration_title(integration:vcenter_creds[0].integration);
+      var is_esxi = _is_esxi_host();
+      var is_vcenter = _is_vcenter_host();
+      var target = get_host_ip();
+
+      if (is_vcenter)
+      {
+        report += target + ' is a vCenter Host. Tenable will report on whether authentication to the vCenter API succeeded or failed.\n';
+      }
+      else if (is_esxi)
+      {
+        report += target + ' is an ESXi Host. Tenable will attempt to collect VIBs for ' + target + ' from the vCenter host that manages it.\n';
+      }
+      else
+      {
+        report += target + ' is neither an ESXi or vCenter Host.\n';
+      }
+
+      var cred_counter = 0;
+      var not_api_host = 0;
+
+      foreach (var vcenter_cred in vcenter_creds)
+      {
+        var api_host = vcenter_cred.api_host;
+        var status = _check_vmware_status(vcenter_host:api_host);
+        var host_managed_by_vcenter = get_global_kb_item("vCenterHosts/" + target + "/managed_by/" + api_host);
+        var checked_failed_vibs = get_kb_item('Host/status/VIBS/failed');
+        var log_fail = FALSE;
+        var resolv_api_host = fqdn_resolv(name:api_host, ipv6:FALSE, fqdn:TRUE);
+
+        # Account for vCenter API host is FQDN/DNS and not IP
+        if (empty_or_null(resolv_api_host))
+        {
+          resolv_api_host = api_host;
+        }
+        else
+        {
+          resolv_api_host = resolv_api_host[0];
+        }
+
+        if (target == resolv_api_host)
+        {
+          if (!status.vcenter_auth)
+          {
+            report += 'vCenter API Authentication to ' + api_host + ': Failed\n' +
+                      '***This will result in the inability to collect managed ESXi hosts, ESXi VIBs, ESXi hosted VMs, and VM details.***\n';
+            log_fail = TRUE;
+          }
+          else
+          {
+            report += 'vCenter API Authentication to ' + api_host + ': Success\n';
+          }
+        }
+
+        if (is_vcenter && target != resolv_api_host)
+        {
+          not_api_host++;
+        }
+
+        if (status.vibs && host_managed_by_vcenter)
+        {
+          report += target + ' is managed by vCenter Host ' + api_host + '.\n' +
+                    'ESXi VIBs Collected: Success\n';
+        }
+
+        # Able to collect ESXi hosts from vCenter, but not VIBs
+        if (is_esxi && !status.vibs && host_managed_by_vcenter)
+        {
+          set_kb_item(name:'Host/status/VIBS/failed', value:TRUE);
+          report += target + ' is managed by vCenter Host ' + api_host + '.\n' +
+                    'ESXi VIBs Collected: Failed\n';
+          log_fail = TRUE;
+        }
+
+        # Was not able to associate this host to a vCenter, most likely due to vCenter API auth fail, therefore did not collect VIBs
+        if (is_esxi && !status.vibs && !checked_failed_vibs && !host_managed_by_vcenter)
+        {
+          set_kb_item(name:'Host/status/VIBS/failed', value:TRUE);
+          report += 'Tenable was unable to determine if ' + target + ' is managed by a vCenter Host in the configured credential(s).\n' +
+                    'ESXi VIBs Collected: Failed\n';
+          log_fail = TRUE;
+        }
+
+        if (!is_esxi && !is_vcenter && host_managed_by_vcenter)
+        {
+          report += target + ' is a virtual machine that was collected and managed from vCenter host ' + api_host + '.\n';
+        }
+
+        if (log_fail)
+        {
+          report += get_log_file_hint(
+            integration:vcenter_cred.integration,
+            auth_protocol:'vcenter',
+            integration_type:'vmware',
+            api_host:api_host
+          );
+        }
+
+        cred_counter++;
+      }
+
+      if (not_api_host > 0 && not_api_host == cred_counter)
+      {
+        report += 'Tenable determined ' + target + ' did not match a vCenter API Host configured in the scan credential(s).\n' +
+                  'Only enter vCenter targets that are vCenter API Hosts.\n';
+      }
+
+      return report;
+    }
+
+    ##
+    # Get an ESXi report
+    #
+    # @return [string] The report
+    ##
+    function report_esxi_status()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Querying integrations_credentials table for ESXi SOAP integrations.');
+      var esxi_cred = query_scratchpad('SELECT DISTINCT integration FROM integrations_credentials WHERE integration_type = \'vmware\' AND auth_protocol = \'esxi\';');
+
+      if (empty_or_null(esxi_cred))
+      {
+        return NULL;
+      }
+
+      var report = integration_title(integration:esxi_cred[0].integration);
+      var is_esxi = _is_esxi_host();
+      var target = get_host_ip();
+      var status = _check_vmware_status();
+
+      if (is_esxi)
+      {
+        report += target + ' is an ESXi Host. Tenable will attempt to collect VIBs for ' + target + ' directly from the target.\n';
+
+        if (!status.vibs)
+        {
+          report += 'ESXi VIBs Collected: Failed\n';
+            report += get_log_file_hint(
+            integration:esxi_cred[0].integration,
+            auth_protocol:'esxi',
+            integration_type:'vmware'
+          );
+        }
+        else
+        {
+          report += 'ESXi VIBs Collected: Success\n';
+        }
+      }
+      else
+      {
+        report += target + ' is not an ESXi host.\n';
+      }
+      return report;
+    }
+
+    ##
+    # Given a credential index return a list of KBs that should be set
+    #
+    # @param [i:integer] The credential index
+    #
+    # @return [array] An array of KB keys
+    ##
+    function _pam_expected_kbs(i)
+    {
+      var j;
+      if (i==0)
+      {
+        j = '';
+      }
+      else
+      {
+        j = '/' + (i-1);
+      }
+      return {
+        Database: {
+          auth_type:'Database'+j+'/cred_type',
+          username:'Database'+j+'/login',
+          password:'/tmp/Database'+j+'/password',
+        },
+        SMB: {
+          auth_type:'SMB/cred_type'+j,
+          username:'SMB/login_filled'+j,
+          password:'SMB/password_filled'+j,
+        },
+        SSH: {
+          auth_type:'SSH'+j+'/cred_type',
+          username:'Secret/SSH'+j+'/login',
+          password:'Secret/SSH'+j+'/password',
+          privatekey:'Secret/SSH'+j+'/privatekey',
+          passphrase:'Secret/SSH'+j+'/passphrase',
+        },
+        vcenter: {
+          auth_type:'Host/vCenter'+j+'/auth_method',
+          username:'Secret/vCenter'+j+'/username',
+          password:'Secret/vCenter'+j+'/password',
+        },
+        esxi : {
+          auth_type:'VMware'+j+'/auth_method',
+          username:'Secret/VMware'+j+'/login',
+          password:'Secret/VMware'+j+'/password',
+        }
+      };
+    }
+
+    ##
+    # Did this PAM integration succeed
+    #
+    # @param [integration:string] The integration
+    # @param [auth_protocol:string] The auth protocol (e.g. SSH, SMB, Database)
+    #
+    # @remark This function will check how many were
+    #         successful out of a total.
+    #
+    # @return [num_successful:integer] How many were successful
+    ##
+    function check_for_pam_success(integration, auth_protocol)
+    {
+      dbg::detailed_log(src:SCRIPT_NAME, lvl:3, msg:'Checking if ' + auth_protocol + ' auth was successful using PAM ' + integration);
+      var num_successful = 0;
+      var username_kb, password_kb, sshkey_kb, passphrase_kb;
+      for (var i=0; i<MAX_NUM_CREDS; i++)
+      {
+        var expected_kbs = _pam_expected_kbs(i:i);
+        var auth_type = get_kb_item(expected_kbs[auth_protocol]['auth_type']);
+
+        if (!auth_type)
+        {
+          continue;
+        }
+        if (auth_type >!< integration)
+        {
+          dbg::detailed_log(src:SCRIPT_NAME, lvl:3, msg:'Skipping auth type not matching integration: '+auth_type);
+          continue;
+        }
+
+        username_kb = expected_kbs[auth_protocol]['username'];
+        password_kb = expected_kbs[auth_protocol]['password'];
+        sshkey_kb = expected_kbs[auth_protocol]['privatekey'];
+        passphrase_kb = expected_kbs[auth_protocol]['passphrase'];
+
+        dbg::detailed_log(src:SCRIPT_NAME, lvl:3, msg:'Checking KB for authentication values:');
+        dbg::detailed_log(src:SCRIPT_NAME, lvl:4, msg:'KB: '+ username_kb);
+        dbg::detailed_log(src:SCRIPT_NAME, lvl:4, msg:'KB: '+ password_kb);
+        dbg::detailed_log(src:SCRIPT_NAME, lvl:4, msg:'KB: '+ sshkey_kb);
+        dbg::detailed_log(src:SCRIPT_NAME, lvl:4, msg:'KB: '+ passphrase_kb);
+        if (get_kb_item(username_kb))
+        {
+          if (get_kb_item(password_kb))
+          {
+            num_successful++;
+          }
+          else if (sshkey_kb && get_kb_item(sshkey_kb))
+          {
+            var is_encrypted = ('ENCRYPTED' >< hex2str(get_kb_item(sshkey_kb)));
+            if(is_encrypted && get_kb_item(passphrase_kb))
+            {
+              num_successful++;
+            }
+            else if(!is_encrypted)
+            {
+              num_successful++;
+            }
+          }
+        }
+      }
+      return num_successful;
+    }
+
+    ##
+    # Get a PAM integration report
+    #
+    # @return [string] The report
+    ##
+    function get_pam_report()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Querying integrations_credentials table for PAM integrations.');
+      var report = '';
+      var pam_integrations = query_scratchpad('SELECT DISTINCT integration,auth_protocol FROM integrations_credentials WHERE integration_type = \'pam\';');
+      var log_fail = FALSE;
+      if (!pam_integrations)
+      {
+        # No PAM integrations were configured for this host
+        return report;
+      }
+      foreach (var pam_integration in pam_integrations)
+      {
+        var num_successful = check_for_pam_success(integration:pam_integration.integration, auth_protocol:pam_integration.auth_protocol);
+        var num_total_query = query_scratchpad('SELECT COUNT(*) AS count FROM integrations_credentials WHERE integration=? AND auth_protocol=? AND integration_type = \'pam\';', pam_integration.integration, pam_integration.auth_protocol);
+        var num_total = 0;
+        if (!isnull(num_total_query))
+        {
+          num_total = num_total_query[0]['count'];
+        }
+        dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'num successful:'+num_successful);
+        dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'num total:'+num_total);
+        report += integration_title(integration:pam_integration.integration);
+        report += 'Authentication Protocol: ' + pam_integration.auth_protocol + '\n';
+        if (num_successful && num_successful >= num_total)
+        {
+          report += 'Status: Success\nAll '+num_successful+' credentials successfully gathered.\n';
+        }
+        else if (num_successful > 0)
+        {
+          report += 'Status: Partial success\n' + num_successful + ' out of ' + num_total + ' credentials gathered.\n';
+          log_fail = TRUE;
+        }
+        else
+        {
+          report += 'Status: Failure\nNo credentials gathered for this host.\n';
+          log_fail = TRUE;
+        }
+        if (log_fail)
+        {
+          report += get_log_file_hint(
+            integration:pam_integration.integration,
+            auth_protocol:pam_integration.auth_protocol,
+            integration_type:'pam'
+          );
+        }
+        report += '\n';
+      }
+      return report;
+    }
+
+    ##
+    # Get an MDM integration report
+    #
+    # @return [string] The report
+    ##
+    function get_mdm_report()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Querying integrations_credentials table for MDM integrations.');
+      var report = '';
+      var mdm_integrations = query_scratchpad('SELECT DISTINCT integration,auth_protocol FROM integrations_credentials WHERE integration_type = \'mdm\';');
+      var log_fail = FALSE;
+      if (!mdm_integrations)
+      {
+        return report;
+      }
+      foreach (var mdm_integration in mdm_integrations)
+      {
+        dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Checking results of: '+mdm_integration.integration);
+        report += integration_title(integration:mdm_integration.integration);
+        var num_devices_query = query_scratchpad('SELECT COUNT(*) as count FROM mdm_devices WHERE collected_from=?;', mdm_integration.integration);
+        var num_devices = 0;
+        if (!isnull(num_devices_query))
+        {
+          num_devices = num_devices_query[0]['count'];
+        }
+        if (num_devices > 0)
+        {
+          dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Got number of devices matching integration ' + mdm_integration.integration + ': ' + num_devices);
+          report += 'Status: Success\n'+num_devices+' devices were gathered from the MDM.\n';
+        }
+        else
+        {
+          report += 'Status: Failure\nNo devices were gathered from the MDM.\n';
+          log_fail = TRUE;
+        }
+        if (log_fail)
+        {
+          report += get_log_file_hint(
+            integration:mdm_integration.integration,
+            auth_protocol:'mdm',
+            integration_type:'mdm'
+          );
+        }
+        # TODO(RES-173930): add API authentication success/failed to the MDM report
+        report += '\n';
+      }
+      return report;
+    }
+
+    ##
+    # Determine incremental status for Red Hat Satellite Server 6 patch manager and report on it
+    # 
+    # @return [string] RHSS6 report
+    ##
+    function report_redhat_6()
+    {
+      var report = integration_title(integration:"Red Hat Satellite 6");
+      report += 'Checking if the integration can communicate with the rhss6 server, determine if rhss6 ';
+      report += 'manages the specified target, determine the target\'s architecture, enumerate ';
+      report += 'the packages installed, and run local checks on target. ';
+      report += 'Otherwise report what issue was encountered\n\n';
+
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Reporting Red Hat Satellite Server 6 status');
+      var item = get_kb_item("satellite6/installed_rpm/ran");
+      if(item)
+      {
+        return report += 'Host successfully retrieved packages\n';
+      }
+      # Check that rhss6 is configured
+      item = get_kb_item("satellite6/configured");
+      if(!item)
+      {
+        return report += 'Satellite Server was not properly configured\n';
+      }
+      item = get_kb_item("status/pm/rhss/host_ident");
+      if(!item)
+      {
+        return report += 'Could not determine if this host is managed by RedHat Satellite 6\n';
+      }
+      item = get_kb_item("status/pm/rhss/arch");
+      if(!item)
+      {
+        return report += 'Unable to retreive host architecture\n';
+      }
+      item = get_kb_item("status/pm/rhss/packages");
+      if(!item)
+      {
+        return report += 'Unable to retrieve packages on host\n';
+      }
+      item = get_kb_item("status/pm/rhss/local_checks");
+      if(!item)
+      {
+        return report += 'Unable to run local_checks on host\n';
+      }
+
+      return report += "Unknown Error Occurred";
+    }
+
+    ##
+    # Determine incremental status for HCL patch manager and report on it
+    # 
+    # @return [string] HCL report
+    ##
+    function report_hcl()
+    {
+      var report = integration_title(integration:"HCL Bigfix");
+      report += 'Checking if the integration can communicate with the HCL server, determine if HCL '
+                'manages the specified target and if the packages on the target were checked.\n\n';
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Reporting HCL status');
+
+      if (get_kb_item("hcl_bigfix/missing_patch/ran"))
+      {
+        return report += 'HCL BigFix retrieved packages successfully.\n';
+      }
+      var item = get_kb_item("hcl_bigfix/configured");
+      if (!item)
+      {
+        return report += 'Status could not determine if HCL is configured correctly, check the entered credentials for accuracy\n';
+      }
+      item = get_kb_item("hcl_bigfix/computer_info/managed");
+      if(item != TRUE)
+      {
+        return report += 'This system is not managed by HCL BigFix.\n';
+      }
+      item = get_kb_item("hcl_bigfix/missing_patch/ran");
+      if(item != TRUE)
+      {
+        return report += 'Unable to retrieve updates.\n';
+      }
+
+      return report += 'The host was unable to determing HCL BigFix Status.\n';
+    }
+
+    ##
+    # Determine incremental status for SCCM patch manager and report on it
+    # 
+    # @return [string] SCCM report
+    ##
+    function report_sccm()
+    {
+      var report = integration_title(integration:"System Center Configuration Manager");
+      report += 'Checking if the integration can communicate with the SCCM server, determine if SCCM ';
+      report += 'manages the specified target and if the packages on the target were checked.\n\n';
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Reporting SCCM status');
+
+      var item = get_kb_item("sccm/missing_patch/ran");
+      if (item == TRUE)
+      {
+        return report += 'SCCM was successfully able to check the target\'s patches\n';
+      }
+      item = get_kb_item("sccm/configured");
+      if (item != TRUE)
+      {
+        report += 'Unable to confirm that the host was configured properly. ';
+        return report += 'Check the debug log sccm_init_info.log for more information.\n';
+      }
+
+      return report;
+    }
+
+    ##
+    # Determine incremental status for WSUS patch manager and report on it
+    #
+    # @return [string] WSUS report
+    ##
+    function report_wsus()
+    {
+      var report = integration_title(integration:"Windows Server Update Service");
+      report += 'Checking if the integration can communicate with the WSUS server, determine if WSUS ';
+      report += 'manages the specified target and if the packages on the target were checked.\n\n';
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Reporting WSUS status');
+
+      var item = get_kb_item("patch_management/wsus");
+      if(!item)
+      {
+        report += 'Unable to confirm that the host\'s packages were read.\n';
+        report += 'Please check the debug log report wsus_get_missing_updates.log for details\n';
+        return report;
+      }
+      item = get_global_kb_item("wsus/computerinfo/ran");
+      if(item == FALSE || !item)
+      {
+        report += 'Unable to confirm that the WSUS credential is configured correctly.\n';
+        report += 'Please check the debug log report wsus_init_info.log for details';
+        return report;
+      }
+
+      return report += 'The Host was able to confirm that it is managed by WSUS.\n';
+    }
+
+    ##
+    # Get a patch management integration report
+    #
+    # @return [string] The report
+    ##
+    function get_pm_report()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Querying integrations_credentials table for pm integrations.');
+      var report = '';
+      var pm_integrations = query_scratchpad('SELECT DISTINCT integration FROM integrations_credentials WHERE integration_type = \'pm\';');
+
+      foreach (var pm in pm_integrations)
+      {
+        switch (pm.integration)
+        {
+          case "Red Hat Satellite 6":
+            report += report_redhat_6();
+            break;
+          case "WSUS":
+            report += report_wsus();
+            break;
+          case "HCL":
+            report += report_hcl();
+            break;
+          case "SCCM":
+            report += report_sccm();
+            break;
+          default:
+            dbg::detailed_log(lvl:3, src:SCRIPT_NAME, msg:'Unknown patch manager was detected: ' + pm);
+        }
+      }
+
+      return report;
+    }
+
+    ##
+    # Process the status report.
+    #
+    # @remark This is the main entry point for the integration_status plugin.
+    #
+    # @return [string] The report
+    ##
+    function process_report_data()
+    {
+      dbg::detailed_log(lvl:4, src:SCRIPT_NAME, msg:'Processing integration status report');
+      var report_header = 'Integration Status Report\n'
+                          '=========================\n\n';
+      var report = get_pam_report();
+      report += report_vcenter_status();
+      report += report_esxi_status();
+      report += get_mdm_report();
+      report += get_pm_report();
+      report += report_nutanix();
+
+      if (report)
+      {
+        report = report_header + report;
+      }
+
+      return report;
+    }
+  }
+}

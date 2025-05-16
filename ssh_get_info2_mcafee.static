@@ -1,0 +1,36 @@
+#TRUSTED 69ab604a2b2af1dcd784d4dbf1478da1e54e619b747bb70831ce6a2b124389960ba81a9c699aa601b948f6094041441900cd7b78dd42a64902c46ec152cd986fe4daa37e6be520cfc2416fbb300f1e73b6fe08bfe10972477bd4f981061f1b89a027108ab75b451202a781abfafe5677ed87b841755bf2a81a8523f0a64cd2974a61cac80ea374c9570114992cf2a2f9e0a3d5ee2611ee6cd834467a6ea2a571dbfc53726f7956590852c4f5114fe3cd4b9054a27c5c89a43ea8933842336fa8dc0e44a1fbb93b4bcab9d571a99524b869eb73d4ca2c5c4d9f7688158e0d116866efce8066f2db4e1fefbad208f1f3d9c98367b38b734492a7d8d338815a9527a9b78fc73ad42e9d661f8a2fdf96017ae53bf2d6c8bb2113e51431f2ebb35e3e6891845fb3f8d2f0f626822db845021e7b8ef99be4ab5ba5cba6aa9e0e380e9be6df470fe0b9a5381076e27f35490233ec0014198128539433ce52f621c0233be158a8220b82ef1c7e223e050d519fda358f0ada6ae7e0303f234f214f27d7a6b5b222aa3a12155dfc8b4cc472bbf150a716b7c5021df8f1005cc23f0e344017a24f06219521ca39bee80ccc215ff9c6f8576d9dbfa4117b9b5c19b5373ad90526109cf0c77eef00d3d3d9a778ca632956e28339b46e98cc65f69e12e73973d47d51acaed50034e8135d3bde02470be54d6ea7afa49f565dfc1490fdef622716
+#TRUST-RSA-SHA256 720340ca50551bb785d4eddbda6d32d6d658a957f78ce9f4d88b3abfaf8e3b42edfb958b3962da73c71e21cb9950319badf701e12603f50021fb2e67b49126fce9c23d70de1204e342a7f3ee8763e8581d4e456f94aa4f80cbccae7caabe31bbca1b3fb41a75e8f85e8f34d724ff233f58b3559cdd27d654b393e39435588ad5da17c64ff3c9618060d042e8f154861e75e5d7fa1347144c5448749c4eefd4c6e4511e38bc96c0441d183d82d511d04222006b01f63d4bee0f1fd9632e1b2f489f37858bad0a581640075fac2d566181ffc13ab8dbda78cd5f4712d8ffecf601141fd745a918bc05fd56100e83204582f63e823b14e5a44d3408ab945f7e4a13ebeaf29f642ddc95b00e4c601be81451e3a7e39bc2863aefd0b76c4dbeb2aedf109db1a0f6f24da35693cc06b6f4380a6377d024347425ac92cb1d8cac6288820187aaab2c69581654684551c2217b8d90b3c936fe66335f5b3096f5894f18200671047815cfb8bfb345d29acc0c2cef413f8ce28ba7c6634a389e65dcdf8ab8ab8af40d123e0d567accd223558d2cc446a8602566806549616d9e7f4f9da032af99e9987835d8d9215044eb27061b91caa2d1b955a92664057d3f68b059ec8ea6ebfa79bf0b88a64eb59e3277ea075cfbe66ebfe2694bec6999dde353954cf9654185dd98ed48dbcabe3385545ce3c7b8ee72f8e3fbec5b5488fce10d4f3755
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+#
+# McAfee Linux helper functions
+###
+
+function handle_mcafee_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  var match = pregmatch(pattern:"^McAfee Linux (OS Server )?release (\d+)", string:cmd_res);
+  if (!isnull(match)) replace_kb_item(name:"Host/McAfeeLinux/release", value:"MLOS"+match[2]);
+
+  # Gather RPM info
+  var rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                                internal_label:"McAfeeLinux");
+
+  report += '\nThe remote McAfee Linux OS system is :\n' + cmd_res;
+
+  var cpu = host_info_key_val['cpu'];
+
+  if(rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_mcafee.static', value: 32);
+  }
+
+  return TRUE;
+}

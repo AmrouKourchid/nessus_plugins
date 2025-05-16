@@ -1,0 +1,250 @@
+#%NASL_MIN_LEVEL 80900
+##
+# (C) Tenable, Inc.
+#
+# The package checks in this plugin were extracted from
+# SUSE update advisory SUSE-SU-2023:2850-1. The text itself
+# is copyright (C) SUSE.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(178405);
+  script_version("1.0");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2023/07/18");
+
+  script_cve_id(
+    "CVE-2023-3482",
+    "CVE-2023-37201",
+    "CVE-2023-37202",
+    "CVE-2023-37203",
+    "CVE-2023-37204",
+    "CVE-2023-37205",
+    "CVE-2023-37206",
+    "CVE-2023-37207",
+    "CVE-2023-37208",
+    "CVE-2023-37209",
+    "CVE-2023-37210",
+    "CVE-2023-37211",
+    "CVE-2023-37212"
+  );
+  script_xref(name:"SuSE", value:"SUSE-SU-2023:2850-1");
+
+  script_name(english:"SUSE SLES12 Security Update : MozillaFirefox, MozillaFirefox-branding-SLE (SUSE-SU-2023:2850-1)");
+
+  script_set_attribute(attribute:"synopsis", value:
+"The remote SUSE host is missing one or more security updates.");
+  script_set_attribute(attribute:"description", value:
+"The remote SUSE Linux SLES12 / SLES_SAP12 host has packages installed that are affected by multiple vulnerabilities as
+referenced in the SUSE-SU-2023:2850-1 advisory.
+
+  - When Firefox is configured to block storage of all cookies, it was still possible to store data in
+    localstorage by using an iframe with a source of 'about:blank'. This could have led to malicious websites
+    storing tracking data without permission. This vulnerability affects Firefox < 115. (CVE-2023-3482)
+
+  - An attacker could have triggered a use-after-free condition when creating a WebRTC connection over HTTPS.
+    This vulnerability affects Firefox < 115, Firefox ESR < 102.13, and Thunderbird < 102.13. (CVE-2023-37201)
+
+  - Cross-compartment wrappers wrapping a scripted proxy could have caused objects from other compartments to
+    be stored in the main compartment resulting in a use-after-free. This vulnerability affects Firefox < 115,
+    Firefox ESR < 102.13, and Thunderbird < 102.13. (CVE-2023-37202)
+
+  - Insufficient validation in the Drag and Drop API in conjunction with social engineering, may have allowed
+    an attacker to trick end-users into creating a shortcut to local system files. This could have been
+    leveraged to execute arbitrary code. This vulnerability affects Firefox < 115. (CVE-2023-37203)
+
+  - A website could have obscured the fullscreen notification by using an option element by introducing lag
+    via an expensive computational function. This could have led to user confusion and possible spoofing
+    attacks. This vulnerability affects Firefox < 115. (CVE-2023-37204)
+
+  - The use of RTL Arabic characters in the address bar may have allowed for URL spoofing. This vulnerability
+    affects Firefox < 115. (CVE-2023-37205)
+
+  - Uploading files which contain symlinks may have allowed an attacker to trick a user into submitting
+    sensitive data to a malicious website. This vulnerability affects Firefox < 115. (CVE-2023-37206)
+
+  - A website could have obscured the fullscreen notification by using a URL with a scheme handled by an
+    external program, such as a mailto URL. This could have led to user confusion and possible spoofing
+    attacks. This vulnerability affects Firefox < 115, Firefox ESR < 102.13, and Thunderbird < 102.13.
+    (CVE-2023-37207)
+
+  - When opening Diagcab files, Firefox did not warn the user that these files may contain malicious code.
+    This vulnerability affects Firefox < 115, Firefox ESR < 102.13, and Thunderbird < 102.13. (CVE-2023-37208)
+
+  - A use-after-free condition existed in `NotifyOnHistoryReload` where a `LoadingSessionHistoryEntry` object
+    was freed and a reference to that object remained. This resulted in a potentially exploitable condition
+    when the reference to that object was later reused. This vulnerability affects Firefox < 115.
+    (CVE-2023-37209)
+
+  - A website could prevent a user from exiting full-screen mode via alert and prompt calls. This could lead
+    to user confusion and possible spoofing attacks. This vulnerability affects Firefox < 115.
+    (CVE-2023-37210)
+
+  - Memory safety bugs present in Firefox 114, Firefox ESR 102.12, and Thunderbird 102.12. Some of these bugs
+    showed evidence of memory corruption and we presume that with enough effort some of these could have been
+    exploited to run arbitrary code. This vulnerability affects Firefox < 115, Firefox ESR < 102.13, and
+    Thunderbird < 102.13. (CVE-2023-37211)
+
+  - Memory safety bugs present in Firefox 114. Some of these bugs showed evidence of memory corruption and we
+    presume that with enough effort some of these could have been exploited to run arbitrary code. This
+    vulnerability affects Firefox < 115. (CVE-2023-37212)
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.suse.com/1212101");
+  script_set_attribute(attribute:"see_also", value:"https://bugzilla.suse.com/1212438");
+  # https://lists.suse.com/pipermail/sle-security-updates/2023-July/015501.html
+  script_set_attribute(attribute:"see_also", value:"http://www.nessus.org/u?ffc65b01");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-3482");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37201");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37202");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37203");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37204");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37205");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37206");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37207");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37208");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37209");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37210");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37211");
+  script_set_attribute(attribute:"see_also", value:"https://www.suse.com/security/cve/CVE-2023-37212");
+  script_set_attribute(attribute:"solution", value:
+"Update the affected MozillaFirefox, MozillaFirefox-branding-SLE, MozillaFirefox-devel and / or MozillaFirefox-
+translations-common packages.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:POC/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:P/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2023-37212");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"Exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"true");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2023/07/04");
+  script_set_attribute(attribute:"patch_publication_date", value:"2023/07/17");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2023/07/18");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:suse_linux:MozillaFirefox");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:suse_linux:MozillaFirefox-branding-SLE");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:suse_linux:MozillaFirefox-devel");
+  script_set_attribute(attribute:"cpe", value:"p-cpe:/a:novell:suse_linux:MozillaFirefox-translations-common");
+  script_set_attribute(attribute:"cpe", value:"cpe:/o:novell:suse_linux:12");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"SuSE Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2023 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("ssh_get_info.nasl");
+  script_require_keys("Host/local_checks_enabled", "Host/cpu", "Host/SuSE/release", "Host/SuSE/rpm-list");
+
+  exit(0);
+}
+
+
+include('rpm.inc');
+
+if (!get_kb_item('Host/local_checks_enabled')) audit(AUDIT_LOCAL_CHECKS_NOT_ENABLED);
+var os_release = get_kb_item("Host/SuSE/release");
+if (isnull(os_release) || os_release !~ "^(SLED|SLES)") audit(AUDIT_OS_NOT, "SUSE");
+var os_ver = pregmatch(pattern: "^(SLE(S|D)(?:_SAP)?\d+)", string:os_release);
+if (isnull(os_ver)) audit(AUDIT_UNKNOWN_APP_VER, 'SUSE');
+os_ver = os_ver[1];
+if (! preg(pattern:"^(SLES12|SLES_SAP12)$", string:os_ver)) audit(AUDIT_OS_NOT, 'SUSE SLES12 / SLES_SAP12', 'SUSE (' + os_ver + ')');
+
+if (!get_kb_item("Host/SuSE/rpm-list")) audit(AUDIT_PACKAGE_LIST_MISSING);
+
+var cpu = get_kb_item('Host/cpu');
+if (isnull(cpu)) audit(AUDIT_UNKNOWN_ARCH);
+if ('x86_64' >!< cpu && cpu !~ "^i[3-6]86$" && 's390' >!< cpu && 'aarch64' >!< cpu) audit(AUDIT_LOCAL_CHECKS_NOT_IMPLEMENTED, 'SUSE (' + os_ver + ')', cpu);
+
+var service_pack = get_kb_item("Host/SuSE/patchlevel");
+if (isnull(service_pack)) service_pack = "0";
+if (os_ver == "SLES12" && (! preg(pattern:"^(2|4|5)$", string:service_pack))) audit(AUDIT_OS_NOT, "SLES12 SP2/4/5", os_ver + " SP" + service_pack);
+if (os_ver == "SLES_SAP12" && (! preg(pattern:"^(4|5)$", string:service_pack))) audit(AUDIT_OS_NOT, "SLES_SAP12 SP4/5", os_ver + " SP" + service_pack);
+
+var pkgs = [
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'4', 'cpu':'x86_64', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.4']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'4', 'cpu':'x86_64', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.4']},
+    {'reference':'MozillaFirefox-devel-115.0-112.165.1', 'sp':'4', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.4']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'4', 'cpu':'x86_64', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.4']},
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'5', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.5']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'5', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.5']},
+    {'reference':'MozillaFirefox-devel-115.0-112.165.1', 'sp':'5', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.5']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'5', 'release':'SLES_SAP12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['SLES_SAP-release-12.5']},
+    {'reference':'MozillaFirefox-devel-115.0-112.165.1', 'sp':'5', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sle-sdk-release-12.5', 'sles-release-12.5']},
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'2', 'cpu':'x86_64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-bcl-release-12.2']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'2', 'cpu':'x86_64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-bcl-release-12.2']},
+    {'reference':'MozillaFirefox-devel-115.0-112.165.1', 'sp':'2', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-bcl-release-12.2']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'2', 'cpu':'x86_64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-bcl-release-12.2']},
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'4', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.4']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'4', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.4']},
+    {'reference':'MozillaFirefox-devel-115.0-112.165.1', 'sp':'4', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.4']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'4', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.4']},
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'5', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.5']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'5', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.5']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'5', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-12.5']},
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'4', 'cpu':'aarch64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']},
+    {'reference':'MozillaFirefox-115.0-112.165.1', 'sp':'4', 'cpu':'x86_64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'4', 'cpu':'aarch64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']},
+    {'reference':'MozillaFirefox-branding-SLE-115-35.12.2', 'sp':'4', 'cpu':'x86_64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']},
+    {'reference':'MozillaFirefox-devel-115.0-112.165.1', 'sp':'4', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'4', 'cpu':'aarch64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']},
+    {'reference':'MozillaFirefox-translations-common-115.0-112.165.1', 'sp':'4', 'cpu':'x86_64', 'release':'SLES12', 'rpm_spec_vers_cmp':TRUE, 'allowmaj':TRUE, 'exists_check':['sles-release-4']}
+];
+
+var ltss_caveat_required = FALSE;
+var flag = 0;
+foreach var package_array ( pkgs ) {
+  var reference = NULL;
+  var _release = NULL;
+  var sp = NULL;
+  var _cpu = NULL;
+  var exists_check = NULL;
+  var rpm_spec_vers_cmp = NULL;
+  if (!empty_or_null(package_array['reference'])) reference = package_array['reference'];
+  if (!empty_or_null(package_array['release'])) _release = package_array['release'];
+  if (!empty_or_null(package_array['sp'])) sp = package_array['sp'];
+  if (!empty_or_null(package_array['cpu'])) _cpu = package_array['cpu'];
+  if (!empty_or_null(package_array['exists_check'])) exists_check = package_array['exists_check'];
+  if (!empty_or_null(package_array['rpm_spec_vers_cmp'])) rpm_spec_vers_cmp = package_array['rpm_spec_vers_cmp'];
+  if (reference && _release) {
+    if (exists_check) {
+      var check_flag = 0;
+      foreach var check (exists_check) {
+        if (!rpm_exists(release:_release, rpm:check)) continue;
+        if ('ltss' >< tolower(check)) ltss_caveat_required = TRUE;
+        check_flag++;
+      }
+      if (!check_flag) continue;
+    }
+    if (rpm_check(release:_release, sp:sp, cpu:_cpu, reference:reference, rpm_spec_vers_cmp:rpm_spec_vers_cmp)) flag++;
+  }
+}
+
+if (flag)
+{
+  var ltss_plugin_caveat = NULL;
+  if(ltss_caveat_required) ltss_plugin_caveat = '\n' +
+    'NOTE: This vulnerability check contains fixes that apply to\n' +
+    'packages only available in SUSE Enterprise Linux Server LTSS\n' +
+    'repositories. Access to these package security updates require\n' +
+    'a paid SUSE LTSS subscription.\n';
+  security_report_v4(
+      port       : 0,
+      severity   : SECURITY_HOLE,
+      extra      : rpm_report_get() + ltss_plugin_caveat
+  );
+  exit(0);
+}
+else
+{
+  var tested = pkg_tests_get();
+  if (tested) audit(AUDIT_PACKAGE_NOT_AFFECTED, tested);
+  else audit(AUDIT_PACKAGE_NOT_INSTALLED, 'MozillaFirefox / MozillaFirefox-branding-SLE / MozillaFirefox-devel / etc');
+}

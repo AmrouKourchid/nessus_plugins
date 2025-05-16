@@ -1,0 +1,212 @@
+#TRUSTED 992f20d3e4412b61fca73b2011b6afc48c442f1c3802f97499d4d2b4b0906aee24692a7892d0d7f329722d4e045c87c23b5677146019b1218680ee2410223c6eaf3171873a0ea7a9567d92cde9d27ec02d6f5190178f6daf33a02de442d26d0b2cf3487f45299ec0ae60d0ffd58655ab2e06662c6e0d453749eb1a7290db597e8cc2b981e59e101c4aca81576d0ae7b749b704c2386c607a9c30b29955e7691023aafebc303ecde2c769bb7832c57004ee08e9f617b2cddfaf4de0e507a13ad401ec9ad521c1ebe800a68e61bb513fdae9d0a1b7ed1125683a609546854deb8a49292e55061f18cbfe1ffcb0e7d679fb0a5899a15590de38c2076fa39aa44028d4f038fa2ed174eb693c66213fe3d178d80c0365e617498de6cd8f1f0c5a5c6c7ae6ea2780939b60d5bfe53c2881123ae6f520c2c9821b43919284bd87998dfbb4367a17893089e9901cf98a60572880e3eb00a14b4fad821c61bf76b1a2be2f8939bdd26cd0a47d8fe659171908cd8bce53b08c8f695b16ee97a581c7a8d9fec9fe1b527b82719c807835b5f2416625afb01dabb827b57decbf4343aeeeba729a5bb2d6db3dc0dfce6925adac2d913cb42510e2515a538857f2f8164299b0deba13f2df9945ee6bdda268e3a45814799e21d282cbb20ae9b6bb48131d4d3536876676326d86af7b3eadf1dd124e837911b9ab427ae340e5cd1cb0c1347d84bb
+#TRUST-RSA-SHA256 3c8f618d31664df649b76aef75f4e14a63ea0384ee4273e75bcb3b5a1fed3bcf1ffb9bc5d1743da5866448378106a2b5fc36171202e9c9580f0a11f07698a01e948973ae769671b3e60b9d839a0597d1f1dbd44006cab854bf4ea0d0ba5456913cb7ee03c3d6a1e26b76d847294d87205569769d385b7f06f5fd92df8097bd2607ef400415d46bb6d44925d53a3f180ebd3df58bfebd430c700bb767571943af392e3b0032a37021f6500b56781e64eeaaac5653017cf255fa904a5002ce64f539523a3bd589acf0cafbb7854c88b1c372aef6d6b84e33f45dc16c2b21b12bf585a44358aede32f38b49fe19e2f7d0e24c06c1deac716830f44329298a5c50c560188a62cb478042f0cda116f424a9fcb0ffe3e3a12c957a70e31aa455b10370414bc43d57e831712cba1d3796c57dd13e67886b81ffa019a8076c2802ec79ef6253be031ad5f5fa42c486f7e1893b211efbb4a9cd54c7c1b219d0028ef47d3a8d2a4a3f240ad463a5bab1f415e8d43dc9cbd273b5d071c8ad29faed1e6848064304837d2f778bb3e61772d6c2b9c923abf470417aaa689805d080f9f4a5d29660df65025cf8f18309edd35a79b5b72200d2cb0217f50d01816aff730cdfc9832b8daa4fcfe885cab23681eece2269bdf328e864cdc179f70dd8fc26b39fa6f468fc93857c7488722b739028aff6507f93698f086f39885de2258bd7d4effc61
+
+###
+#
+# Packet spaces for the QUIC protocol
+# https://www.rfc-editor.org/rfc/rfc9000.html
+#
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+###
+
+namespace quic
+{
+  object packet_space
+  {
+    var current_packet_num;
+    var secrets;
+    var server_secret;
+    var client_secret;
+    var unacked_packets = [];
+    var crypto_level;
+    var next_iv;
+
+    ##
+    # Initializes a packet space by setting the packet number to zero and
+    # deriving the packet's encryption secrets from the provided information.
+    #
+    # @param [secret:bytes]     The initial secret for this packet space.
+    # @param [salt:bytes]       A salt for key derivation.
+    # @param [crypto_level:int] The crypto level for this space.  Valid values are:
+    #                           CRYPTO_LEVEL_INITIAL, CRYPTO_LEVEL_HANDSHAKE and CRYPTO_LEVEL_APPLICATION
+    # @param [transcript:bytes] The handshake transcript.  See https://www.rfc-editor.org/rfc/rfc8446.html Section 7
+    #
+    # @remark
+    # The initial secret is usually derived from the master secret of the previous
+    # packet space - see the chart in section 5.1 of the TLS 1.3 specification.
+    # https://www.rfc-editor.org/rfc/rfc8446.html.
+    #
+    # @remark
+    # It helps to view QUIC as an extension of the TLS 1.3 protocol for packet encryption.
+    ##
+    public function init(secret, salt, crypto_level, &transcript)
+    {
+      this.current_packet_num = crap(data:'\x00', length:8);
+      this.crypto_level = crypto_level;
+
+      derive_secrets(secret:secret, salt:salt, transcript:transcript);
+
+      this.unacked_packets = [];
+    }
+
+
+    ##
+    # Retrieves the next packet number from this packet space as a variable length integer.
+    # Advances the next available number.
+    #
+    # @return [bytes] A variable length integer encoded as the full 8 bytes here.
+    ##
+    public function get_next_packet_num()
+    {
+      var res = encode_variable_length_int(bytes:this.current_packet_num);
+      this.current_packet_num = inc_full_integer(bytes:this.current_packet_num);
+      return res;
+    }
+
+
+    ##
+    # Stores a received packet for future ACKing.
+    #
+    # @param [packet:bytes] The packet to ACK.
+    # @return [int|object] Returns SUCCESS or an Error object.
+    ##
+    public function store_unacked_pkt(packet)
+    {
+      if(isnull(packet) || typeof(packet) != "object")
+      {
+        return dbg::raise_error(
+          src:FUNCTION_NAME,
+          code:INTERNAL_ERROR,
+          name:get_error_desc(error:INTERNAL_ERROR),
+          msg:'Bad packet argument.');
+      }
+
+      append_element(var:this.unacked_packets, value:[packet, unixtime()]);
+
+      return SUCCESS;
+    }
+
+
+    ##
+    # Records the acknowledgement of packets stored for ACKing.
+    #
+    # @param [number:int] The packet number of the packet that was acknowledged.
+    ##
+    public function packet_acked(number)
+    {
+      var pkt_num = encode_variable_length_int(bytes:mkdword(0) + mkdword(number));
+      var found = -1;
+      var idx;
+      for(idx in unacked_packets)
+      {
+        if(unacked_packets[idx][0].number == pkt_num)
+        {
+          found = idx;
+          break;
+        }
+      }
+
+      if(found >= 0)
+        delete_element(var:this.unacked_packets, idx:found);
+    }
+
+
+    ##
+    # Derives secrets for QUIC packet protection
+    #
+    # @param [secret:bytes]     The initial secret for this packet space.
+    # @param [salt:bytes]       A salt for key derivation.
+    # @param [transcript:bytes] The handshake transcript.  See https://www.rfc-editor.org/rfc/rfc8446.html Section 7
+    ##
+    protected function derive_secrets(secret, salt, &transcript)
+    {
+      var shared_secret, client_label, server_label;
+      var transcript_hash;
+      this.secrets = [];
+
+      shared_secret = hkdf_extract(key:secret, salt:salt);
+
+      if(this.crypto_level == CRYPTO_LEVEL_INITIAL)
+      {
+        transcript_hash = '';
+        client_label = "client in";
+        server_label = "server in";
+
+        var init_salt = crap(data:'\x00', length:32);
+        var init_key = crap(data:'\x00', length:32);
+        var init_secret = hkdf_extract(salt:init_salt, key:init_key);
+        this.next_iv = hkdf_expand_label(secret:init_secret, label:"derived", context:SHA256(""), length:32);
+      }
+      else
+      {
+        transcript_hash = SHA256(transcript);
+        if(this.crypto_level == CRYPTO_LEVEL_HANDSHAKE)
+        {
+          client_label = "c hs traffic";
+          server_label = "s hs traffic";
+        }
+        else
+        {
+          client_label = "c ap traffic";
+          server_label = "s ap traffic";
+        }
+
+        this.next_iv = hkdf_expand_label(secret:shared_secret, label:"derived", context:SHA256(""), length:32);
+      }
+
+      this.client_secret = hkdf_expand_label(secret:shared_secret,
+                                             label:client_label,
+                                             context:transcript_hash,
+                                             length:32);
+      this.server_secret = hkdf_expand_label(secret:shared_secret, label:server_label, context:transcript_hash, length:32);
+
+      this.secrets[CLIENT_KEY] = hkdf_expand_label(secret:this.client_secret,
+                                                   label:"quic key", context:"", length:16);
+      this.secrets[CLIENT_IV] = hkdf_expand_label(secret:this.client_secret,
+                                                  label:"quic iv", context:"", length:12);
+      this.secrets[CLIENT_HPKEY] = hkdf_expand_label(secret:this.client_secret,
+                                                     label:"quic hp", context:"", length:16);
+
+      this.secrets[SERVER_KEY] = hkdf_expand_label(secret:this.server_secret,
+                                                   label:"quic key", context:"", length:16);
+      this.secrets[SERVER_IV] = hkdf_expand_label(secret:this.server_secret,
+                                                  label:"quic iv", context:"", length:12);
+      this.secrets[SERVER_HPKEY] = hkdf_expand_label(secret:this.server_secret,
+                                                     label:"quic hp", context:"", length:16);
+    }
+
+
+    ##
+    # Computes an HMAC code that is sent to the QUIC server to verify the completion of the
+    # cryptographic handshake.
+    #
+    # @param [transcript:bytes] The handshake transcript.  See https://www.rfc-editor.org/rfc/rfc8446.html Section 7
+    #
+    # @return [bytes] Returns the computed HMAC code.
+    ##
+    public function compute_verify_data(transcript)
+    {
+      var fk = hkdf_expand_label(secret:this.client_secret, label:"finished", context:"", length:32);
+      return HMAC_SHA256(key:fk, data:SHA256(transcript));
+    }
+
+
+    ##
+    # Called by owners of this object to release memory before destruction to handle NASL circular references.
+    ##
+    public function cleanup()
+    {
+      this.unacked_packets = [];
+    }
+  }
+}
+

@@ -1,0 +1,135 @@
+#TRUSTED 611bf85df4510233f36b42d8a972cbb3044bfaf856d72622984c946ceaf501ac8deb23c43ac018c7d6431b03ecfe0ba5b42942a4afecbffdd6e7da6c4427b948caddf81201e23b9645a9a0938d0d0e22854a3efd98eff8131a2b3526c18729df56f93de8697f93c129b5f855b188a9826c1c700218fdd17eb2699e9e08cf32a8aecb4b8c57b7124b2e6af6c51d3ba2d34c39e28578e7b580fb85553bc47449b090637348b7c8449faa707a2011f0bbdf973c53dcc7f7d3a5bb1c5932b328c3ab703898d431503013b9f4f695987394cd65649776c8dd8514d60ca854aa51435fd1ebd6e0acbfbf7afd1ad28442233e117ece28d5cee55253a6f49ae7143d218050ea11c8cbff3eeb6e2005a7636947d589a83a91183518f0f707fa4b8bc5af2195c12977f4116e31398e67b4180eda5c79a681d091c37e1aacce7fb90bd2d5b31861646275ed1e78dc1df88c9d49db2b6a6986174c3e6f205af73a0b1c0237237571edec21a368e6656e1b3c60ee0cdad2546532f54992547716fa545493f0286c3c8c7933eda61795053678cb3fcd0692c6eda88d04f69e4e5454998bc9db848c07cfcd25bb5d4ab5d7b84020f43a51716f52bc32ec56fc32b6cc6a9de53aaefa02842e0be7473685577c67549e3e9fa5303da0991424e26ba714069f30258baaa7af5eb39a2db036f26acc2a25b6c91e41091f5bd7eefe3fff758c0a31163d
+#TRUST-RSA-SHA256 2d1eb0f8563bed1ab9014c21855eba15f12b84beef78a2da3f785cb39e8eb4a00e3975ce902e4f21182d74c9af4d4059c057d97b619a4b31023a378f27e8163029b3ebe9e9023e6f07954eef727ecf1a3dad5a18ff3792a2a2a2929b6d45eb7cc3a533b23948177cc38b3cd8446533f403843e04b64fcb80a9809516794798a35e77d0fb9b5829c1204015a2a2733fedcb41cbd23b6a79ecf47c01301572a5b92d4a02637062f054be2ba3eb9c172533717f1581b38caef496ed8b02f3a9c618eac600b46e604faae7362855fe54a951a9ccb2b1196c75e7a2f949b673be6d3cb1f108a75dbc879c3f193edbdb03e85972d135f8218d83d28bcb75d73bffe52a761928dfc299c99985ea9a546dcb275f2a0073040109a412c345d7ae8f11bbd4f3276bb3913cedde8f8534c519677faf4933c972c50a1622224d347e48229e367894ead2495e749179c4384152bc08d6313fa952855dae3670ec5efde5e5aa3c02838fe34455d276d0ac0f192ae8fbd777a1805068d1d63ab281b457bfb3f3b775c3f82a54389d1b2296bbb8d4983436841f5e748abfd8ad6efb07617bcb07a8771f2107207ed205677da9507c085505b7ce97e66ac4abfe8ff208a093ef04f4fde342f3ab7bbe29cdf1eac53de9112bc256390eb94eeb3c3f135d4f219febf4f2a1a685c40f43ea2c673cfd2a66e03a8d06f6749ca6abfff1fdedb41a31767c
+
+# (C) Tenable Network Security, Inc.
+
+# Revision: 1.18
+
+
+##
+# check if this is a Cisco ISE device based on information collected
+#
+# @return Returns TRUE if we know this is not Cisco ISE, FALSE otherwise.
+##
+function cisco_ise_pre_check_fail()
+{
+  # have we already checked that the host is not Cisco ISE?
+  if(host_info_key_val['host_not_cisco_ise'])
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ "Cisco Identity Services Engine" &&
+     host_info_key_val['showversion_unrecognized'] !~ "Invalid session, enter the number of the session")
+    return TRUE;
+
+  # Not ISE if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# callback for systems with "Cisco Identity Services Engine" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns TRUE if this is a Cisco Identity Services Engine, NULL otherwise
+##
+function handle_cisco_ise(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var cisco_ise_version_pattern, cisco_ise_version_regex;
+
+  replace_kb_item(name:"Host/showversion", value:cmd_res);
+  report += '\n' + 'Local checks have been enabled for Cisco Identity Services Engine.\n';
+
+  cisco_ise_version_regex = "Cisco Identity Services Engine(?: Express)?[ \r\n]+-+\r*\nVersion[ :\t]+([0-9.]+)\r*\n";
+  cisco_ise_version_pattern = pregmatch(pattern:cisco_ise_version_regex, string:cmd_res, icase:TRUE);
+
+  # CS-38469 complex regex above may not match output
+  #  provided by customer.
+  # Retry with slight variation on the above regex
+  if(!cisco_ise_version_pattern)
+  {
+    cisco_ise_version_regex = 'Cisco Identity Services Engine(?: Express)?[\\rn]+-+[\\rn]+Version : ([0-9.]+)\\';
+    cisco_ise_version_pattern = pregmatch(pattern:cisco_ise_version_regex, string:cmd_res, icase:TRUE);
+  }
+
+  if(!cisco_ise_version_pattern)
+  {
+    report += '\nThe output of "show version" is :\n' + cmd_res + '\n\n';
+
+    failure_kb_msg =
+      'The device appears to be Cisco Identity Services Engine, however it\n' +
+      'was not possible to determine the installed version.\n' +
+      'OS Security Patch Assessment is not available.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return NULL;
+  }
+
+  release = cisco_ise_version_pattern[1];
+  report += '\nThe remote Cisco ISE system is :\n' + "Version " + release + '\n\n';
+  replace_kb_item(name:"Host/Cisco/ISE", value: TRUE);
+  replace_kb_item(name:"Host/Cisco/ISE/version", value: release);
+  replace_kb_item(name:"Host/Cisco/show_ver", value: cmd_res);
+
+  replace_kb_item(name:"Host/OS/showver", value: "Cisco Identity Services Engine " + release);
+  replace_kb_item(name:"Host/OS/showver/Confidence", value: 100);
+  replace_kb_item(name:"Host/OS/showver/Type", value: "embedded");
+
+  replace_kb_item(name:"Host/OS", value: "Cisco ISE");
+
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_ise.static', value: 106);
+  report += '\nOS Security Patch Assessment is available for Cisco Identity Services Engine.';
+
+  return TRUE;
+
+}
+
+##
+# callback for systems without "Cisco Identity Services Engine" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_cisco_ise(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/showversion", value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_ise'] = TRUE;
+  }
+}

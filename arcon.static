@@ -1,0 +1,370 @@
+#TRUSTED 06a6688719c1c64df71cbf56b13eda23341206156f3ec8ef27bb5b98f189d887e5d53d099cb96f9050c1b62b779abe55e8833e69c8b4448d9cf0d5acdf1ac265ecee80318c45f381263ed0200c9265c8387fdcae4643a1dfc6e4aa8ee3ee345ee6a14d7e2d4416d36efaa874be8893a50ea0a05b18b1a456a54ba41b6a77874eb5e055d965e63fbbb3885f20b1a3ddb11b47b81947d9aa97fe8bcc3b720613f97586a63a79d903407c404a65d24217882b533842b4776b2901321cf6a86599a225d8edc396842cae328028779a52247b5e06184994bf430e8fa5c9328996d899c514abea86cbaeb409f5f09409fc3bd5a0011b7273631d3c8821390ecddb4ca908403d4482ed7c6a48d20192f310d65ea01ad0a514a7df6603dd151ac786eb62b12410fa8137579a01c7ba20e218fc81bfc4a626346a870d3d17b97a815caed8b6816c8af71f57aa83933c3327d7fe751214fcc951c43745cc2d65db79976da3c992b36381a435a85104445bf3d10c38a6ea988503e826439df886e283e138dec2523928acca2366b370696c88a6f8c18dc56a1d012d3da78ed6cf994f925dbe921f720ae5b5d4260e8f5e8b20138a83ad2726b5443ab8a2cc0e5596d6602024c49ab194d8a03ae4f54cb165bc45b0d821a956026b22a658473feeb62c826e16f8ca230945a4f293b4f94c9b3789eb5974a72b56a45ff3759cff8afdf6c27048
+#TRUST-RSA-SHA256 187fac84a9620de38a44e6201556f9aa56d6ba037d37eee96c8d9f411a7858b7e0e1e6a6e97699c23f15f816e378021de0ab8f3cc8e538055729c14de90bbd693130be808481164335f990f5d98e1d4a6205f157c592c9c34506bc652121008539af4d746e07f09ae7dfde0e9cd1192e758058b795bd5bc9a1fba98b070a077440e039e26c6de7c30731c41bad819347f5dbb3186a6132bcb42f7cb819db6922af7fa5c8ca09a497632fef0b7dce1c7908b6e01490d108cdff104082df7338c8bcaf3b08494b78cd7bbb24d79e362c741c1465919d2fa7b8fec958ba27225e2badd9de62d4a1a4cf7b3cb9c997629f501c9736b4b72e15aa8d5738ac48b73a612b6165d68badf7b421f2a3dbd1218d75dcdb8f0bde240cb5877f5877c4d1781e292dd5d2d8704dcd51439dfee572dba03e0062cc3dbc27bd68d7d8c4bcb88277eaec7493ef6e5d741071dfb69fd32d74af882c320876a36a65a56b6433eafcff3f8ea2c08dc2f684347815895b52e948cd719fe3677270bd71f83f84d5e6bd4346aaa496018bdf5821f760dc58550b1c6ad73c358c0b2077b45f0da92d2bae4f14ce46692135e96de0443552d93bd70c9d82ef925be1f17da210b634ec28afbfec19b31fbb0aa532e5842f27d3e28fb9e6324849cf7d6ab519d284d4c176e8cdcc7b361e5c5ba17e657027db5418fa2bc88619c6bba25a479d8564fe65b3d75a
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1
+###
+
+namespace arcon
+{
+  var database_type_map = {
+    "Oracle" : "oracle",
+    "SQL Server" : "mssql",
+    "Sybase" : "sybase",
+    "PostgreSQL" : "postgres",
+    "MongoDB" : "mongodb",
+    "DB2" : "db2",
+    "MySQL" : "mysql"
+  };
+
+  object ArconConfig : integrations::IntegrationConfig
+  {
+    var api_user;
+    var api_key;
+    var auth_url;
+    var engine_url;
+    var elevated_privileges_with;
+    var escalation_username;
+    var duration;
+    var sudo_path;
+    var su_login;
+    var root;
+    var token;
+    var type_override; #Users can enter in targetType string to override default value in logins, ssh_settings, database_settings and vmware_settings.inc
+
+    ##
+    # Scrub sensitive data from logs
+    # @param [msg:string] msg to remove sensitive data from logs
+    #
+    # @return scrubbed string
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(msg:msg,'("access_token":)"(?:[^"])*"','("Password":) "(?:[^"])*"','("refresh_token":)"(?:[^"])*"');
+
+      return msg;
+    }
+
+    ##
+    # Login to Arcon API and get a AuthToken
+    #
+    # @param [config:array] array of config items
+    # @return an object with {success: TRUE | FALSE, token: the auth token}
+    #
+    ##
+    public function login()
+    {
+      var result, data, headers;
+
+      integrations::logger(msg:"Sending login request", lvl:2, config:this);
+
+      data = 'grant_type=password' +
+            '&username=' + base64(str:this.api_user) +
+            '&password=' + base64(str:this.api_key);
+
+      headers = {"Content-Type" : "application/x-www-form-urlencoded; charset=UTF-8"};
+
+      result = integrations::post(config:this, command:this.auth_url, data:data, headers:headers);
+
+      if (!result.success)
+      {
+        integrations::logger(msg:"Login request failed. " + result.message, lvl:1, config:this);
+        
+        return result;
+      }
+
+      this.token = result.body.access_token;
+
+      return true;
+    }
+
+    ##
+    # Build config object
+    #
+    # @param [prefix:string] string to append to the beginning of a preference key
+    # @param [postfix:string] string to append to the end of a preference key
+    # @return an config object with all settings within it
+    #
+    ##
+    public function init(prefix, postfix)
+    {
+      var pam_prefix = prefix + "PAM ";
+
+      int_name = "Arcon";
+
+      # If running in cli without ssh_settings, logins, or database_settings
+      if (get_preference("run_arcon_cli"))
+      {
+        debug = TRUE;
+      }
+    
+      host = script_get_preference(pam_prefix + "Host" + postfix);
+      port = script_get_preference(pam_prefix + "Port" + postfix);
+      ssl = integrations::boolean(script_get_preference(pam_prefix + "SSL" + postfix));
+      ssl_verify = integrations::boolean(script_get_preference(pam_prefix + "Verify SSL Certificate" + postfix));
+      api_user = script_get_preference(pam_prefix + "API User" + postfix);
+      api_key = script_get_preference(pam_prefix + "API Key" + postfix);
+      auth_url = script_get_preference(pam_prefix + "Authentication URL" + postfix);
+      engine_url = script_get_preference(pam_prefix + "Engine URL" + postfix);
+      duration = int(script_get_preference(pam_prefix + "Checkout Duration" + postfix));
+      type_override = script_get_preference(pam_prefix + "Platform" + postfix);
+
+      # What type of escalation is being used?
+      elevated_privileges_with = script_get_preference(pam_prefix + "Elevate privileges with" + postfix);
+
+      # Account name used for Escalation IE root
+      escalation_username = script_get_preference(pam_prefix + "Escalation Username" + postfix);
+      sudo_path = script_get_preference("Privilege elevation binary path (directory)" + postfix);
+      su_login = script_get_preference("su login" + postfix);
+      _set_root(prefix:prefix, postfix:postfix);
+
+      return true;
+    }
+
+    ##
+    # Conditional Set object member root
+    #
+    # @param [prefix:string] string to append to the beginning of a preference key
+    # @param [postfix:string] string to append to the end of a preference key
+    #
+    ##
+    function _set_root(prefix, postfix)
+    {
+      var pam_prefix = prefix + "PAM ";
+
+      var esc_user = script_get_preference(pam_prefix + "Escalation Account Name" + postfix);
+
+      if (empty_or_null(esc_user))
+      {
+        root = this.escalation_username;
+      }
+      else
+      {
+        root = esc_user;
+      }
+
+      return true;
+    }
+
+    ##
+    # Get Arcon Password
+    #
+    # @param [username:string] username to retrieve creds for
+    # @param [target:string] machine to retrieve creds for
+    # @param [type:string] type of machine
+    # @return an object with {success: TRUE | FALSE, cached: FALSE, cred: the full retrieved credential}
+    #
+    ##
+    public function get_password(username, target, type)
+    {
+      var result, headers, data;
+
+      result['cached'] = FALSE;
+
+      if (empty_or_null(username))
+      {
+        integrations::logger(msg:"No username specified for request.", lvl:1, config:this);
+        
+        return {success:false};
+      }
+        
+      if (empty_or_null(target))
+      {
+        integrations::logger(msg:"No target specified for request.", lvl:1, config:this);
+        
+        return {success:false};
+      }
+      
+      if(!empty_or_null(this.type_override))
+      {
+        integrations::logger(msg:"Overriding default targetType " + type + " with user entry " + this.type_override, lvl:2, config:this);
+        type = this.type_override;
+      }
+      
+      headers['Authorization'] = "Bearer " + this.token;
+      headers['Content-Type'] = "application/json";
+      data = [{"ServerIp": target,"TargetType": type,"UserName": username,"OpenForHours":this.duration}];
+        
+      result = integrations::post(config:this, command:this.engine_url+'/ServicePassword/GetTargetDevicePassKey', data:data, headers:headers, json:true);
+
+      if (!result.success)
+      {
+        return
+        {
+          success:FALSE,
+          message:result.message
+        };
+      }
+      
+      return
+      {
+        success:TRUE,
+        kv:result.body.Result[0]
+      };
+    }
+  }
+
+  ##
+  # Get Credential
+  #
+  # Initializes, then looks for cached credentials. If not found it will authenticate and query from Arcon.
+  # @param [username:string] username value to look up credential for
+  # @param [prefix:string] string to append to the beginning of a preference key
+  # @param [postfix:string] string to append to the end of a preference key
+  # @param [type:string] type of credential to request from Arcon
+  # @param [config:array] optional arcon config data for testing
+  # @return an object with {success: TRUE | FALSE, username: the username from KV or supplied, password: the password from KV}
+  #
+  ##
+  function get_credential(username, prefix, postfix, type)
+  {
+    var login_result, cred_result, verbose, target, esc_cred_result;
+
+    var config = new arcon::ArconConfig();
+    config.init(prefix:prefix, postfix:postfix);
+
+    var config_msg = "Arcon Credential Configuration: " +
+      '\nHost : ' + config.host +
+      '\nPort : ' + config.port +
+      '\nAuth Url : ' + config.auth_url +
+      '\nEngine Url : ' + config.engine_url +
+      '\nUse SSL : ' + config.ssl +
+      '\nVerify SSL Certificate : ' + config.ssl_verify +
+      '\nAPI User : ' + config.api_user +
+      '\nUsername : ' + username +
+      '\nType : ' + type;
+
+      if ("Linux" >< type)
+      {
+        config_msg += '\nEscalation Account Username : ' + config.escalation_username +
+          '\nElevate Privileges With : ' + config.elevated_privileges_with +
+          '\nSUDO Path : ' + config.sudo_path + 
+          '\nSU Login : ' +config.su_login +
+          '\nRoot : ' + config.root;
+      }
+
+
+    integrations::logger(msg:config_msg, lvl:3, config:config);
+ 
+    target = get_host_ip();
+    
+    cred_result = integrations::get_cache(secret:username + target + type);
+
+    if (cred_result.success)
+    {
+      integrations::logger(msg:"Detected cached credential for '" + username + "' on '" + target + "'.", lvl:2, config:config);
+    }
+    
+    if (empty_or_null(cred_result))
+    {
+      login_result = config.login();
+      
+      if (!login_result)
+      {
+        integrations::logger(msg:"Failed to retrieve credentials. Error: " + login_result.message, lvl:1, config:config);
+              
+        return {success:FALSE};
+      }
+
+      cred_result = config.get_password(username:username, target:target, type:type);
+    }
+
+    if (!cred_result.success)
+    {
+      integrations::logger(msg:"Failed to retrieve credentials. Error: " + cred_result.message, lvl:1, config:config);
+      
+      return {success:FALSE};
+    }
+    
+    # Is it cached? If not cache it
+    if (!cred_result.cached)
+    {
+      integrations::set_cache(secret:username + target + type, kv:cred_result.kv);
+    }
+
+    # Did we not acutally get a password back? If not fail
+    if (empty_or_null(cred_result.kv.Password))
+    {
+      integrations::logger(msg:"Failed to retrieve credentials. Error: Password does not exist for '" + username + "' on '" + target + "'.", lvl:1, config:config);
+            
+      return {success:FALSE};
+    } 
+  
+    if(!empty_or_null(config.escalation_username))
+    {
+      integrations::logger(msg:"Detected Escalation Username Set: " + config.escalation_username, lvl:2, config:config);
+
+      # By default, this handles the case where the username and escalation_username match, so the cache will already exist from the initial request.
+      esc_cred_result = integrations::get_cache(secret:config.escalation_username + target + type);
+
+      if (esc_cred_result.success)
+      {
+        integrations::logger(msg:"Detected cached escalation credential for '" + config.escalation_username + "' on '" + target + "'.", lvl:2, config:config);
+      }
+      
+      if (empty_or_null(esc_cred_result))
+      {
+        esc_cred_result = config.get_password(username:config.escalation_username, target:target, type:type);
+      }
+
+      # If we failed to get the new credentials, bail out and report the error
+      if (!esc_cred_result.success)
+      {
+        integrations::logger(msg:"Failed to retrieve escalation credentials. Error: " + esc_cred_result.message, lvl:1, config:config);
+                  
+        return {success:FALSE};
+      }
+
+      if (!esc_cred_result.cached)
+      {
+        integrations::set_cache(secret:config.escalation_username + target + type, kv:esc_cred_result.kv);
+      }
+    }
+        
+    integrations::logger(msg:"Successfully Retrieved Credentials", lvl:2, config:config);
+    # Successful Normal Password Checkout
+    return 
+    {
+      success: TRUE,
+      password: cred_result.kv.Password,
+      username: cred_result.kv.UserName,
+      sudo: config.elevated_privileges_with,
+      sudo_password: esc_cred_result.kv.Password,
+      sudo_path: config.sudo_path,
+      su_login: config.su_login,
+      root: config.root
+    };
+  }
+
+  ##
+  # Command Line Execution
+  ##
+  function run_arcon_cli()
+  {
+    var result, type;
+
+    var username = prompt('\nPlease enter the username of the target. ');
+    var is_db = integrations::boolean(prompt('\nAre you trying to retrieve credentials for a database? (yes or no) '));    
+
+    if (is_db)
+    {
+      type = prompt('\nPlease enter in the database type. ');
+      type = arcon::database_type_map[type];
+    }
+    else
+    {
+      type = prompt('\nPlease enter in the system type. Either Windows or Linux. ');
+    }
+
+    arcon::get_credential(username:username, type:type);
+
+    return true;
+  }
+}

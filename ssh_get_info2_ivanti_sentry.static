@@ -1,0 +1,184 @@
+#TRUSTED 2722ce93911aaa2909d81666f8ba0f25e5169da2de702687e7b3bc8244dd30bd065c7beee848bc09426e9d6966de4b4175273f698c380e8be4512b7fdb9d316ec65481079d53ca55a98328009f6be8a21074706451ed54c75f0db9f2e2ae2d57dd7f150c1b70e6f7cc7fea94504d1caf03e2b05b82b88e398ba7da50eb65853b80079f2d296813559c40c5e1fb77d73e9eb547c5eaa6f5c91d3064f7089d2ab5129497d17aa03d1023611cedcdb09c9e513025df5209147bca0c6e997e6ce8d6803964d6d4166f8b574a8f764d70afdef8a67c7acac5a9d5442d8498a9c3f59142ef41f4789c797b63400572392ee01a89d594aa416925c532e1f8c66de749a4dd21e57bdf6f996255051f218341102b9ff284545b5ab9c22753949a3586fade566936e8508ac31f5c111ce5fa1780b13010a0c374e21eb5644ca0e57fbe06bcdd3bb6531a2db7b3620d10667663e4284748ac675a26895f0291b0b33e4ba787573737a7382ea084b4d8edadab2fd4d6a6ca2681934d6f6bcbc45ca8a46b2baacd456c4ee61e97d8720d71bc7d8a439a4324f90d98ba57d36facc9aef808e01922051a0adca6249115d8782fd60d3e3f98526e5e60e3220b785a863464e998842e48fcb809debd4e6f668e533eccf637071965648197dcc3870cd95a7d99cb66f14e89ce57faafa254824aaed2c3bf45c7d4b57ab474dd46c7e1e3941718df1b
+#TRUST-RSA-SHA256 760b55ebcd286e96469b55ac209e967b46f133424c2cac3c8b7447ad26fd163c5e1a1a9314dc0d8ed6f0e1e5d4e69fc54f3729043b3561909e3279806f0c7d6559701f927a0b158194c5747cc12567365124132f38a9970ab7cf51f42b3d7fd9df8259b83b166b74c7b46db915af5757f0e9729ccfff6cd3c51d50055b5d761bcd7f8c3bdeca027e39afd4dc4a8c8f2001420910890c247fbf358e63ba09d5dc2d2ee59d482e52dd5b9641a55fab2160525dc4cf3a62f7a9d577b3c08ed72792a9284eec71bcc849a8aa148ebb97918b96494c370a91666a5d0625db6748081a540fd65270a40d02689230742360676c67ede38e30fbe6ba8a49bacffeae264fbe9957cba41926f830cd14265937d8e7c177d02b380506d9e83a7780251471111e03fce436314659619a8b9a241254a20467513beedc192f9d08fefbbd92ae0fa77fe907725b613b1ac093109915d14ccdef5e839bb193190b4843994661289639489bf88c1930e8e53e1299e330502c8bcb005b85370fe2a4cc8c7ce307a59a30d5f5e52bbd6adb9264aa15b8df99545d6b1ef35b7def1e4c501436f5f8549c749bc99730f12203ea41db6090c5e0abcb82d5b1aafd45b642d47ad0219662ab61f9e05ed5ed65de5a1fb22cd11054004a3242f1b97fcb9d36fb30a52aa822f5f6546a82c126e3a6cd98caf9be9e23795a66c6ab227c8283d9263c2bdaa9fd86
+###
+# (C) Tenable, Inc.
+#
+# Revision: 1.8
+#
+###
+
+#
+# Check host information for triggers that the device is most likely supported
+# by this file.
+#
+function is_ivanti_sentry()
+{
+  if (host_info_key_val['post_login_buffer'] =~ "(MobileIron|Ivanti) Sentry CLI")
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Post login buffer contains "Ivanti Sentry CLI"');
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# Check if this is Ivanti Sentry based on information collected
+#
+# @return Returns TRUE if we know this is not Ivanti Sentry, FALSE otherwise.
+##
+function ivanti_sentry_pre_check_fail()
+{
+  # Have we already checked that the host is not Ivanti Sentry?
+  if (host_info_key_val['host_not_ivanti_sentry'])
+    return TRUE;
+
+  if (!is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_arrayos())
+    return TRUE;
+
+  if(!empty_or_null(host_info_key_val['showversion_unrecognized']) &&
+     host_info_key_val['showversion_unrecognized'] !~ ivanti_sentry_check['test_cmd_regex'])
+    return TRUE;
+
+  # Not Ivanti Sentry if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_aruba_cppm()
+    )
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# callback for systems with "Sentry Standalone" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return TRUE if this is Ivanti Sentry, NULL otherwise
+##
+function handle_ivanti_sentry(session, use_shell_handler, &channel, cmd_res)
+{
+  var product, release, build, branch;
+  var os, matches, pattern;
+
+  #Local checks just means we can run commands on the target host.
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  ##
+  #  Ivanti Sentry includes command validation
+  #   Dev testing showed that it is usually best
+  #   to just reissue commands fresh for this target
+  ##
+  session.clear_cmd_error();
+  cmd_res = run_command(cmd:'show version',
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+
+  replace_kb_item(name:'Host/showversion', value:cmd_res);
+
+  ##
+  # Parse out the product, version, build, and branch information in primary check
+  # Sentry Standalone 9.18.0 Build 6 (Branch wolverine-9.18.0-sentry-release)
+  ##
+  pattern = "Sentry Standalone ([\d\.]+) Build ([\d]+) \(Branch ([\w-\d\.]+)";
+  matches = pregmatch(pattern:pattern, string:cmd_res, icase:TRUE);
+
+  if (!empty_or_null(matches) &&
+      !empty_or_null(matches[1]) &&
+      !empty_or_null(matches[2]) &&
+      !empty_or_null(matches[3]))
+  {
+    release = matches[1];
+    build   = matches[2];
+    branch  = matches[3];
+
+    os = strcat('Ivanti Sentry ', release, ' Build ', build);
+
+    report += strcat('\nThe remote host is running ', os, '\n');
+
+    replace_kb_item(name:'Host/Ivanti/Sentry', value: TRUE);
+    replace_kb_item(name:'Host/Ivanti/Sentry/version', value:release);
+    replace_kb_item(name:'Host/Ivanti/Sentry/build', value:build);
+    replace_kb_item(name:'Host/Ivanti/Sentry/branch', value:branch);
+    replace_kb_item(name:'Host/Ivanti/Sentry/show_ver', value:cmd_res);
+
+    # Used by os_fingerprint.nasl for Host Identification
+    replace_kb_item(name:'Host/OS/showver', value:os);
+    replace_kb_item(name:'Host/OS/showver/Confidence', value:100);
+    replace_kb_item(name:'Host/OS/showver/Type', value:'embedded');
+
+    session.clear_cmd_error();
+    cmd_res = run_command(cmd:'install rpm info detail mi-mics',
+                               session:session,
+                               use_shell_handler:use_shell_handler,
+                               force_priv_escl:TRUE,
+                               channel:channel);
+
+    if (!empty_or_null(cmd_res))
+    {
+      var attributes = [ 'Version', 'Release', 'Summary', 'Source RPM', 'Architecture' ];
+      var props = parse_properties(cmd_res, sep:':');
+
+      if (!empty_or_null(props) && props.Name =~ 'mi-mics')
+      {
+        replace_kb_item(name:'Host/Ivanti/Sentry/packages/mi-mics', value:TRUE);
+        for (var attribute of attributes)
+        {
+          if (empty_or_null(props[attribute])) continue;
+          replace_kb_item(name:'Host/Ivanti/Sentry/packages/mi-mics/' + attribute, value:props[attribute]);
+        }
+      }
+    }
+
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_UNAVAILABLE);
+
+    report += '\nOS Security Patch Assessment is not supported for Ivanti Sentry.\n';
+
+    return TRUE;
+  }
+  else
+    return NULL;
+}
+
+##
+# Callback for systems without "Sentry Standalone" in show version
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_ivanti_sentry(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:'Host/showversion', value:cmd_res);
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_ivanti_sentry'] = TRUE;
+  }
+}

@@ -1,0 +1,377 @@
+#TRUSTED 29b0a43411fa971c8e3b002ec4f17319957bed81141f255c815cb74b732b8cc0352cdf437bde0bb3a0ed13f9cb7ed702eea16624dd0254379dfc694222ef9766fe5b06e7151ccc9eebc2894cf12f0465fc5c638adf411ff52c22e2473fe1ab1e03893c13e5ea0ecb61e10a451beb8a4ea17fc01a430219a0c3f0489589cbd8f22522543d32579326499a826dbc51ecf786400ee7a57b38ac51ebd9531f551c408a631f6e70ac839c25203ddbe0c9355e3d3a576bae31e628889d6054fae1bee738a0adc0e699d6900c5ab4e2ae0a90055451862e9f937d802f53d1024e048c99ef8c4d7b02cc3be4530ca7ab291adcc044a2b944ffa1b8954a3a356e697e7970a8d02849b61ad2e1c6a206bbdf1be401bc9be818b8f454996b6ac1a95dc67307d1e4df405a78245168013d30b69c1932d9b3fa75ad645f85c639319ca18da9fbcbcb37b67ae931e9e544d4a02a392ee98baf32afbfd10c817f5917b6ef7d82de7e5b9cdaead9bfa5b35241f46d4713bea90c3a7d493704176cb27f7ff45ee17bde1bd6f5d09de4fa152beb9cc5648b3ee76b17152481322f982bb4438035d6c848e1e6a6c8b7fa21ab9b82826ca690a59e7197fd9485fcc18ccd88f3fb64fff9b84e8cf4ec564ac7c3288479f8e6d25d9c6bc8ad77bb5ff1dec8c95f534928d44f57302daadfa12170d63e0001f5cb4da32e631bf1d8dd6f389a4b589b6e0126
+#TRUST-RSA-SHA256 517193dbf074db239440350d15fb300b73f9a7e59f0e1545df74766a07f49e3afbd3381fd9cda98eba9d66f2aeb3e4c1ab4b3b53d496e2a702a8e85fcf77d0d850aa88b485ef1a79ed591a178180eed9a6a756838d3ff0205564cc354ae731a04ef6dd27dee9212ef0d1bfd9ac93ddb96155ac55ad5e0703366cc31bd93268c89ef0f61b21caf46eb1e4a8993c0e4cb83d1efdeed60555811ef79b5ffd0ebd221ad90656ad8749046abbe917bcfc964d53710ec950e5b538441d5e1c357bc14a5a472182378b24525bfce6e7444173e3cc3f181f7ca63c7b82f182c7a505a56fed5a17b83e1bb45fc1f073671f837df8a209b36f6ffdfec040e8b6ca718002ff5cf69ef70966154255b0341349f472fd195d78b931e9ce3e9a9e962c091f3492f0ca3aeacc72ceef1a4f55e7bbb9d8ffdad1939dd75fab3d158f81afcee98c20162ac4a2fcfb8adaa69f0ecfa46afe8ee46097709625b8f7a571862394d629011773eb75d4363f14ef463d3c70fc65f887fa422d1472fe1fdda63ed5c2b5a4dab7f6cbb49770fba6c412ee5a5d39c8e3548b21d9339b9a4d9784f41ed98b233b5136a4d7e76ce4b7e3d360535f3972d1ced19010770b39f9e8f4484b0013c4d43e17ef84497e138d8fadf0cab3a1c96d45d7e34bee59bb667f05fb6a9792519003e3b723ee6989ede2db64a9e500d1b4ef0c00d46fa953823bbd5242aad45ec5
+
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.1
+#
+# @NOGPL@
+#
+###
+
+namespace sshlib
+{
+  ##
+  # Computes an intermediate result in the bcrypt hash algorithm.
+  #
+  # @param [data:bytes] Input value.
+  # @return Returns an intermediate hash result based on the initialization
+  #         of the global arrays PArray and SBoxes from the data to be hashed
+  #         and the hash key.
+  ##
+  function openssh_bcrypt_exp_state0(data)
+  {
+    var i, pos = 0;
+
+    for(i = 0; i < 18; i++)
+    {
+      PArray[i] = PArray[i] ^ getdword(blob:data, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+      if(pos >= strlen(data))
+        pos = 0;
+    }
+
+    pos = 0;
+    var datal = 0, datar = 0, temp = 0;
+    for(i = 0; i < 18; i += 2)
+    {
+      temp = blowfish_encipher(data:raw_dword(d:datal) + raw_dword(d:datar));
+      datal = get_dword(blob:temp, pos:0);
+      datar = get_dword(blob:temp, pos:4);
+
+      PArray[i] = datal;
+      PArray[i + 1] = datar;
+    }
+
+    for(i = 0; i < 4; i++)
+    {
+      for(var k = 0; k < 256; k += 2)
+      {
+        temp = blowfish_encipher(data:raw_dword(d:datal) + raw_dword(d:datar));
+        datal = get_dword(blob:temp, pos:0);
+        datar = get_dword(blob:temp, pos:4);
+
+        SBoxes[i * 256 + k] = datal;
+        SBoxes[i * 256 + k + 1] = datar;
+      }
+    }
+  }
+
+  ##
+  # Computes an intermediate result in the bcrypt hash algorithm.
+  #
+  # @param [pass:bytes] Passphrase being hashed.
+  # @param [salt:bytes] A salt to make brute forcing more expensive.
+  # @return Returns an intermediate hash result based on the initialization
+  #         of the global arrays PArray and SBoxes from the data to be hashed
+  #         and the hash key.
+  ##
+  function openssh_bcrypt_exp_state(pass, salt)
+  {
+    var i, pos = 0;
+    for(i = 0; i < 18; i++)
+    {
+      PArray[i] = PArray[i] ^ getdword(blob:pass, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+      if(pos >= strlen(pass))
+        pos = 0;
+    }
+
+    pos = 0;
+    var datal = 0, datar = 0, temp = 0;
+    for(i = 0; i < 18; i += 2)
+    {
+      datal = datal ^ getdword(blob:salt, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+      datar = datar ^ getdword(blob:salt, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+
+      temp = blowfish_encipher(data:raw_dword(d:datal) + raw_dword(d:datar));
+      datal = get_dword(blob:temp, pos:0);
+      datar = get_dword(blob:temp, pos:4);
+
+      PArray[i] = datal;
+      PArray[i + 1] = datar;
+
+      if(pos >= strlen(salt))
+        pos = 0;
+    }
+
+    for(i = 0; i < 4; i++)
+    {
+      for(var k = 0; k < 256; k += 2)
+      {
+        datal = datal ^ getdword(blob:salt, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+        pos += 4;
+        datar = datar ^ getdword(blob:salt, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+        pos += 4;
+
+        temp = blowfish_encipher(data:raw_dword(d:datal) + raw_dword(d:datar));
+        datal = get_dword(blob:temp, pos:0);
+        datar = get_dword(blob:temp, pos:4);
+
+        SBoxes[i * 256 + k] = datal;
+        SBoxes[i * 256 + k + 1] = datar;
+
+        if(pos >= strlen(salt))
+          pos = 0;
+      }
+    }
+  }
+
+  ##
+  # Computes an intermediate result in the bcrypt hash algorithm.
+  #
+  # @param [data:bytes] Input value.
+  # @return Returns an intermediate hash result based on the initialization
+  #         of the global arrays PArray and SBoxes from the data to be hashed
+  #         and the hash key.
+  ##
+  function openssh_bf_encrypt(data)
+  {
+    var pos = 0, dlen;
+    var datal = 0, datar = 0, temp = 0;
+    var res = '';
+
+    dlen = strlen(data);
+    for(var i = 0; i < dlen; i += 8)
+    {
+      datal = getdword(blob:data, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+      datar = getdword(blob:data, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      pos += 4;
+
+      temp = blowfish_encipher(data:raw_dword(d:datal) + raw_dword(d:datar));
+
+      datal = get_dword(blob:temp, pos:0);
+      datar = get_dword(blob:temp, pos:4);
+
+      res += mkdword(datal) + mkdword(datar);
+    }
+
+    return res;
+  }
+
+
+  ##
+  # Loads the blowfish global arrays with their initial values.
+  # @return Returns NULL.
+  ##
+  function openssh_bcrypt_init()
+  {
+    var i, j;
+    for(i = 0; i < 18; i++)
+    {
+      PArray[i] = bf_P[i];
+    }
+
+    for(i = 0; i < 4; i++)
+    {
+      for(j = 0; j < 256; j++)
+        SBoxes [i*256 + j] = bf_S [i*256 + j];
+    }
+  }
+
+  ##
+  # Computes the OpenSSH variant of the bcrypt hash.
+  #
+  # @param [pass:bytes] The OpenSSH private key passphrase to hash. Must be at least 4 bytes.
+  # @param [salt:bytes] A salt to make brute forcing more expensive. Must be at least 8 bytes.
+  #
+  # @return Returns the computed hash.
+  ##
+  function openssh_bcrypt(pass, salt)
+  {
+    var BCRYPT_PHRASE="OxychromaticBlowfishSwatDynamite";
+
+    if(strlen(pass) < 4 || strlen(salt) < 8)
+      return NULL;
+
+    openssh_bcrypt_init();
+
+    openssh_bcrypt_exp_state(pass:pass, salt:salt);
+    for(var i = 0; i < 64; i++)
+    {
+      openssh_bcrypt_exp_state0(data: salt);
+      openssh_bcrypt_exp_state0(data: pass);
+    }
+
+    var tmp = BCRYPT_PHRASE;
+    for(i = 0; i < 64; i++)
+      tmp = openssh_bf_encrypt(data:tmp);
+
+    var le, be, res='';
+    for(i = 0; i < 32; i+=4)
+    {
+      le = getdword(blob:tmp, pos:i, order:BYTE_ORDER_LITTLE_ENDIAN);
+      res += mkdword(le, order:BYTE_ORDER_BIG_ENDIAN);
+    }
+
+    return res;
+  }
+
+
+  ##
+  # Computes the OpenSSH variant of pbkdf2 using a specialized
+  # variant of the bcrypt hash function.
+  #
+  # @param [pass:bytes] The passphrase to derive a key from.
+  # @param [salt:bytes] A value added to the computation to make brute forcing
+  #                     more expensive.
+  # @param [rounds:int] The number of hashing rounds to compute.
+  # @param [keylen:int] Length of the resulting derived key.
+  #
+  # @return Returns bytes representing the hashed key and salt.
+  ##
+  function openssh_bcrypt_pbkdf2(pass, salt, rounds, keylen)
+  {
+    var countsalt, saltlen, hashsalt, bcrypttmp;
+    var origkeylen = keylen;
+
+    if(empty_or_null(pass) || empty_or_null(salt) ||
+       isnull(rounds) || rounds <= 0 ||
+       isnull(keylen) || keylen <= 0)
+      return NULL;
+
+    var stride = (keylen + 31) / 32;
+    var amt = (keylen + stride - 1) / stride;
+
+    var hashpass = SHA512(pass);
+
+    var j, didx;
+    var tmp = '';
+    var res = crap(data:'\x00', length: keylen);
+    for(var i = 1; keylen > 0; i++)
+    {
+      saltlen = strlen(salt);
+      countsalt = salt + '\0\0\0\0';
+
+      countsalt[saltlen] = mkbyte((i >> 24) & 0xff);
+      countsalt[saltlen + 1] = mkbyte((i >> 16) & 0xff);
+      countsalt[saltlen + 2] = mkbyte((i >> 8) & 0xff);
+      countsalt[saltlen + 3] = mkbyte(i & 0xff);
+
+      hashsalt = SHA512(countsalt);
+      bcrypttmp = openssh_bcrypt(pass:hashpass, salt:hashsalt);
+      tmp = bcrypttmp;
+
+      for(j = 1; j < rounds; j++)
+      {
+        hashsalt = SHA512(bcrypttmp);
+        bcrypttmp = openssh_bcrypt(pass:hashpass, salt:hashsalt);
+
+        for(var k = 0; k < 32; k++)
+          tmp[k] = mkbyte(ord(tmp[k]) ^ ord(bcrypttmp[k]));
+      }
+
+      if(keylen < amt)
+        amt = keylen;
+
+      for(j = 0; j < amt; j++)
+      {
+        didx = j * stride + (i - 1);
+        if(didx >= origkeylen)
+          break;
+
+        res[didx] = tmp[j];
+      }
+
+      keylen -= amt;
+    }
+
+    return res;
+  }
+
+  ##
+  # Decrypts an OpenSSH formatted private key for use with public key authentication.
+  #
+  # @param [blob:bytes]        The private key bytes to decrypt.
+  # @param [cipher:string]     Name of the cipher used to encrypt the private key.
+  # @param [kdf:string]        Name of the key derivation function used to extend the passphrase
+  #                            for the encryption algorithm.
+  # @param [passphrase:string] The passphrase used to encrypt the private key.
+  # @param [options:array]     Contains the number of hashing rounds and key length for the KDF.
+  #
+  # @return Returns the decrypted private key as a blob to be parsed later.
+  ##
+  function decrypt_openssh_private_key(blob, cipher, kdf, passphrase, options)
+  {
+    var keybytes;
+
+    #Hardcode for aes256-ctr or aes256-cbc
+    var cipher_keylen = 32, cipher_ivlen = 16;
+
+    var keylen = cipher_keylen + cipher_ivlen;
+    var pos = 0;
+    if(kdf != "bcrypt")
+      return NULL;
+
+    #key used to check if we have computed the keybytes yet
+    var privhash = MD5(blob);
+    var privhash_key = MD5(passphrase);
+    var privhash_kb = "Secret/SSH/" + base64(str:privhash) + "/keybytes";
+    var keybytes_enc;
+
+    #This mutex protects against multiple set_global_kb_item calls that could result
+    #later in unintentional forking.
+    mutex_lock(FUNCTION_NAME);
+    var privhash_kb_val = get_global_kb_item(privhash_kb);
+
+    if(isnull(privhash_kb_val))
+    {
+      var salt = get_ssh_string(buffer:options, pos:pos);
+      pos += strlen(salt) + 4;
+
+      var rounds = getdword(blob:options, pos:pos, order:BYTE_ORDER_BIG_ENDIAN);
+      if(empty_or_null(salt) || rounds <= 0)
+      {
+        mutex_unlock(FUNCTION_NAME);
+        return NULL;
+      }
+
+      keybytes = openssh_bcrypt_pbkdf2(pass:passphrase, salt:salt, rounds:rounds, keylen:keylen);
+      if(isnull(keybytes))
+      {
+        mutex_unlock(FUNCTION_NAME);
+        return NULL;
+      }
+
+      keybytes_enc = aes_cbc_encrypt(data:keybytes, key:privhash_key, iv:privhash);
+      if(isnull(keybytes_enc))
+      {
+        mutex_unlock(FUNCTION_NAME);
+        return NULL;
+      }
+
+      set_global_kb_item(name:privhash_kb, value:base64(str:keybytes_enc[0]));
+      mutex_unlock(FUNCTION_NAME);
+    }
+    else
+    {
+      mutex_unlock(FUNCTION_NAME);
+      keybytes_enc = base64_decode(str:privhash_kb_val);
+      var keybytes_dec = aes_cbc_decrypt(data:keybytes_enc, key:privhash_key, iv:privhash);
+
+      if(isnull(keybytes_dec))
+        return NULL;
+
+      keybytes = keybytes_dec[0];
+    }
+
+    var decrypted;
+    if(cipher == "aes256-ctr")
+      decrypted = aes_ctr_decrypt(data:blob, key:substr(keybytes, 0, cipher_keylen - 1), iv:substr(keybytes, cipher_keylen));
+    else if(cipher == "aes256-cbc")
+      decrypted = aes_cbc_decrypt(data:blob, key:substr(keybytes, 0, cipher_keylen - 1), iv:substr(keybytes, cipher_keylen));
+
+    if(isnull(decrypted) || isnull(decrypted[0]))
+      return NULL;
+
+    return decrypted[0];
+  }
+}

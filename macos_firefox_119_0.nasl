@@ -1,0 +1,125 @@
+#%NASL_MIN_LEVEL 80900
+## 
+# (C) Tenable, Inc.
+#                                  
+# The descriptive text and package checks in this plugin were
+# extracted from Mozilla Foundation Security Advisory mfsa2023-45.
+# The text itself is copyright (C) Mozilla Foundation.
+##
+
+include('compat.inc');
+
+if (description)
+{
+  script_id(183786);
+  script_version("1.3");
+  script_set_attribute(attribute:"plugin_modification_date", value:"2023/12/01");
+
+  script_cve_id(
+    "CVE-2023-5721",
+    "CVE-2023-5722",
+    "CVE-2023-5723",
+    "CVE-2023-5724",
+    "CVE-2023-5725",
+    "CVE-2023-5726",
+    "CVE-2023-5727",
+    "CVE-2023-5728",
+    "CVE-2023-5729",
+    "CVE-2023-5730",
+    "CVE-2023-5731"
+  );
+  script_xref(name:"IAVA", value:"2023-A-0585-S");
+
+  script_name(english:"Mozilla Firefox < 119.0");
+
+  script_set_attribute(attribute:"synopsis", value:
+"A web browser installed on the remote macOS or Mac OS X host is affected by multiple vulnerabilities.");
+  script_set_attribute(attribute:"description", value:
+"The version of Firefox installed on the remote macOS or Mac OS X host is prior to 119.0. It is, therefore, affected by
+multiple vulnerabilities as referenced in the mfsa2023-45 advisory.
+
+  - It was possible for certain browser prompts and dialogs to be activated or dismissed unintentionally by
+    the user due to an insufficient activation-delay. (CVE-2023-5721)
+
+  - Using iterative requests an attacker was able to learn the size of an opaque response, as well as the
+    contents of a server-supplied Vary header. (CVE-2023-5722)
+
+  - An attacker with temporary script access to a site could have set a cookie containing invalid characters
+    using <code>document.cookie</code> that could have led to unknown errors. (CVE-2023-5723)
+
+  - Drivers are not always robust to extremely large draw calls and in some cases this scenario could have led
+    to a crash. (CVE-2023-5724)
+
+  - A malicious installed WebExtension could open arbitrary URLs, which under the right circumstance could be
+    leveraged to collect sensitive user data. (CVE-2023-5725)
+
+  - A website could have obscured the full screen notification by using the file open dialog. This could have
+    led to user confusion and possible spoofing attacks.  Note: This issue only affected macOS operating
+    systems. Other operating systems are unaffected. (CVE-2023-5726)
+
+  - The executable file warning was not presented when downloading .msix, .msixbundle, .appx, and .appxbundle
+    files, which can run commands on a user's computer.   Note: This issue only affected Windows operating
+    systems. Other operating systems are unaffected. (CVE-2023-5727)
+
+  - During garbage collection extra operations were performed on a object that should not be. This could have
+    led to a potentially exploitable crash. (CVE-2023-5728)
+
+  - A malicious web site can enter fullscreen mode while simultaneously triggering a WebAuthn prompt. This
+    could have obscured the fullscreen notification and could have been leveraged in a spoofing attack.
+    (CVE-2023-5729)
+
+  - Memory safety bugs present in Firefox 118, Firefox ESR 115.3, and Thunderbird 115.3. Some of these bugs
+    showed evidence of memory corruption and we presume that with enough effort some of these could have been
+    exploited to run arbitrary code. (CVE-2023-5730)
+
+  - Memory safety bugs present in Firefox 118. Some of these bugs showed evidence of memory corruption and we
+    presume that with enough effort some of these could have been exploited to run arbitrary code.
+    (CVE-2023-5731)
+
+Note that Nessus has not tested for these issues but has instead relied only on the application's self-reported version
+number.");
+  script_set_attribute(attribute:"see_also", value:"https://www.mozilla.org/en-US/security/advisories/mfsa2023-45/");
+  script_set_attribute(attribute:"solution", value:
+"Upgrade to Mozilla Firefox version 119.0 or later.");
+  script_set_cvss_base_vector("CVSS2#AV:N/AC:L/Au:N/C:C/I:C/A:C");
+  script_set_cvss_temporal_vector("CVSS2#E:U/RL:OF/RC:C");
+  script_set_cvss3_base_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H");
+  script_set_cvss3_temporal_vector("CVSS:3.0/E:U/RL:O/RC:C");
+  script_set_attribute(attribute:"cvss_score_source", value:"CVE-2023-5731");
+
+  script_set_attribute(attribute:"exploitability_ease", value:"No known exploits are available");
+  script_set_attribute(attribute:"exploit_available", value:"false");
+
+  script_set_attribute(attribute:"vuln_publication_date", value:"2023/10/24");
+  script_set_attribute(attribute:"patch_publication_date", value:"2023/10/24");
+  script_set_attribute(attribute:"plugin_publication_date", value:"2023/10/24");
+
+  script_set_attribute(attribute:"plugin_type", value:"local");
+  script_set_attribute(attribute:"cpe", value:"cpe:/a:mozilla:firefox");
+  script_set_attribute(attribute:"generated_plugin", value:"current");
+  script_set_attribute(attribute:"stig_severity", value:"I");
+  script_end_attributes();
+
+  script_category(ACT_GATHER_INFO);
+  script_family(english:"MacOS X Local Security Checks");
+
+  script_copyright(english:"This script is Copyright (C) 2023 and is owned by Tenable, Inc. or an Affiliate thereof.");
+
+  script_dependencies("macosx_firefox_installed.nasl");
+  script_require_keys("MacOSX/Firefox/Installed");
+
+  exit(0);
+}
+
+include('mozilla_version.inc');
+
+var kb_base = 'MacOSX/Firefox';
+get_kb_item_or_exit(kb_base+'/Installed');
+
+var version = get_kb_item_or_exit(kb_base+'/Version', exit_code:1);
+var path = get_kb_item_or_exit(kb_base+'/Path', exit_code:1);
+
+var is_esr = get_kb_item(kb_base+'/is_esr');
+if (is_esr) exit(0, 'The Mozilla Firefox installation is in the ESR branch.');
+
+mozilla_check_version(version:version, path:path, product:'firefox', esr:FALSE, fix:'119.0', severity:SECURITY_HOLE);

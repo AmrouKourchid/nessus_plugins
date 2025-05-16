@@ -1,0 +1,713 @@
+#TRUSTED 60f98dcd27ee769ef54241abbb9656015cc3bac121df9e019c354b00f038f0e9c38cfcde7d1d55d3e0ea0376a42a5ce007387fb77bf86e8f5fb8a191f589543aa869c4ad0ce9d16c0012a3681730b52d9082eb6f9cead7defc9277c5c6215d65f31ad97291973894c8939f1877120fabaeea59bdab334e55bfc7929b7e4bb2e658cb91c892670a931787344d3e7bdd746eb9b2014eb2c3b9e6f905409510f49bc3ca62a8caf36189034be6de371d926a1b9b5c28b0b78f5de9e58f8857b6409cd83df869f458d8de5651c8a2b8ffd8f3f8e540fca03c050b3db04ad7ad36e77ebcc457b68fb3fa88576c1792045290231ab00ceb90f384c92da1626e6d27ca83361ff37d73a8636947fde9c739d9b92cd26e882416c964ab19fe314bc500cb20f7ad81692f8506ed787c0a4a2140cc893877d559806188056ade970dd8f58101411036f8117a018cb2810f10c9ec0b40d1e9946206daa23704995f8419f89e6685644ed1c1382fd9940c0d8179cf5531fc5385fb25282701052896efbdfb27962beff9053f9f72ae6a5e25bf32f73547c246a4933bc03142415f8a6be74348300432833163f9bd38818c8ec069423e1f221acd54ed6264b46094a29fd4abfa46d70398e3887cd9d02a50b6f916157a8db64f73536237e5b9c96e7f8d8415113dc4674a87b882bacd56bf22db1f03622ccee2cc12159d37a581490c5a7c8e386d
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# @NOGPL@
+#
+# Revision: 1.1
+#
+# This escalation shell manager is an extension of shell_manager_base,
+# which is a wrapper around the basic shell handler.
+# It manages the shell state with basic functionality of escalation
+# and de-escalation.
+#
+# This file is intended to provide a basic and generic implementation of
+# shell escalation management that can be extended to a new object if
+# customization is required. Do NOT add product-specific customizations
+# to this file. Create a new file, extend the object, and make your
+# customizations in the new object.
+#
+# @remark !!! THIS OBJECT IS EXPERIMENTAL AND HAS BEEN ADDED TO THE FEED FOR A SPECIFIC USE CASE BY AUDITS !!!
+# This is not ready to be integrated into sshlib for general use. This should not be modified without consulting Audits.
+# See RES-29239, RES-32851, RES-32852
+###
+
+namespace sshlib
+{
+  ##
+  # Callback function to check for escalation error, escalated command
+  # prompt, or timeout
+  #
+  # @param session session handle for ssh session
+  # @param channel channel for ssh session
+  #
+  # @return TRUE if found
+  # @category SSH
+  # @remark This wrapper is implemented outside the object to call
+  # the object method because object methods can't be passed as
+  # references. This can be passed as reference to sshrecv_until().
+  ##
+  function cb_escl_done_or_timeout(&session, &channel)
+  {
+    var sh = channel.shell_handler;
+    if(!sh) return channel_closed_return_true(channel:channel);
+
+    return sh.cb_escl_done_or_timeout(channel:channel);
+  }
+
+  ##
+  # Basic escalation shell manager, handles escalation and de-escalation
+  # while wrapping basic_shell_handler to run commands
+  #
+  # This object is intended to provide a basic and generic implementation
+  # of shell escalation management that can be extended to a new object if
+  # customization is required. Do NOT add product-specific customizations
+  # to this file. Create a new file, extend the object, and make your
+  # customizations in the new object.
+  #
+  # This object does not support identification of access / privilege
+  # errors. Such errors are product-specific. To implement identification
+  # of access / privilege errors for a particular product, extend the object.
+  #
+  # This object does not support least privilege. To do so would require
+  # identification of access / privilege errors. To support least privilege
+  # for a particular product, extend the object.
+  #
+  # As this implementation is generic, it requires several variables to
+  # be customized:
+  #   escl_cmd              : Command used to escalate shell (required)
+  #   escl_pw_prompt        : Password prompt (if expected), if different from default of 'password:'
+  #                           (case-insensitive) (optional)
+  #   escl_exit_cmd         : Command used to de-escalate shell (optional, default "exit")
+  #   escl_cmd_prompt_check : Regex to identify escalated command prompt (required)
+  #   escl_fail_check       : Regex to identify failed escalation error (optional)
+  #
+  # These variables can be set by passing them in a settings array
+  # to this object's init() function.
+  #
+  # Usage:
+  #
+  # # Create shell manager instance and open new shell
+  # sh = new('sshlib::shell_manager_basic_escl');
+  # ch = session.open_shell(shell_handler:sh);
+  # if (!ch) return NULL;
+  #
+  # Set up escalation method in shell manager
+  # var settings = {escl_cmd:'expert', escl_cmd_prompt_check:'Expert.*#'};
+  # sh.init(settings:settings);
+  #
+  # Look up escalation credential and set in shell manager
+  # var kb = 'Secret/' + sshlib::SSH_LIB_KB_PREFIX + session.get_kb_connection_id();
+  # var escl_extra = sshlib::get_kb_args(kb_prefix:kb + '/escalation_extra');
+  # sh.set_priv_escalation(type:'Checkpoint expert', extra:escl_extra);
+  #
+  # # Validate escalation settings. If they're already known to be
+  # # invalid, escalation won't be attempted, and commands will be
+  # # attempted unescalated via basic shell handler. The caller can
+  # # decide whether or not that's acceptable.
+  # if (!sh.validate_escalation()) return NULL;
+  #
+  # # At this point you can call run_command(), and escalation will
+  # # be attempted if it's not already known to be invalid.
+  # # Or, try to escalate manually first to see whether or not
+  # # escalation is successful. If it fails, the settings set will
+  # # be marked bad, and commands will be attempted unescalated via
+  # # basic shell handler. The caller can decide whether or not
+  # # that's acceptable.
+  # if (!sh.get_escalated_shell(channel:ch)) return NULL;
+  #
+  # # Run command in escalated shell
+  # ret = sh.run_command(session:session, channel:ch, command:'clish show version all');
+  ##
+  object shell_manager_basic_escl : sshlib::shell_manager_base
+  {
+    var my_objname = 'shell_manager_basic_escl::';
+    var my_obj_kb = '/shell_manager_basic_escl/';
+
+    ##
+    # Additional states for escalation
+    ##
+    var ST_UNESCALATED             = 1;
+    var ST_ESCALATED               = 2;
+    var ST_ESCL_FAILED             = 3;
+
+    ##
+    # Additional state names to add to STATE_NAMES
+    ##
+    var ADD_STATE_NAMES = make_array(
+      ST_UNESCALATED, "unescalated",
+      ST_ESCALATED,   "escalated",
+      ST_ESCL_FAILED, "escalation failed"
+    );
+
+    ##
+    # States that can be used to run commands
+    # States are defined in ssh_lib_shell_manager_util.inc
+    ##
+    var CMD_STATES = [
+      ST_UNESCALATED,
+      ST_ESCALATED
+    ];
+
+    ##
+    # Standard vars for escalation
+    ##
+    var priv_escalation_type;
+    var priv_escalation_extra;
+
+    ##
+    # Custom vars for escalation and state detection
+    ##
+    var escl_cmd;
+    var escl_pw_prompt;
+    var escl_exit_cmd;
+    var escl_cmd_prompt_check;
+    var escl_success_check;
+    var escl_fail_check;
+
+    ##
+    # Set this to TRUE once escalation vars are properly set up
+    # If escalation vars aren't set up, escalation will be disabled
+    # and commands will pass through to basic shell handler
+    ##
+    var escalation_enabled = FALSE;
+
+    ##
+    # Constructor
+    # @category SSH
+    ##
+    function shell_manager_basic_escl()
+    {
+      super.objname = this.my_objname;
+      super.obj_kb  = this.my_obj_kb;
+      foreach var state (keys(this.ADD_STATE_NAMES))
+        super.STATE_NAMES[state] = this.ADD_STATE_NAMES[state];
+      super.CMD_STATES = this.CMD_STATES;
+    }
+
+    ##
+    # Initializes settings
+    # @param [settings:array] Settings array, supported keys include:
+    #   priv_escalation_type  : The privilege escalation type
+    #                           (label for debugging)
+    #   priv_escalation_extra : Credential settings
+    #                           (required if escalation requires password)
+    #   escl_cmd              : Command used to escalate shell (required)
+    #   escl_pw_prompt        : Password prompt (if expected),
+    #                           if different from default of 'password:'
+    #                           (case-insensitive) (optional)
+    #   escl_exit_cmd         : Command used to de-escalate shell
+    #                           (optional, default "exit")
+    #   escl_cmd_prompt_check : Regex to identify escalated command prompt
+    #                           (required if escl_success_check not set)
+    #   escl_success_check    : Regex to identify successful escalation
+    #                           (required if escl_cmd_prompt_check not set)
+    #   escl_fail_check       : Regex to identify failed escalation error
+    #                           (optional)
+    # @return NULL
+    # @category SSH
+    ##
+    public function init(settings)
+    {
+      super.init(settings:settings);
+      this.apply_settings(settings);
+
+      return TRUE;
+    }
+
+    ##
+    # Apply settings array to object vars
+    # @anonparam [array] Settings array
+    # @return NULL
+    ##
+    protected function apply_settings()
+    {
+      this.settings = _FCT_ANON_ARGS[0];
+      if (!isnull(settings))
+      {
+        # Avoid clobbering these in case they're being set by
+        # set_priv_escalation() rather than the settings array
+        if (!isnull(this.settings.priv_escalation_type))
+          this.priv_escalation_type = this.settings.priv_escalation_type;
+        if (!isnull(this.settings.priv_escalation_extra))
+          this.priv_escalation_extra = this.settings.priv_escalation_extra;
+
+        this.escl_cmd = this.settings.escl_cmd;
+        this.escl_cmd_prompt_check = this.settings.escl_cmd_prompt_check;
+        this.escl_success_check = this.settings.escl_success_check;
+        this.escl_fail_check = this.settings.escl_fail_check;
+
+        # If no escl_pw_prompt is included, use 'password:'
+        if (!isnull(this.settings.escl_pw_prompt))
+          this.escl_pw_prompt = tolower(this.settings.escl_pw_prompt);
+        else this.escl_pw_prompt = 'password:';
+
+        # If no escl_exit_cmd is included, use "exit"
+        if (!isnull(this.settings.escl_exit_cmd))
+          this.escl_exit_cmd = this.settings.escl_exit_cmd;
+        else this.escl_exit_cmd = 'exit';
+
+        # If no priv_escalation_type is set, use escl_cmd
+        if (isnull(this.priv_escalation_type))
+          this.priv_escalation_type = this.escl_cmd;
+
+        # Enable escalation if vars are valid, otherwise disable
+        this.validate_escalation();
+      }
+      else
+      {
+        dbg::detailed_log(lvl:1, src:objname + FUNCTION_NAME, msg:'apply_settings() called with no or NULL anonymous parameter,' + ' clearing settings.');
+        this.priv_escalation_type  = NULL;
+        this.priv_escalation_extra = NULL;
+        this.escl_cmd              = NULL;
+        this.escl_cmd_prompt_check = NULL;
+        this.escl_success_check    = NULL;
+        this.escl_fail_check       = NULL;
+        this.escl_pw_prompt        = NULL;
+        this.escl_exit_cmd         = NULL;
+        this.escalation_enabled    = FALSE;
+      }
+      return NULL;
+    }
+
+    ##
+    # Validates that all necessary vars are set up for escalation and
+    # sets escalation_enabled to TRUE or FALSE
+    # @return TRUE if enabled, else FALSE
+    ##
+    public function validate_escalation()
+    {
+      var fn = objname + FUNCTION_NAME;
+      var vars = '';
+
+      # Check to see if settings were previously marked as bad
+      var ret = this.previous_settings_failure();
+      if (!isnull(ret))
+      {
+        dbg::detailed_log(lvl:2, src:fn, msg:'Escalation not enabled. Settings previously failed with the following error: ' + ret);
+        this.escalation_enabled = FALSE;
+        return this.escalation_enabled;
+      }
+
+      # Check these settings
+      if (isnull(this.escl_cmd)) vars += 'escl_cmd';
+      if (isnull(this.escl_cmd_prompt_check) && isnull(this.escl_success_check))
+      {
+        if (vars) vars += ', ';
+        vars += 'at least one of escl_cmd_prompt_check and escl_success_check';
+      }
+
+      # If settings are good, enable escalation
+      if (!vars)
+      {
+        dbg::detailed_log(lvl:2, src:fn, msg:'Escalation enabled. Settings passed validation.');
+        this.escalation_enabled = TRUE;
+        return this.escalation_enabled;
+      }
+
+      # If settings are bad, disable escalation and mark them as bad
+      dbg::detailed_log(lvl:2, src:fn, msg:'Escalation not enabled because the following vars have not been set: ' + join(vars, sep:', '));
+      this.escalation_enabled = FALSE;
+      dbg::detailed_log(lvl:2, src:fn, msg:'Marking this set of settings as bad.');
+      this.set_settings_failure('The escalation settings did not pass validation.');
+      return this.escalation_enabled;
+    }
+
+    ##
+    # set priv escalation
+    #
+    # @param type escalation type
+    # @param extra
+    #
+    # @category SSH
+    ##
+    public function set_priv_escalation(type, extra)
+    {
+      this.priv_escalation_type = type;
+      this.priv_escalation_extra = extra;
+      this.settings.priv_escalation_type = type;
+      this.settings.priv_escalation_extra = extra;
+    }
+
+    ##
+    # unset priv escalation
+    # @category SSH
+    ##
+    public function unset_priv_escalation()
+    {
+      this.priv_escalation_type = NULL;
+      this.priv_escalation_extra = NULL;
+      this.settings.priv_escalation_type = NULL;
+      this.settings.priv_escalation_extra = NULL;
+    }
+
+    ##
+    # Sets shell state
+    # @anonparam [string] Object var for shell state
+    # @return NULL
+    ##
+    public function set_shell_state()
+    {
+      super.set_shell_state(_FCT_ANON_ARGS[0]);
+
+      # For command logging in basic shell handler
+      if (this.shell_state == ST_ESCALATED)
+      {
+        super.escl_method = this.priv_escalation_type;
+      }
+      else if (this.shell_state == ST_UNESCALATED)
+      {
+        super.escl_method = NULL;
+      }
+    }
+
+    ##
+    # callback function that checks to see if escalation has been
+    # successfully entered
+    #
+    # @param [channel:channel object] channel for ssh session
+    #
+    # @return TRUE if escalation successful, escalation failed, or
+    # timeout reached, else FALSE
+    # @category SSH
+    ##
+    public function cb_escl_done_or_timeout(&channel)
+    {
+      var fn = objname + FUNCTION_NAME;
+
+      # Check for password prompt
+      if (!isnull(this.escl_pw_prompt) &&
+          preg(string:tolower(channel.data_buf), pattern:this.escl_pw_prompt, multiline:TRUE))
+      {
+        dbg::detailed_log(lvl:2, src:fn, msg:'Found password prompt');
+        channel.clear_data_buf();
+        channel.session.set_redact( TRUE );
+        channel.window_send_data(data:this.priv_escalation_extra.enable_pass + '\n' );
+        channel.session.set_redact( FALSE );
+        return FALSE;
+      }
+
+      # Check for success message, if defined
+      if (!isnull(this.escl_success_check) &&
+          preg(string:channel.data_buf, pattern:this.escl_success_check, multiline:TRUE))
+      {
+        dbg::detailed_log(lvl:1, src:fn,
+          msg:'Escalation success detected, channel.data_buf matches escl_success_check regex.',
+          msg_details:{"Serialized Regex":{"lvl":2, "value":serialize(this.escl_success_check)}});
+        super.set_shell_state(ST_ESCALATED);
+        return TRUE;
+      }
+
+      # Check for failure message, if defined
+      if (!isnull(this.escl_fail_check) &&
+          preg(string:channel.data_buf, pattern:this.escl_fail_check, multiline:TRUE))
+      {
+        super.set_error(fn:fn,
+          'Escalation failure detected, channel.data_buf matches escl_fail_check regex.\n' +
+          'Serialized regex: ' + serialize(this.escl_fail_check));
+        super.set_shell_state(ST_ESCL_FAILED);
+        return TRUE;
+      }
+
+      # Check for escalated command prompt
+      if (super.at_cmd_prompt(buf:channel.data_buf, check_len:3))
+      {
+        super.set_shell_state(ST_ESCALATED);
+        return TRUE;
+      }
+      if (!isnull(this.escl_cmd_prompt_check))
+      {
+        var lines = split(channel.data_buf, sep:'\n', keep:FALSE);
+        var last_line = lines[max_index(lines)-1];
+        if (preg(string:last_line, pattern:this.escl_cmd_prompt_check))
+        {
+          dbg::detailed_log(lvl:2, src:fn,
+            msg:'Found escalated command prompt, last line of channel.data_buf matches regex.',
+            msg_details:{"Serialized Regex":{"lvl":2, "value":serialize(this.escl_cmd_prompt_check)}});
+          super.set_shell_state(ST_ESCALATED);
+          super.set_cmd_prompt(last_line);
+          super.set_state_cmd_prompt(state:this.shell_state, cmd_prompt:this.cmd_prompt);
+          return TRUE;
+        }
+      }
+
+      # Check for timeout
+      return super.check_inactivity_timeout(channel:channel);
+    }
+
+    ##
+    # Utility function to request a state change to escalated
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE if successful, FALSE otherwise
+    ##
+    public function get_escalated_shell(&channel)
+    {
+      if (this.shell_state == this.ST_ESCALATED)
+        return TRUE;
+
+      # If run_command() hasn't been called yet, call run_command_init()
+      # to set up vars and handle the fresh shell
+      if (this.shell_state == this.ST_FRESH_SHELL)
+        if (!this.run_command_init(channel:channel))
+          return FALSE;
+
+      # Make sure shell is in unescalated state
+      if (this.shell_state != this.ST_UNESCALATED)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME,
+          msg:'Unable to escalate shell from unexpected state "' + this.STATE_NAMES[this.shell_state] + '" (' + this.shell_state + ')');
+        return FALSE;
+      }
+
+      # Make sure channel is usable for escalation command
+      # This must be done before calling change_shell_state() to avoid
+      # marking settings as bad if the failure is unrelated to settings
+      if (!this.channel_usable(channel:channel)) return FALSE;
+
+      super.change_shell_state(
+        channel       : channel,
+        destination   : this.ST_ESCALATED,
+        callback      : @sshlib::cb_escl_done_or_timeout,
+        command       : this.escl_cmd);
+
+      # check that ending state is the correct state
+      if (this.shell_state == this.ST_ESCALATED)
+        return TRUE;
+
+      this.set_settings_failure('Failed to escalate with the escalation settings.');
+      return FALSE;
+    }
+
+    ##
+    # Utility function to request a state change to unescalated
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE if successful, FALSE otherwise
+    ##
+    public function get_unescalated_shell(&channel)
+    {
+      if (this.shell_state == this.ST_UNESCALATED)
+        return TRUE;
+
+      # Make sure the change can happen
+      if (this.default_state == this.ST_ESCALATED)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME,
+          msg:'Default state is "' + this.STATE_NAMES[this.ST_ESCALATED] + '" (' + this.ST_ESCALATED + '). Unable to de-escalate.');
+        return FALSE;
+      }
+
+      # Make sure shell is in escalated state
+      if (this.shell_state != this.ST_ESCALATED)
+      {
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME,
+          msg:'Unable to de-escalate shell from unexpected state "' + this.STATE_NAMES[this.shell_state] + '" (' + this.shell_state + ').');
+      }
+
+      # Make sure channel is usable for de-escalation command
+      # This must be done before calling change_shell_state() to avoid
+      # marking settings as bad if the failure is unrelated to settings
+      if (!this.channel_usable(channel:channel)) return FALSE;
+
+      super.change_shell_state(
+        channel       : channel,
+        destination   : this.ST_UNESCALATED,
+        command       : this.escl_exit_cmd);
+
+      # check that ending state is the correct state
+      if (this.shell_state == this.ST_UNESCALATED)
+        return TRUE;
+
+      return FALSE;
+    }
+
+    ##
+    # Checks the cmd_prompt to determine the current state and returns it
+    # @return [int] Object var for current state
+    ##
+    protected function check_shell_state()
+    {
+      if (!isnull(this.escl_cmd_prompt_check) && this.cmd_prompt =~ this.escl_cmd_prompt_check)
+        return ST_ESCALATED;
+      else return ST_UNESCALATED;
+    }
+
+    ##
+    # Shell state handling and validation before running command
+    # @param session SSH session in case reconnection is needed
+    # @param channel channel for ssh session
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    # @return TRUE if successful, FALSE otherwise
+    ##
+    public function run_command_init(session, &channel, cmd_timeout_min, inactivity_timeout_min)
+    {
+      if (!session) session = channel.session;
+      # Call this.run_command_init() first to set up initial variables,
+      # handle a fresh shell if needed, and check for any fatal errors
+      if (!super.run_command_init(session:session, channel:channel,
+          cmd_timeout_min:cmd_timeout_min,
+          inactivity_timeout_min:inactivity_timeout_min)
+      ) return FALSE;
+
+      # If this.shell_state == ST_FRESH_SHELL at this point, then
+      # there wasn't a default state previously detected and cached
+      # Perform detection, set the default, and set cmd_prompt for current state
+      if (this.shell_state == ST_FRESH_SHELL)
+      {
+        var state = this.check_shell_state();
+        if (isnull(state)) return FALSE;
+
+        super.set_shell_state(state);
+        super.set_default_state(this.shell_state);
+        super.set_state_cmd_prompt(state:this.shell_state, cmd_prompt:this.cmd_prompt);
+      }
+
+      return TRUE;
+    }
+
+
+    ##
+    # Sanitize settings array for debugging by removing credentials
+    # @return [array] Sanitized settings array
+    # @remark If extending this object and overriding this function,
+    #         the overriding function MUST call super.get_sanitized_settings()
+    # @category SSH
+    ##
+    public function get_sanitized_settings()
+    {
+      var _sanitized_settings = this.settings;
+      _sanitized_settings.priv_escalation_extra = '[REDACTED]';
+      return _sanitized_settings;
+    }
+
+    ##
+    # run given command
+    #
+    # @param session SSH session in case channel needs to be replaced
+    #                If not passed and channel is closed, channel will
+    #                not have a reference to session for replacement
+    # @param channel channel for ssh session
+    # @param command cmd to run
+    # @param force_priv_escl force priv escalation flag
+    # @param cmd_timeout_min The total number of seconds that may elapse
+    #                      waiting for the command response. (optional)
+    # @param inactivity_timeout_min The number of seconds that may
+    #                             elapse with no data received from
+    #                             the target. (optional)
+    #
+    # @return command result or NULL on failure
+    # @category SSH
+    ##
+    public function run_command(session, &channel, command, force_priv_escl,
+        cmd_timeout_min, inactivity_timeout_min)
+    {
+      var fn = objname + FUNCTION_NAME;
+      if (!session) session = channel.session;
+
+      dbg::detailed_log(lvl:1, src:fn, msg:'Command to run : ' + command);
+
+      if (!this.run_command_init(session:session, channel:channel,
+          cmd_timeout_min:cmd_timeout_min,
+          inactivity_timeout_min:inactivity_timeout_min)
+      )
+      {
+        session.set_cmd_error('Command not attempted due to shell failure or session failure.' +
+          '\nCommand : ' + command + '\nLast error : "' + last_error + '"');
+        return NULL;
+      }
+
+      # Get sanitized settings array for debugging to show settings
+      # used as fingerprint for escl parameters. Remove cmd_prompt as
+      # it can change based on shell state and thus isn't used for
+      # fingerprinting the settings
+      var _sanitized_settings = this.get_sanitized_settings();
+      _sanitized_settings.cmd_prompt = NULL;
+      _sanitized_settings = serialize(_sanitized_settings);
+
+      # If escalation hasn't been set up, or hasn't been set up properly,
+      # pass through to basic shell handler
+      if (!this.validate_escalation())
+      {
+        session.set_cmd_error(this.obj_ch_id +
+          'Escalation was not enabled due to validation failure or previous escalation failure.' +
+          '\nDetails: ' + this.previous_settings_failure() +
+          '\nSettings: ' + _sanitized_settings);
+
+        session.set_error(this.obj_ch_id +
+          'Running command without escalating shell.');
+
+        super.set_escl_method(NULL);
+        return super.run_command(channel:channel, command:command,
+          force_priv_escl:force_priv_escl, cmd_timeout_min:cmd_timeout_min,
+          inactivity_timeout_min:inactivity_timeout_min);
+      }
+
+      # Escalate shell
+      dbg::detailed_log(lvl:2, src:fn, msg:this.obj_ch_id +'Escalating shell if necessary.');
+      if (this.get_escalated_shell(channel:channel))
+      {
+        super.set_escl_method(this.priv_escalation_type);
+      }
+      else
+      {
+        super.set_escl_method(NULL);
+        session.set_cmd_error(this.obj_ch_id +
+          'Escalation failed. Looking for unescalated state.');
+        if (this.shell_state == ST_UNESCALATED)
+        {
+          session.set_cmd_error(this.obj_ch_id +
+            'Shell is at unescalated command prompt. Running command without escalation.');
+        }
+        else
+        {
+          session.set_cmd_error(this.obj_ch_id +
+            'Failed to return to the unescalated command prompt. Attempting to de-escalate.');
+
+          if (this.get_unescalated_shell(channel:channel))
+          {
+            session.set_cmd_error(this.obj_ch_id +
+              'Successfully de-escalated to the unescalated command prompt.\n' +
+              'Parameters to detect escalation success may be incorrect. Running command without escalation.');
+          }
+          else
+          {
+            session.set_cmd_error(this.obj_ch_id +
+              'Failed to de-escalate to the unescalated command prompt or de-escalate. Unable to run command.' +
+              '\nSettings: ' + _sanitized_settings);
+            super.last_cmd_error = TRUE;
+            return NULL;
+          }
+        }
+      }
+
+      # Ensure channel is still usable for shell command after
+      # attempting to escalate
+      if (!this.channel_usable(channel:channel)) return NULL;
+
+      # Run command
+      dbg::detailed_log(lvl:1, src:fn,
+        msg:'Running command "' + command + '" using shell state "' + this.STATE_NAMES[this.shell_state] + '"');
+
+      return super.run_command(
+        channel                : channel,
+        command                : command,
+        cmd_timeout_min        : cmd_timeout_min,
+        inactivity_timeout_min : inactivity_timeout_min);
+    }
+
+    ##
+    # Revert to unescalated state
+    #
+    # @param channel channel for ssh session
+    #
+    # @return TRUE if successful, FALSE otherwise
+    ##
+    public function revert(&channel)
+    {
+      return get_unescalated_shell(channel:channel);
+      if (this.shell_state == this.default_state) return TRUE;
+      return FALSE;
+    }
+  }
+}

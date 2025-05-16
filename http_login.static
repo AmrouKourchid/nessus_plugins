@@ -1,0 +1,336 @@
+#TRUSTED a579929febe3bc47e98085878c654c887761c40c3b921fb095466ae5314efc31c9619aaed39db1292128399ee872452d88240db00c38986cd45994d4bf39a25f745ba84c85b2e897924797bbfe0d2957591acec90312a57991bcd68d41ed14631ed5582a3711ad265ef0e3f93b360b16810b9dd9668f709a5cacb00719aa1ae54e1b802c14ac4f6af7b39ab941de66ac91f4e1f558915d593df66ecf7d2b5f314f494f32e3abe4ad55ba76c62771793f515a20db5f5bbc79827c876c0fb7bcdd22b650f38e718185d663f9e98009fbec670fb39d1c8e10f133e58815c64f028ac08adc53e968b73b4e80ab099d8c0277bbd8af5fc69ebc9f215ce0691c551926736afc7bb9d4401e328566c9d0fafe793879d00e5fd0320bad0692b0d71765c7977363f9e3186f42d7804c9a31cf7e5699bad3459e9a2b16f4b57714ae27c8b92e2649f86992c9931159457794b5b47c8e311958b3b846de801e1dc006220d53f3cfad320ceab2adb164f7b4fdf74c6c1e911041b31bdd476b89d95182338ae2bb07254f13cad182d063fcea36da61ad25d3b3b0b29fe846948902188bf6dc8fc7a0b52618553a5789b3f8ce63ed8849c630ae1cb690fa276b04c4950ae16c737c1b8f497ba390e668b5a6dc20cf650c4a90dcea12e7159ba9db154ff28b83a04bdadec6454a5fdfc317e21d0a5adff5fe5854d76966f3ffd5a4a61c9c46c3f2
+#TRUST-RSA-SHA256 5b244a4bfc0ad1145d8e0c6d5654c7062eb99f558d316b8b829ec93ea6e9559e875d1322646d585ec9f2d419b85a218130ca5a0b408b013351230ee74263916fd12a265056dec559c66c9b09b293f4bcff31437278a868200bfed455aa6d2f03a6927c0d4b4196e39502be41a73240cf2c75175f0c1f9617f7a778eb463d393987cccde35cc708a1c535afa95bd74688ba23d47071dd8999356bc41b4396a5fb134ad84a30b229ac5a93b59e2e1ee477f74354abb531244c02f4be3d4394b7ad91715c707147548dfcd71ec1759862f28cadd9bd3b1cbd44942a46428c343065346408991e1262afed163d802d4a3fe2112edd0425367416b997847441f5dc97b838729e626dc078cd5c97ba6bf47dc2e2005bd0a3e8522b50a9eaddd59309f3471aca73c8ae3a8cda5eb2660b47ceb27c26590a3c10be9e2fe00d67e1aadf803d74f5c54005f6b3db806b488e1df2d3b9b3221cc7c6bd62780cfdf4ad6dff57916a570e8fe2c772591f20d13a0ce815bffd9cde1c30d1c7590b1e502678a9dfc27b69f8c6b31900fae3d0cf9a6809e7e9fe033c94004b62d8dcf2a45b8507db309b29935f654036c867015751fc4fc6f78a7f147fa5118107d00708a13a0ff3f48571bbf7339cf0f08eef7aeeaf203d7281467f6bb8e98f70a41a0142b45fb1ec01257bace3e3f0930219d441f1c256ba0120db61b5713ed4d47bed65dace49
+# -*- Fundamental -*-
+#
+# (C) Tenable, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable, Inc.
+#
+# @NOGPL@
+#
+# http_login.inc
+# Revision: 1.11
+
+global_var HttpLogin_reauthentication_OK, HttpLogin_reauthentication_KO;
+
+function http_check_authentication(port, check_page, regex, re_invert, re_headers, re_icase, follow_redirect)
+{
+  local_var r, s, flag;
+
+  if (strlen(check_page) == 0 || strlen(regex) == 0) return "";
+
+  r = http_send_recv3(method:"GET", item: check_page, port: port, follow_redirect: follow_redirect);
+  if (isnull(r))
+  {
+    return "request failed: GET " + check_page;
+  }
+  if (re_headers)
+    s = egrep(string: r[0]+r[1], pattern: regex, icase: re_icase);
+  else
+    s = egrep(string: r[2], pattern: regex, icase: re_icase);
+  flag = (strlen(s) > 0);
+  if (flag)
+    debug_print(level: 3, 'http_check_authentication extracted pattern: ', chomp(s));
+  if (re_invert) flag = ! flag;
+  if (! flag)
+  {
+    if (report_verbosity > 1)
+      return "post-authentication test failed" + '.\nThe web server answered :\n\n' + r[0] + r[1] + '\n' + r[2];
+    else
+      return "post-authentication test failed";
+  }
+  return "OK";
+}
+
+# This function returns an empty string for "maybe", "OK" if authentication 
+# succeeded (the control page could be check). Any other string is an error 
+# message.
+function http_form_login(port, page, form, fields, follow_redirect, 
+	 		 save_cookies, check_page, regex, re_invert,
+			 re_headers, re_icase, method)
+{
+  local_var	r, trp, h, e;
+
+  h = make_array();
+  e = "";
+
+  if (page)
+  {
+    r = http_send_recv3(port: port, item: page, method: 'GET', follow_redirect: follow_redirect);
+    if (isnull(r))
+    {
+      debug_print("Broken connection on port ", port, " after GET ", page);
+      return "request failed: GET " + page;
+    }
+
+    trp = get_port_transport(port);
+    h["Referer"] = build_url(port: port, qs: page);
+  }
+
+  if (! method) method = "POST";
+
+  if (method == "POST")
+  {
+  h["Content-Type"] = "application/x-www-form-urlencoded";
+  r = http_send_recv3( port: port, method: 'POST', 
+      		       follow_redirect: follow_redirect,
+      		       add_headers: h, 
+    		       item: form, data: fields);
+  }
+  else
+  {
+    r = http_send_recv3( port: port, method: 'GET', 
+      		       follow_redirect: follow_redirect,
+    		       item: form + "?" + fields);
+  }
+  if (isnull(r))
+  {
+    debug_print("Broken connection on port ", port, " after ", method, " ", form);
+    return "request failed: " + method + " " + form;
+  }
+
+  # Failed - permission denied or bad gateway or whatever
+  # This happens sometimes when we follow redirections, but we might be 
+  # authenticated anyway.
+  if (r[0] =~ "^HTTP/[01.]+ +[45][0-9][0-9] ")
+  {
+    debug_print("Permission denied: code=", r[0]);
+    e =  "Permission denied or other HTTP error on "+method+" request";
+  }
+  # All other codes are considered as OK. We might get a 30x code too!
+
+  r = http_check_authentication(port: port, check_page: check_page, regex: regex, re_invert: re_invert, re_headers: re_headers, re_icase: re_icase, follow_redirect: follow_redirect);
+
+  if (r == "")
+  {
+    # We could not check if we are authenticated but we got an error first. 
+    # Let's return it.
+    if (e != "") return e;
+  } else if (r != "OK")	# Error
+    return r;
+
+  # Here, we are sure that we are authenticated (OK) 
+  # or nothing proves that we are not.
+  if (! CookieJar_is_disabled && save_cookies) store_cookiejar("FormAuth");
+  return r;
+}
+
+
+function http_login_take_lock(port, now, delay)
+{
+  local_var	k, t, v;
+
+
+  k = "/tmp/http_login/"+port+"/lock";
+  t = get_kb_item(k);
+  if (t)
+  {
+    v = split(t, sep:'-', keep: 0);
+    t = now - int(v[0]);
+    if (t > delay || t < 0)
+    {
+      debug_print("http_login_take_lock: old lock (", t, " s ago) deleted (port=", port, ")");
+      rm_kb_item(name:k);
+    }
+    else
+    {
+      debug_print(level: 2, "http_login_take_lock: lock taken ", t, " s ago");
+      return 0;
+    }
+  }
+  v = now + '-' + rand();
+  replace_kb_item(name:k, value: v);
+
+  if (get_kb_item(k) != v)
+  {
+    debug_print("http_login_take_lock: lock stolen");
+    return 0;
+  }
+  return 1;
+}
+
+function http_login_release_lock()
+{
+  local_var	k, port;
+  port = _FCT_ANON_ARGS[0];
+  k = "/tmp/http_login/"+port+"/lock";
+  rm_kb_item(name: k); 
+  return 1;
+}
+
+
+# This function should only be called if a lock has been taken
+function http_login_incr_count(port, kb)
+{
+  local_var	k, n;
+
+  k = "www/"+port+"/"+kb;
+    n = get_kb_item(k);
+    n ++;
+    replace_kb_item(name: k, value: n);
+  }
+
+function http_reauthenticate_if_needed(port, save_cookies)
+{
+  local_var	page, form, fields, time, e, delay, now;
+  local_var	cp, re, iv, hd, ic, fr, i, mt;
+
+  cp = get_kb_item("www/"+port+"/check_page");
+  re = get_kb_item("www/"+port+"/check_regex");
+  iv = get_kb_item("www/"+port+"/regex_invert");
+  hd = get_kb_item("www/"+port+"/regex_headers");
+  ic = get_kb_item("www/"+port+"/regex_icase");
+  fr = get_kb_item("www/"+port+"/login_follow_30x");
+
+  e = http_check_authentication(port: port, check_page: cp, regex: re, re_invert: iv, re_headers: hd, re_icase: ic, follow_redirect: fr);
+  if (e == "OK") return;
+
+  # Ideally, we should take a mutex here, but the functions are privileged
+  # and we do not want to sign all web scripts.
+
+  if (e != "")		# use a tiny delay if we are disconnected
+    delay = get_read_timeout();
+  else
+    delay = get_kb_item("www/"+port+"/login_delay");
+  if (delay <= 0) return;
+
+    time = get_kb_item("www/"+port+"/login_time");
+  now = unixtime();
+  if (time + delay > now)
+    {
+    debug_print(level: 2, 'Will not try to re-authenticate on port ', port, ' before ', time + delay - now, ' seconds\n');
+      return;
+    }
+
+  if (! http_login_take_lock(port: port, now: now, delay: delay))
+  {
+    # Try to reload the cookie jar, in case another plugin updated it
+    if (e != "") sleep(get_read_timeout());
+    load_cookiejar(jar:"FormAuth");
+    return;
+  }
+
+  page = get_kb_item("www/"+port+"/login_page");
+  form = get_kb_item("www/"+port+"/login_form");
+  fields = get_kb_item("www/"+port+"/login_fields");
+  mt = get_kb_item("www/"+port+"/login_meth");
+
+  e = http_form_login(port: port, page: page, form: form, fields: fields,
+    save_cookies: save_cookies, method: mt, 
+        check_page: cp, regex: re, re_invert: iv, re_headers: hd, re_icase: ic);
+  if (e == "OK")
+  {
+    replace_kb_item( name: "www/"+port+"/"+SCRIPT_NAME+"/auth_OK", 
+    		     value: ++ HttpLogin_reauthentication_OK);
+    debug_print("Successful authentication on port ", port);
+  }
+  else if (e != "")
+  {
+    replace_kb_item( name: "www/"+port+"/"+SCRIPT_NAME+"/auth_KO", 
+    		     value: ++ HttpLogin_reauthentication_KO);
+    debug_print("Web authentication failed on port ", port, ": ", e);
+  }
+  replace_kb_item(name: "www/"+port+"/login_time", value: unixtime());
+
+  http_login_release_lock(port);
+}
+
+namespace http
+{
+  # Retrieve user-specified credentials
+  var username = get_kb_item('http/login');
+  var password = get_kb_item('http/password');
+
+  var errors = [];
+
+  ##
+  # Check that the channel is encrypted (e.g. HTTPS).
+  ##
+  function https_check(port)
+  {
+    var encaps = get_port_transport(port);
+
+    if (empty_or_null(encaps) || encaps <= ENCAPS_IP)
+    {
+      var msg = strcat('Nessus will not attempt login over cleartext channel on port ', port, '. Please enable HTTPS on the remote host to attempt login.');
+      append_element(var:errors, value:msg);
+
+      return false;
+    }
+
+    return true;
+  }
+
+
+  ##
+  # Make an HTTP request with basic authentication.
+  ##
+  function basic_auth(method, item, port, data, add_headers, follow_redirect, username, password, content_type, exit_on_fail)
+  {
+    var msg;
+
+    # Default to "GET" HTTP method if not specified.
+    if (empty_or_null(method))
+      method = 'GET';
+
+    # Use user UI credentials if user and password are not specified as arguments.
+    if (empty_or_null(username) || empty_or_null(password))
+    {
+      username = http::username;
+      password = http::password;
+
+      if (empty_or_null(username) || empty_or_null(password))
+      {
+        msg = 'HTTP username or password not specified. Please specify username and password to retrieve additional information.';
+        append_element(var:errors, value:msg);
+
+        return NULL;
+      }
+    }
+
+    # Check that the channel is encrypted
+    if (!https_check(port:port))
+      return NULL;
+
+    _basic_auth_URLs[item] = 1;
+
+    var res = http_send_recv3(
+
+      method          : method,
+      item            : item,
+      port            : port,
+
+      data            : data,
+      add_headers     : add_headers,
+      content_type    : content_type,
+      follow_redirect : follow_redirect,
+
+      username        : username,
+      password        : password,
+
+      exit_on_fail    : exit_on_fail
+    );
+
+    http_log_request_response(res:res);
+
+    if (res[0] =~ '^HTTP/[0-9.]+ +401')
+    {
+      msg = strcat('Authentication was unsuccessful for ', item, ' on port ', port, '.');
+      append_element(var:errors, value:msg);
+
+      return NULL;
+    }
+
+    if (res[0] !~ '^HTTP/[0-9.]+ +200' || empty_or_null(res[2]))
+    {
+      msg = strcat('Unexpected response from request for ', item, ' on port ' + port, '.');
+      append_element(var:errors, value:msg);
+
+      return NULL;
+    }
+
+    return res;
+  }
+}

@@ -1,0 +1,454 @@
+#TRUSTED 45dcf6227d5bad090c7020901d24081f87e19d35e5aad80b1195f592f977ff469fc22ea95a5e50e783bf206791f5a5ac8a19ac81c764c508351f13504ee017d85b75f0878ab4c3a19186f8c51619ab34b953575e4a906b2885ebfba5e409cc4685ad3d182ea92e06689f646d77d0d84f56a994130de1912b630801c4731b5c260d226ccd9f1fe42d36e5acd485694bd83b3428e628608de87f05bf9f8e9e501b044b9d98fc252123a0299829847ce201276c63620b9f30dc7a6d4f40c17adbadb183226cbfe14c77acf9291fd426cc77a546a1608bd2bfd02385c5fc67c97d18f0a5e9d3819d20dec1ce32c3c3b7c7f6dfeb1535feac67d58b3b3e4aa5d3876f80389d9a06677a12e5612003a13a735521eb607acfcb9fc0696bed8cac5ffbaa6867bbf76c858b86cbb01973cf79d1c3011f7f1d3aa7069242021cfd8f7058461cb051106f8da93d93424abbb20dae26dc7e5d9a77316c560e356f433735bd0b3b85ee1b64c723cc684d1b413d246db31eabc1aa994802d57648f5d552c29360965c2950002cc24c45b2c21e10479a5ba1ec31627b56f33cfa16bb681182abc5be2686322c267ee1aa6e3a5a923098d8397d110644e8c2fc95b62f84214a678eb51f7854565da72b6287867c507bf5976309d3de892ecebd811856433ae80ddead7acac2ff8f037a339b3497331c453da4f083091634a8b5439804f7c11be860
+#TRUST-RSA-SHA256 3a2d327581b4d36f424b2439ec83c186ba818bdaeb63ff568347221da9541d694bc1f53a5b361c683fc5bf57b2c3180ac48677e8ee042e5d8d653a496429a134b3be3bceceb196f30e7f283b99452957136af63a770fe15f9ae84b46168d1857da388607f237e59acbd67ec4c82f497526ab9493f772d6da8d11d40591682a56bd3d1aff2e7798225cfd425ca79c41fb86777d94c4cde54f764a5b83c2830aad06273e28029918b9b7090b38d619e486c19ff9f967d8c4f896f44f644c1abe26a41543a5490a339661b5e4cb4e8aff2070fafc07a1d77f7521fa27bec16201cb5ef15b61ef7a214993b3af4bbe593e49298f83586164071b82eb8ec3d53d072becd74b2b217dbe9e767d32ccc897661a922dbab5c7d265ddfb5204c02aad3382e78049d11046811e260959623499d091a6a7a7af6674e520497efd5d6f94dd463fa83ebf307dd1318148f23a3eb45a773da7198554bdcefc9508d7618c8cdd12b6f5b9a6b03ad8aa9a9cd3909926e9d08a86774f647f29dbcfdb3916a7ac592f6ac90be1681b08de32366a0140eba57129e2147ce415aaa5787bd08ad7bba0b45e773484fb28ab1c428d8920e18c2e033866af4da37a522f41b5f0d087ea6a6f629306d773b6b3f2a29b38c45c54b361a69c226a7c16d6912af91d5fab353d482abc14d162103848872249eef5d1b69de94fc9a95febbf293ca7510c723b9180
+###
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# Revision: 1
+###
+
+namespace senhasegura
+{
+  var cred_endpoint = '/api/pam/credential/';
+  var oauth2_endpoint = '/api/oauth2/token';
+  var ssh_key_endpoint = '/api/pam/key/';
+
+  object SenhaseguraConfig : integrations::IntegrationConfig
+  {
+    var client_id;
+    var client_secret;
+    var id;
+    var esc_id;
+    var elevate;
+    var private_key;
+    var use_kerb; # boolean use Kerberos
+    var kerb_domain; # Kerberos Domain
+    var domain; # Domain name passed to logins.nasl
+
+    ##
+    # Base Init function designed to be overwritten in subclass.
+    #
+    # @return [boolean] TRUE always. 
+    ##
+    public function init(prefix, postfix)
+    {
+      var md5_pk;
+
+      int_name = "Senhasegura";
+      host = script_get_preference(prefix + "Host" + postfix);
+      port = script_get_preference(prefix + "Port" + postfix);
+      ssl = integrations::boolean(script_get_preference(prefix + "SSL" + postfix));
+      ssl_verify = integrations::boolean(script_get_preference(prefix + "Verify SSL Certificate" + postfix)); 
+      client_id = script_get_preference(prefix + "API User" + postfix);
+      client_secret = script_get_preference(prefix + "API Key" + postfix);
+      id = script_get_preference(prefix + "Credential ID" + postfix);
+      esc_id = script_get_preference(prefix + "Escalation Account Name" + postfix);
+      elevate = script_get_preference("Elevate privileges with" + postfix);
+      ssh_key = integrations::boolean(script_get_preference(prefix + "SSH Private Key" + postfix));
+      private_key = script_get_preference_file_location(prefix + "Private Key To Use" + postfix);
+      use_kerb = integrations::boolean(script_get_preference(prefix + "Use Kerberos KDC" + postfix));
+      kerb_domain = script_get_preference(prefix + "KDC Domain" + postfix);
+
+      md5_pk = hexstr(MD5(fread(private_key)));
+
+      # Strip off the prefix of a url if the user provided it.
+      var parsed_host = integrations::parse_url(url:host);
+      host = parsed_host.target;
+
+      integrations::logger(msg: 'Senhasegura Settings ~' +
+      '\nSenhasegura Host : ' + host +
+      '\nSenhasegura Port : ' + port +
+      '\nUse SSL : ' + ssl +
+      '\nVerify SSL Certificate : ' + ssl_verify +
+      '\nCredential ID : ' + id +
+      '\nUse SSH Key : ' + ssh_key +
+      '\nElevate Privileges With : ' + elevate +
+      '\nEscalation Account Crednetial ID : ' + esc_id +
+      '\nPrivate Key md5 : ' + md5_pk,
+      config:this, lvl:3
+      );
+
+      return TRUE;
+    }
+
+    ##
+    # Removes sensitive data from logs
+    #
+    # @params [msg_string:string] msg to remove sensitive data from
+    #
+    # @return [string] cleaned msg
+    ##
+    public function scrubber(msg)
+    {
+      msg = integrations::scrub(msg:msg,'"password":"(.+?)"',
+                                        '"access_token":"(.+?)"',
+                                        '"refresh_token":"(.+?)"',
+                                        '"content":"(.+?)"',
+                                        '"private_key":"(.+?)"',
+                                        '"public_key":"(.+?)"'
+      );
+
+      return msg;
+    }
+    
+    ##
+    #
+    # Assign config domain value. This value is passed to logins.nasl, rather than
+    # going directly through login.nasl plugin to avoid issues we have with Kerberos Domain.
+    #
+    # @return boolean boolean if domain was assigned to config
+    ##
+    public function config_domain(api_domain)
+    {
+      if(this.use_kerb)
+      {
+        this.domain = this.kerb_domain;
+        integrations::logger(msg:'Domain name provided from Kerberos Domain entry: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else if (!empty_or_null(api_domain)) 
+      {
+        this.domain = api_domain;
+        integrations::logger(msg:'Domain name provided from API data collection: ' + this.domain, lvl:2, config:this);
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+  }
+
+  ##
+  # Function decrypts encrypted sensitive data (passwords) from API with private key
+  #
+  # @param [data:string] encrypted data that needs decryption by private key
+  # @param [config:array] settings configuration
+  #
+  # @return decrypted data (password), or NULL if an error occurred.
+  ##
+  function decrypt(data, config)
+  {
+    var decoded_data, parsed_pk, decrypted_data, pk;
+
+    integrations::logger(msg:"Attempting to decrypt password.", lvl:2, config:config);
+
+    decoded_data = base64_decode(str:data);
+    pk = fread(config.private_key);
+    parsed_pk = pem_to_rsa2(priv:pk);
+
+    if (empty_or_null(parsed_pk))
+    {
+      integrations::logger(msg:"Failed to parse private key file.", lvl:1, config:config);
+      return NULL;
+    }
+    
+    decrypted_data = rsa_decrypt_ex(sig:decoded_data, e:parsed_pk.e, n:parsed_pk.n, d:parsed_pk.d, options:{padding:RSA_PKCS1_OAEP_PADDING});
+
+    if (empty_or_null(decrypted_data))
+    {
+      integrations::logger(msg:"Failed to decrypt sensitive data.", lvl:1, config:config);
+      return NULL;
+    }
+
+    integrations::logger(msg:"Decryption successful.", lvl:2, config:config);
+    return decrypted_data;
+  }
+
+  ##
+  # Authenticate to OAuth2 enpoint and return a token for subsequent requests.
+  #
+  # @param [config:array] configuration array containing key/values for request.
+  # 
+  # @return [array] The authentication token, and success status.
+  ##
+  function _authenticate(config)
+  {
+    var data, headers, res;
+
+    data = "grant_type=client_credentials";
+
+    headers = {
+        "Authorization" : "Basic " + base64(str:config.client_id + ":" + config.client_secret),
+        "Content-Type" : "application/x-www-form-urlencoded; charset=UTF-8"
+      };
+
+    integrations::logger(msg:"Requesting oauth2 token", lvl:3, config:config);
+
+    res = integrations::post(config:config, command:oauth2_endpoint, headers:headers, data:data);
+
+    if (!res.success)
+    {
+      integrations::logger(msg:"Failed to authenticate. Please review your credential configuration and Senhasegura A2A module.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    integrations::logger(msg:"Authentication Succeeded.", lvl:2, config:config);
+    return
+    {
+      token:res.body.access_token,
+      success:TRUE
+    };
+  }
+
+  ##
+  # Function to request credentials
+  # for specified target. Used in logins.nasl and ssh_settings.nasl
+  #
+  # @param [config:array] configuration array containing key/values for request.
+  # @param [escalate:boolean] To gather escalation creds
+  # 
+  # @return [array] username, password, domain and sudo_password for target.
+  ##
+  function _get_credential(config, escalate)
+  {
+    var endpoint, headers, token, result, username, password, domain;
+
+    integrations::logger(msg:"Checking cache for password.", lvl:3, config:config);
+    result = integrations::get_cache(secret:config.int_name + config.id);
+    if (result.success)
+    {
+      integrations::logger(msg:"Found cached SSH password.", lvl:3, config:config);
+      return
+      {
+        success:TRUE,
+        username:result.kv.username,
+        password:result.kv.password,
+        domain:result.kv.domain
+      };
+    }
+    integrations::logger(msg:"SSH Password was not found in cache.", lvl:3, config:config);
+
+    if (escalate)
+    {
+      endpoint = cred_endpoint + config.esc_id;
+    }
+    else
+    {
+      endpoint = cred_endpoint + config.id;
+    }
+
+    result = integrations::get_cache(secret:config.int_name + "token");
+    if(result.success)
+    {
+      token = result.kv.token;
+    }
+    else
+    {
+      var auth = _authenticate(config:config);
+      if (!auth.success)
+      {
+        return {success:FALSE};
+      }
+      token = auth.token;
+      integrations::set_cache(secret:config.int_name + "token", kv:{'token':token});
+    }
+
+    headers = {
+      "Authorization" : "Bearer " + token
+    };
+
+    integrations::logger(msg:"Requesting credentials", lvl:3, config:config);
+    mutex_lock(SCRIPT_NAME);
+    result = integrations::get(config:config, command:endpoint, headers:headers);
+    mutex_unlock(SCRIPT_NAME);
+
+    if (!result.success)
+    {
+      integrations::logger(msg:"Failed to retrieve credentials.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+ 
+    username = result.body.credential.username;
+    password = result.body.credential.password;
+    domain = result.body.credential.domain;
+
+    # If encryption of sensitive data is enabled in A2A API, the user must supply a private key in the scan credentials.
+    if (!empty_or_null(config.private_key))
+    {
+      integrations::logger(msg:"Private Key File attached to scan for password decryption.", lvl:3, config:config);
+      password = decrypt(data:password, config:config);
+    }
+
+    if (empty_or_null(password))
+    {
+      integrations::logger(msg:"Failed to obtain a password.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+
+    integrations::logger(msg:"Successfully retrieved credentials.", lvl:2, config:config);
+    integrations::set_cache(secret:config.int_name + config.id, kv:{'username':username, 'password':password, 'domain':domain});
+    return
+    {
+      success:TRUE,
+      username:username,
+      password:password,
+      domain:domain
+    };
+  }
+
+  ##
+  # Function to request SSH Private Key
+  # for specified target. Used in logins.nasl and ssh_settings.nasl
+  #
+  # @param [config:array] configuration array containing key/values for request.
+  # 
+  # @return [array] The array containing username, private_key, domain and passphrase.
+  ##
+  function _get_private_key(config)
+  {
+    var result, headers, endpoint, username, private_key, passphrase, token, domain;
+
+    integrations::logger(msg:"Checking cache for SSH Private Key.", lvl:3, config:config);
+    result = integrations::get_cache(secret:config.int_name + config.id);
+    if (result.success)
+    {
+      integrations::logger(msg:"Successfully retrieved cached SSH Private Key.", lvl:3, config:config);
+      return
+      {
+        success: TRUE,
+        username: result.kv.username,
+        private_key: result.kv.private_key,
+        passphrase: result.kv.passphrase,
+        domain: result.kv.domain
+      };
+    }
+    integrations::logger(msg:"SSH Private Key was not found in cache.", lvl:3, config:config);
+
+    result = integrations::get_cache(secret:config.int_name + "token");
+    if(result.success)
+    {
+      token = result.kv.token;
+    }
+    else
+    {
+      var auth = _authenticate(config:config);
+      if (!auth.success)
+      {
+        return {success:FALSE};
+      }
+      token = auth.token;
+      integrations::set_cache(secret:config.int_name + "token", kv:{'token':token});
+    }
+
+    headers = {
+      "Authorization" : "Bearer " + token
+    };
+
+    endpoint = ssh_key_endpoint + config.id;
+    integrations::logger(msg:"Requesting SSH Private Key", lvl:3, config:config);
+    mutex_lock(SCRIPT_NAME);
+    result = integrations::get(config:config, headers:headers, command:endpoint);
+    mutex_unlock(SCRIPT_NAME);
+
+    if (!result.success)
+    {
+      integrations::logger(msg:"Failed to retrieve SSH Private Key.", lvl:1, config:config);
+      return {success:FALSE};
+    }
+    integrations::logger(msg:"Successfully retrieved SSH Private Key.", lvl:2, config:config);
+
+    username = result.body.key.username;
+    private_key = result.body.key.private_key;
+    passphrase = result.body.key.password;
+    domain = result.body.key.domain;
+
+    # If encryption of sensitive data is enabled in A2A API, the user must supply a private key in the scan credentials.
+    if (!empty_or_null(config.private_key))
+    {
+      integrations::logger(msg:"Private Key File attached to scan for ssh passphrase ecryption.", lvl:3, config:config);
+      passphrase = decrypt(data:passphrase, config:config);
+    }
+
+    integrations::logger(msg:"Successfully retrieved SSH Private Key.", lvl:2, config:config);
+    integrations::set_cache(secret:config.int_name + config.id, kv:{'username':username, 'private_key':private_key, 'passphrase':passphrase, 'domain':domain});
+    return
+    {
+      success:TRUE,
+      username: username,
+      private_key: private_key,
+      passphrase: passphrase,
+      domain: domain
+    };
+  }
+
+  ##
+  # Public function that wraps all private function and returns username and password
+  # for specified target. Used in logins.nasl and ssh_settings.nasl
+  #
+  # @param [prefix:string] preference prefix passed in get_preference(). Ex. Database, SSH, or SMB
+  # @param [postfix:string] postfix from logins.nasl and ssh_settings.nasl
+  # 
+  # @return [array] The array containing username, private_key, passphrase, password, and sudo_password
+  ##
+  function get_credential(prefix, postfix)
+  {
+    var config, creds, cred_request, esc_request;
+
+    config = new senhasegura::SenhaseguraConfig();
+    config.init(prefix:prefix, postfix:postfix);
+
+    if (config.ssh_key)
+    {
+      cred_request = _get_private_key(config:config);
+      if (!cred_request.success)
+      {
+        return {success:FALSE};
+      }
+    
+      creds['username'] = cred_request.username;
+      creds['private_key'] = cred_request.private_key;
+      creds['passphrase'] = cred_request.passphrase;
+      config.config_domain(api_domain:cred_request.domain);
+      if(config.domain)
+      {
+        creds['domain'] = config.domain;
+      }
+    }
+    else
+    {
+      cred_request = _get_credential(config:config);
+      if (!cred_request.success)
+      {
+        return {success:FALSE};
+      }
+ 
+      creds['username'] = cred_request.username;
+      creds['password'] = cred_request.password;
+      config.config_domain(api_domain:cred_request.domain);
+      if(config.domain)
+      {
+        creds['domain'] = config.domain;
+      }
+    }
+      
+    if (config.elevate != "Nothing" && empty_or_null(config.esc_id))
+    {
+      creds['sudo_password'] = creds.password;
+    }
+
+    if (!empty_or_null(config.esc_id))
+    {
+      integrations::logger(msg:"Requesting escalation password", lvl:3, config:config);
+      esc_request = _get_credential(config:config, escalate:TRUE);
+
+      if (!esc_request.success)
+      {
+        return {success:FALSE};
+      }
+    
+      creds['sudo_password'] = esc_request.password;
+    }
+
+    return
+    {
+      success:TRUE,
+      creds:creds
+    };
+  }
+}

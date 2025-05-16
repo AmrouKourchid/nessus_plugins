@@ -1,0 +1,647 @@
+#TRUSTED 8abbb075b1b295c0c86f9c6fdb246cafd1a8d2e0867c69f135cfff917d3739c9224a13e120a1eb1d6386e2395f98a93b5d256f468c98eed506be4e334af9595ebeed5b3e359a95b734be17970107ba20852971d5730806207298d1f59f5c4cf7f4a8b8ec1982bcdb2a1d8d815b976ddb1506774ccf7bd446ea2295160544442b681a0f89457d7f90cbc27822efa7f24c8826aab89f3e7623c9dabcd7404faec5bfdbf56e3f13f4f36f2bf63e22a6ecac7d7043ceeda45239e44b368d83eef121f91ec17be2ee8963d045afed48c884b6df71ab3adac7a6e3522f351fc3f960c629d1d3f5c53af3ddcbb7bce14bdffb2618c8fdf325662ab0002d53d91d4d57aa4eb0004ecb9d58ae4e78ae17cb814f866bd38b1ac52aea2c4a24016642cea5e10e8eaa9673d753da6afc56d3eedb3bc01480162f539e0471f1ecb54b65af2b1f23952a6a4a007d0e80215435410e8d1a3a8111326dd84bad13dfde2a098f022d8681768e7ae8fbca9ccbae2b96278405898aa9fe5bde40dfac4f6200be566149a4eba7e38cbfcbbe5aa7bb0e510b48b44134f788edee39cd3ef82fec3b4d44271c37b7a402df3d3ed758fad849fe140714ff0b255e2ae8599e724c339bac4f2e2caa7b83fea49fd6eb1b2a0bc8d2f44ed8b27dcdfd99c5ab33a42f96e3dfb46350c3991730063b12722281f6bc99165f47d69288dd9da877fc4f1cabfd3ca78e
+#TRUST-RSA-SHA256 915098378a66d38de30b4e3f3b8bd42db9e0c1ecc209321c326c2f477a9d76e9c3873f44ec26345198b1cc1d564b404ecc1e14c64fe07b6578bf527c7c6332a95f7fe7d99c596865ea8c5aab53ef23541d11fb081522f3a0becdad4f22fe760dc5fd67917c169d746da90279c53bf189dd928eabe1c22899ce685ffc2ec05f76a091fcdb4fd73e2d44e9eb760ac90ae6d98a7a2ab10f6789f8c88ab42f88294e4afa6ba8bafeb0a3f1a973df44cc467b2d41140d7e95aa61564e52830f54f0845ebddff39a5e810f6202beb5fe1129dd607561aae6233b1b4ececeececed923e7bf28ff44d3774b70bc6be39fd8ff6598f8605559490af60ae41f7141c0ce3d9939b88dc7e404a51371e771104260bde2d4a11b4c316f75bfedaa17ee6837d79343b074210cb5b713398f0135b4505b552690185773654642fa6d21a2b8a909f2bb72da82589bf966b2cc2172c9e7a17352444108f74e95ccf2bf45dcde34af5b17297c555e9ff7ace5fc75b2de02cdcd467e74435f4c638c920f61ccfdfa5ef0fcbdb2ba4caca481533507f7e4c4af7e85e8f2f2f681d51251be910d5dd59fae2a740357cd005893d1ec4cd21c98e642bcc3165f8560b6dd4689df9e5695e4c4dda269dbd8635ad98a197752f1c396058895fa8174ae7ab4d08852cc282810e9c72add138196a594342e44ad1f49f904992af4eefc342a7b3028c0c019cb9bc
+###
+# (C) Tenable, Inc.
+#
+# Revision: 1.4
+#
+###
+
+#
+# Check if the host appears to be Infoblox NIOS
+# by this file.
+#
+function is_infoblox_nios()
+{
+  # Check the post login buffer
+  #  - Example:
+  #              Infoblox NIOS Release 9.0.3-50212-ee11d5834df9 (64bit)
+  #    Copyright (c) 1999-2023 Infoblox Inc. All Rights Reserved.
+  #
+  #                  type 'help' for more information
+  if('Infoblox NIOS Release' >< host_info_key_val['post_login_buffer'])
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Post login buffer contains "Infoblox NIOS Release".');
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+##
+# Check if this is Infoblox NIOS based on information collected
+#
+# @return Returns TRUE if we know this is not Infoblox NIOS, FALSE otherwise.
+##
+function infoblox_nios_pre_check_fail()
+{
+  # Have we already checked that the host is not Infoblox NIOS?
+  if (host_info_key_val['host_not_infoblox_nios'])
+    return TRUE;
+
+  # Not Infoblox NIOS if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_ssh() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_asyncos() ||
+      is_staros() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_arrayos()
+    )
+    return TRUE;
+
+  return FALSE;
+}
+
+##
+# Callback for systems with the expected values in collected data.
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return TRUE if this is Infoblox NIOS, NULL otherwise
+##
+function handle_infoblox_nios(session, use_shell_handler, &channel, cmd_res)
+{
+  # Perform an additional since the infoblox_nios_check in ssh_get_info2.inc is weak but the best we can do. 
+  if (!is_infoblox_nios())
+    return FALSE;
+
+  if (session)
+    session.clear_cmd_error();
+
+  # Collect attributes
+  var collector = new infloblox_nios::collector(session, use_shell_handler, channel, cmd_res);
+
+  collector.configure_session();
+
+  collector.get_version_info();
+  collector.get_hotfixes();
+  collector.get_hardware();
+  collector.get_licenses();
+  collector.get_connections();
+
+  # Register KB items
+  replace_kb_item(name:'Host/Infoblox/NIOS', value:TRUE);
+
+  for (var key in collector.errors)
+    replace_kb_item(name:'Host/Infoblox/NIOS/errors/' + key, value: collector.errors[key]);
+  
+  # Register using the OS and hardware registration library.
+  collector.register();
+
+  replace_kb_item(name:'Host/OS/showver', value:collector.attributes.os_name);
+  replace_kb_item(name:'Host/OS/showver/Confidence', value:100);
+  replace_kb_item(name:'Host/OS/showver/Type', value:'embedded');
+
+  # Local checks just means we can run commands on the target host.
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_infoblox_nios.static', value: 106);
+
+  # Build report section
+  report += strcat(
+    '\nLocal checks have been enabled for this host.\n',
+    '\nThe remote host is running ', collector.attributes.os_name, '.\n',
+    '\nOS Security Patch Assessment is not supported for Infoblox NIOS.\n'
+  );
+
+  return TRUE;
+}
+
+##
+# Callback for systems without the expected values in collected data.
+#
+# @param <session>            A session object for current SSH connection.
+# @param <use_shell_handler>  Boolean. Flag to enable shell handler in run_command. (unused)
+# @param <channel>            A channel object for the current SSH connection.
+# @param <cmd_res>            Command result from ssh_get_info2: "show version"
+#
+# @return @Returns NULL
+##
+function handle_not_infoblox_nios(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:'Host/showversion_unrecognized', value:cmd_res);
+
+    # store more details for other handlers to use
+    host_info_key_val['showversion_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_infoblox_nios'] = TRUE;
+  }
+}
+
+namespace infloblox_nios
+{
+  ##
+  # Collects attributes by running commands and parsing the output.
+  ##
+  object collector
+  {
+    var session, use_shell_handler, channel, cmd_res;
+    var attributes = {};
+    var errors = {};
+
+    ##
+    # Constructor
+    ##
+    function collector()
+    {
+      session = _FCT_ANON_ARGS[0];
+      use_shell_handler = _FCT_ANON_ARGS[1];
+      channel = _FCT_ANON_ARGS[2];
+      cmd_res = _FCT_ANON_ARGS[3];
+    }
+
+
+    ##
+    # Run the specified command and run basic checks capturing any issues.
+    #
+    # @param [cmd:str]  command to run
+    # @param [note:str] note to include providing additional insight (optional)
+    #
+    # @return command output if successfully run, false if unsuccessful, or NULL if an error occured
+    ##
+    public function run_and_check_command(cmd, note)
+    {
+      var cmd_res = run_command(cmd:cmd, session:session, use_shell_handler:use_shell_handler, channel:channel);
+
+      if (empty_or_null(cmd_res))
+      {
+        errors[cmd] = strcat('Failed to run "', cmd, '" command.');
+        if (note) 
+          errors[cmd] += ' ' + note;
+
+        return false;
+      }
+
+      # Verify that paging isn't still enabled, causing partial output.
+      if ('Enter <return> for next page' >< cmd_res)
+        errors[cmd] = strcat('Paging was detected in the output of "', cmd, '" resulting in partial command results.');
+
+      # Remove any return carriages.
+      cmd_res = str_replace(string:cmd_res, find:'\r', replace:'');
+      #cmd_res = str_replace(string:cmd_res, find:'\\r', replace:'');
+
+      return cmd_res;
+    }
+
+
+    ##
+    # Configure the session by disabling paging.
+    ##
+    public function configure_session()
+    {
+      # Disable paging
+      var cmd = 'set lines 0';
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (empty_or_null(cmd_res)) return false;
+
+      if ('Number of scroll lines set to 0' >!< cmd_res)
+      {
+        errors[cmd] = 'Failed to disable paging for this session. Output may be truncated.';
+        return false;
+      }
+
+      return true;
+    }
+
+
+    ##
+    # Parse the version, serial number (SN), and hotfix.
+    #  - Example:
+    #  Version : 9.0.3-50212-ee11d5834df9
+    #  SN      : 4226D1DB712A4AE2A2499B59F70C8BFE
+    #  Hotfix  : N/A
+    ##
+    public function get_version_info()
+    {
+      var cmd = 'show version';
+
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (empty_or_null(cmd_res)) return false;
+
+      replace_kb_item(name:'Host/show_version', value:cmd_res);
+
+      var key, matches, pattern;
+
+      var patterns = {
+        full_version  : 'Version *: *([0-9a-f.-]+)',
+        serial_number : 'SN *: *([0-9A-Z]+)',
+        hotfix        : 'Hotfix *: *(Hotfix.*-APPLIED-.*.bin2?)'
+      };
+
+      for (key in patterns)
+      {
+        pattern = patterns[key];
+
+        matches = pregmatch(pattern:pattern, string:cmd_res, icase:TRUE);
+        if (empty_or_null(matches)) continue;
+
+        attributes[key] = matches[1];
+      }
+
+      # Validation
+      if (!attributes.full_version)
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+
+      # Parse full version
+      #  - Example: 9.0.3-50212-ee11d5834df9
+      parse_full_version();
+
+      # Set KB items
+      for (key in attributes)
+      {
+        if (empty_or_null(attributes[key])) continue;
+
+        replace_kb_item(name:'Host/Infoblox/NIOS/' + key, value:attributes[key]);
+      }
+
+      # Clean up items set by past includes.
+      host_info_key_val["showversion_unrecognized"] = NULL;
+
+      rm_kb_item(name:'Host/showversion_unrecognized');
+      rm_kb_item(name:'Host/showversion');
+
+      return true;
+    }
+
+    ##
+    # Parse full version string
+    #
+    # @remark sets keys and values in 'attributes' array
+    ##
+    public function parse_full_version()
+    {
+      if (empty_or_null(attributes.full_version))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'The "attributes.full_version" value is empty or NULL.');
+        return NULL;
+      }
+
+      # full_version
+      #  - Example: 9.0.3-50212-ee11d5834df9
+      var full_version_split = split(attributes.full_version, sep:'-', keep:FALSE);
+
+      # version
+      #  - Example: 9.0.3
+      if (full_version_split[0] =~ '^([0-9]+\\.[0-9.]+)$')
+        attributes.version = full_version_split[0];
+
+      # update
+      #  - Example: 50212
+      if (full_version_split[1] =~ '^([0-9]+)$')
+        attributes.update = full_version_split[1];
+
+      # hash
+      #  - Example: ee11d5834df9
+      if (full_version_split[2] =~ '^([a-f0-9]+)$')
+        attributes.hash = full_version_split[2];
+
+      return NULL;
+    }
+
+    ##
+    # Get hotfixes
+    ##
+    public function get_hotfixes()
+    {      
+      var cmd = 'show upgrade_history';
+
+      var cmd_res = run_and_check_command(cmd:cmd, note:'Detected hotfixes may be incomplete.');
+      if (empty_or_null(cmd_res)) return false;
+
+      if ('REVERT version is' >!< cmd_res)
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+
+      # Retrieve all hotfixes, even reverted hotfixes.
+      var hotfixes = parse_hotfixes(output:cmd_res, version:attributes.version);
+      if (empty_or_null(hotfixes)) return true;
+
+      attributes.hotfixes = [];
+
+      # We are only interested in applied hotfixes
+      for (var hotfix in hotfixes)
+        if (hotfixes[hotfix].type == 'APPLY')
+          append_element(var:attributes.hotfixes, value:hotfixes[hotfix].filename);
+ 
+      # Add the hotfix from 'show version' if available and not already included in the detected hotfixes.
+      #  - Note: this is a backup if we could not retrieve/parse hotfixes 
+      if (!contains_element(var: attributes.hotfixes, value: attributes.hotfix))
+        append_element(var: attributes.hotfixes, value: attributes.hotfix);
+
+      return true;
+    }
+  
+    
+    ##
+    # Retrieve the list of successfully applied hotfixes from the output of 'show upgrade_history' command.
+    #
+    # @param [output:str] output from the 'show upgrade_history' command.
+    # @param [version:str] NIOS version to verify that the hotfix belongs to the current version (optional)
+    #
+    # @remark logic: iterate over log collecting the hotfixes and the type (APPLY or REVERT), potentially overwriting the last type.
+    #
+    # @remark 'show upgrade_history' output example:
+    #  REVERT version is: N/A
+    #  [2024/07/12 15:05:18] Hotfix Hotfix-Hotfix-9.0.1-49999-eb87c18471a7_9.0.2-50201-4282c85b9e4e_9.0.3-50212-ee11d5834df9-J98462-REVERT-182b49ae9c40176496d9108.bin failed, exit status = 1
+    #  [2024/07/12 15:08:29] Hotfix Hotfix-Hotfix-9.0.1-49999-eb87c18471a7_9.0.2-50201-4282c85b9e4e_9.0.3-50212-ee11d5834df9-J98462-REVERT-182b49ae9c40176496d9108.bin failed, exit status = 1
+    #  [2024/07/12 15:13:58] Hotfix Hotfix-Hotfix-9.0.1-49999-eb87c18471a7_9.0.2-50201-4282c85b9e4e_9.0.3-50212-ee11d5834df9-J98462-APPLY-6680b4d9534ae109f31c735a.bin applied successfully
+    #  [2024/08/14 18:44:34] Hotfix Hotfix-Hotfix-9.0.1-49999-eb87c18471a7_9.0.2-50201-4282c85b9e4e_9.0.3-50212-ee11d5834df9-J98462-REVERT-182b49ae9c40176496d9108.bin applied successfully
+    #
+    # @return array with applied and reverted hotfixes (see unit tests for examples)
+    #         NULL if an error occurred
+    ##
+    public function parse_hotfixes(output, version)
+    {
+      # Argument checks
+      if (empty_or_null(output))
+      {
+        dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'The "output" argument is empty or NULL.');
+        return NULL;
+      }
+
+      var hotfixes = {};
+
+      # No hotfixes have been applied.
+      if ('No upgrade history found for this appliance.' >< output)
+        return NULL;
+
+      var lines = split(output, sep:'\n');
+
+      # Create versions to valid that hotfix is applied to the current NIOS version.
+      var versions = [];
+      var modified_version;
+
+      if (!empty_or_null(version))
+      {
+        # Check only the x.y.z version (e.g. 9.0.3 from 9.0.3-50212-ee11d5834df9)
+        matches = pregmatch(string:version, pattern:'^([0-9.]+)');
+        if (empty_or_null(matches))
+        {
+          dbg::detailed_log(lvl:1, msg:'Unexpected version: ' + version);
+        }
+        else
+        {
+          append_element(var:versions, value:matches[1]);
+
+          # Add version in x-y-z format (e.g 8.6.1 => 8-6-1)
+          modified_version = str_replace(string:version, find:'.', replace:'-');
+          append_element(var:versions, value:modified_version);
+        }
+      }
+
+      # Process output line by line.
+      var line, contains_version, matches, hotfix;
+
+      # We only care about the hotfixes, including the revert hotfixes, that were applied sucessfully.
+      #  - Hotfix file name examples:
+      #   Hotfix-Hotfix-9.0.1-49999-eb87c18471a7_9.0.2-50201-4282c85b9e4e_9.0.3-50212-ee11d5834df9-J98462-APPLY-6680b4d9534ae109f31c735a.bin
+      #   Hotfix-8-6-1-NIOS-87709-APPLY-49ddec3b0d18db825767bf0611c40c11-Mon-Oct-10-20-49-25-2022.bin2
+      #   Hotfix-8-6-1-NIOS-87709-REVERT-2e0789123c2f35948f1ee142471ccf4f-Mon-Oct-10-20-48-42-2022.bin2
+      var applied_pattern = 'Hotfix ((.*?)(?:-(APPLY|REVERT)-).*?\\.bin2?) (applied)';
+
+      foreach line (lines)
+      {
+        # Skip this line since it will always appear and is not relevant.
+        if (line =~ '^REVERT version is:') continue;
+
+        # Check that the hotfix applies to the current version of NIOS and not a previous version.
+        if (!empty_or_null(versions))
+        {
+          contains_version = false;
+          foreach modified_version (versions)
+          {
+            if (modified_version >< line)
+            {
+              contains_version = true;
+              break;
+            }
+          }
+
+          # Version not found, skip this line.
+          if (!contains_version)
+          {
+            dbg::detailed_log(lvl:3, msg:'Skipping line since the version was not contained within.', msg_details:{
+                version : { lvl:3, value:version },
+                line    : { lvl:3, value:line }
+              }
+            );
+            
+            continue;
+          }
+        }
+
+        matches = pregmatch(string:line, pattern:applied_pattern);
+        if (empty_or_null(matches)) continue;
+
+        # Use the first part of the file name before the type as the hotfix key.
+        #  - Example: 'Hotfix-8-6-1-NIOS-87709' from 'Hotfix-8-6-1-NIOS-87709-APPLY-49ddec3b0d18db825767bf0611c40c11-Mon-Oct-10-20-49-25-2022.bin2'
+        hotfix = matches[2];
+
+        hotfixes[hotfix] = {
+          filename : matches[1],
+          type     : matches[3]
+        };
+      }
+
+      return hotfixes;
+    }
+
+
+    ##
+    # Retrieve hardware model
+    ##
+    public function get_hardware()
+    {
+      var cmd_res = run_and_check_command(cmd:'show capacity');
+      if (empty_or_null(cmd_res)) return false;
+
+      # Examples:
+      # Hardware Type = IB-VNIOS
+      # Hardware Model = IB-VM-820
+      var matches = pregmatch(string:cmd_res, pattern:'Hardware Model *= *(.+)', icase:TRUE);
+      if (!empty_or_null(matches))
+      {
+        attributes.model = matches[1];
+        return true;
+      }
+
+      # Examples:
+      # Hardware Type = IB-V815
+      matches = pregmatch(string:cmd_res, pattern:'Hardware Type *= *(.+)', icase:TRUE);
+      if (!empty_or_null(matches))
+      {
+        attributes.model = matches[1];
+        return true;
+      }
+
+      return false;
+    }
+
+
+    ##
+    # Retrieve licenses
+    ##
+    public function get_licenses()
+    {
+      var cmd_res = run_and_check_command(cmd:'show license');
+      if (empty_or_null(cmd_res)) return false;
+
+      var lines, line, matches, license;
+      attributes.licenses = [];
+
+      lines = split(cmd_res, sep:'\n', keep:FALSE);
+      foreach line (lines)
+      {
+        # Examples:
+        # License Type	: vNIOS (model IB-VM-820)
+        # License Type	: DHCP
+        # License Type	: DNS
+        #  - Note: possibly has tabs and trailing whitespace characters (e.g. NIOS (Model IB-V815) \r)
+        matches = pregmatch(string:line, pattern:'^\\s*License Type\\s*:\\s*(.+)\\s*$', icase:TRUE);
+        if (empty_or_null(matches)) continue;
+
+        license = trim(matches[1]);
+        append_element(var:attributes.licenses, value:license);
+      }
+
+      # Parse the model, if not already detected.
+      if (empty_or_null(attributes.model))
+      {
+        matches = pregmatch(string:license, pattern:'v?NIOS \\(model ([^\\)]+)\\)', icase:TRUE);
+
+        if (!empty_or_null(matches))
+          attributes.model = matches[1];
+      }
+
+      if (empty_or_null(attributes.licenses))
+        attributes.licenses = NULL;
+
+      return true;
+    }
+
+
+    ##
+    # Retrieve netstat output
+    ##
+    public function get_connections()
+    {
+      var cmd = 'show connections';
+
+      var cmd_res = run_and_check_command(cmd:cmd);
+      if (empty_or_null(cmd_res)) return false;
+
+      if ('Active Internet connections' >!< cmd_res)
+      {
+        errors[cmd] = strcat('Output for "', cmd, '" is not the expected output.');
+        return false;
+      }
+      
+      replace_kb_item(name:'Host/netstat', value:cmd_res);
+
+      return true;
+    }
+
+
+    ##
+    # Register OS including parsing and standardizing.
+    #
+    # @return the return value of register_os() or NULL if an error occurred
+    ##
+    public function register()
+    {
+      var type    = 'local';
+      var method  = 'SSH';
+      var conf    = 100;
+
+      var vendor  = 'Infoblox';
+      var product = 'NIOS';
+
+      # Release
+      if (!empty_or_null(attributes.version))
+      {
+        var version_split = split(attributes.version, sep:'.', keep:FALSE);
+
+        if (version_split[0] =~ '^[0-9]+$')
+          var release = version_split[0];
+      }
+
+      var extra = {
+        'Full Version'  : attributes.full_version,
+        'Hash'          : attributes.hash,
+        'Hotfixes'      : attributes.hotfixes,
+        'Licenses'      : attributes.licenses
+      };
+
+      var extra_no_report = {};
+      if (!empty_or_null(errors)) extra_no_report.errors = errors;
+
+      if (errors['show upgrade_history'])
+        extra_no_report.hotfixes_checked_successfully = FALSE;
+      else
+        extra_no_report.hotfixes_checked_successfully = TRUE;
+
+      # OS Name
+      attributes.os_name = strcat(vendor, ' ', product);
+      if (!empty_or_null(attributes.full_version))
+        attributes.os_name += ' ' + attributes.full_version;
+
+      # Base CPE
+      #  - Example:
+      #    cpe:/o:infoblox:nios:8.5.3
+      var cpe = 'cpe:/o:infoblox:nios';
+
+      var ret = register_os(
+        type        : type,
+        method      : method,
+        confidence  : conf,
+
+        vendor      : vendor,
+        product     : product,
+
+        release     : release,
+        version     : attributes.version,
+        update      : attributes.update,
+        os_name     : attributes.os_name,
+        cpe         : cpe,
+
+        extra           : extra,
+        extra_no_report : extra_no_report
+      );
+
+      if (!empty_or_null(attributes.model))
+      {
+        register_hardware(
+          type        : type,
+          method      : method,
+          confidence  : conf,
+      
+          category    : 'system',
+          vendor      : vendor,
+          product     : attributes.model,
+      
+          serial_number : attributes.serial_number
+        );
+      }
+
+      return ret;
+    }
+  }
+}

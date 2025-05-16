@@ -1,0 +1,1460 @@
+#TRUSTED 6c3386064f86cc615e9f0b0122ece451a61a3f930099936e537ed8893207fbd4adce9b3c220876adc0ec0e39b8452b68bbb0c66e693e8c9392c50c93dbf134f2a9afdead3b8ab9c86a4c7b18501c79b8ef2bec7875a45bd154233aae73b07971b6300001706fc03b4c454c0398a3fa91772c195f5f2852a7a372295bf36490b771ad73eaff2066858f15b8391dff661f87056b30dcb0772109e5da2badfc9d3647e1dfe8d89a9ce80bdd3b377d920f1f430aa3690d44c67eeedc61a23b92267be8f1f6c913f0071d42bb764eb71726157b340b182e91206a100b4594eb4d20444ffa0d46a0dde95b8de8b49fe2724e517d4483c569a6ae05eb55319fa229bcb715a528187a083d57ac842e74ca1140f78b9457fb1aa02d75b4a0dc4b79eb3dce9f792cb1325554d99c566ad351fd679829ab593b2536a0de345d8f4f582d3339f68f3fe38895e7cced91c3dd4de76b70361dc940df15263980b083d6c669560b6b484bd92ac4af18c08f1302e04a56d6c4a9106be557de6f169a6e07db115864fc59d39adf1999cac16b58b07ecdfd3b3da30f7bbf35d14958c1259f8dc119ff6404b731dad91d371003033b3fd7303b2d153c5062a878b8c9186fc825024f30c53f6ca15c26fa04c83cda2d874e6b22b12138e27dc0a0768429ecc150d497912340fa25ac46488ae3450226e930a46793d8dd7ee964e32bfc0c6dc4ee74f38a
+#TRUST-RSA-SHA256 685262644dabb7f7e3781410d27c3ef25617a001fd7963ff806a9c0e4a1e212a613422caa7904d87d2c6adcc039dfad3deb787a42469754680c6fdbfef9781843ef12a2a39ad9e1e547bcaa8700e48b0b3ab3e83c55ca8a9ecb0d99121a3a38ff4f8770796f6459b5d37131fff15d80dcb4381e8f4868f314f1ac5bb70774c5e8c44622e7e827c20732f08caf15f4c8f08a15561d6ffa6d240ec676913c950a8c01937b3b48b0a26df75edefca827a662a5b5be21ef00864730f0fcd8ffdbe8592cc8e642af6eb3e7b71b6de63ea10bab64dfb09dfc2934dc253eb242ae90618608adff19a060fb142f93edc05b33562841ba19d34e8e1372cd06d30d5ee3f71ff53b49410db7f1bf2b30fe0eae1418af49494769b79447cf7cff7fc13b5098f34cc6b5a5fb68b71a86e4c20aecf5213e58471badc513ec171e1bbc5e6d7bbc8e44b4a9c4d91bdf9d084b86e901c542773ed3a3b654551efdcc65b5c09dcea2139e9299ac066176d75c1d4a9907242696f85287a7474ce15f608768bc92edfa502b7a469eeda040ec0c431e1718de4810dad1146c76f744809097ae239dc77ef48e1e6b7d9fa576ad1d6c4a5c3914d308df9e94022c1894cc0eb4bfd360e70ba7cc256586be4f0d7b38ac2d54eefc27ac3620f08d2cf71c05a17c6d29d6cc1ec3e826275f013f6e093cd04c6da53c3964889bd45867804eb4d61df62b3ac8aed
+#------------------------------------------------------------------------------
+###
+# Functions and object providing a framework and API to run multi-argument commands
+# on nix devices.
+#
+# @license
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security, Inc.
+#
+# @NOGPL@
+#
+# @library command_builder.inc
+#
+# Revision: 1.20
+###
+
+
+namespace command_builder
+{
+  var timeout_exists = NULL;
+  var perl_exists = NULL;
+
+  object command
+  {
+    var cmd_name = "";
+    # A list of arrays representing positonal arguments
+    var positional = [];
+    # An array of arrays representing named arguments
+    var named = {};
+    var cmd_initialized = FALSE;
+    var default_timeout = NULL;
+    var default_stderr_to_dev_null = FALSE;
+    var positionals_have_has_many = FALSE;
+    var positionals_beginning = FALSE;
+    var positionals_end = FALSE;
+    var cmd_exists = FALSE;
+    var cmd_exists_check = {};
+    var log_name = "";
+    var obj_name = 'command.';
+
+    ##
+    # The command object's initializer
+    #
+    # @anonparam [cmd_name:string] The command that the command object will run.
+    #
+    # @remark This initializer sets a default name of the log file for its functions.
+    # The default log file is ``command_builder-inc-<cmd_name>.log`` but that can be changed
+    # with the function `command_builder::command.set_log_name()`_.
+    ##
+    function command()
+    {
+      var tenb_cmd;
+
+      cmd_name = _FCT_ANON_ARGS[0];
+      tenb_cmd = tenable_utils_replacement(cmd_name);
+
+      if(tenb_cmd != cmd_name)
+      {
+        cmd_name = tenb_cmd;
+        cmd_exists = tenb_cmd;
+        replace_kb_item(name:"Host/command_builder/" + cmd_name, value:tenb_cmd);
+      }
+
+      obj_name = '[Command "' + cmd_name + '"] ' + obj_name;
+      # Default command exists host check
+      # If the command doesn't exit will need a custom check
+      cmd_exists_check["validate_func"] = @validate_command_exists;
+      cmd_exists_check["cmd"] = 'type ' + cmd_name + ' 2>&1';
+
+      log_name = 'command_builder-inc-' + cmd_name + '.log';
+    }
+
+    ##
+    # Checks if command exists on host. Uses default command check
+    # unless otherwise specfied through `command_builder::command.set_command_exists_host_check()`_.
+    #
+    # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+    #
+    # @remark This function doesn't return anything, but instead it puts its result in the
+    # KB item ``Host/command_builder/<cmd_name>``. With ``cmd_name`` being the
+    # command for which the object was initialized.
+    ##
+    function host_check_command_exists(cache_only)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(cache_only))
+        cache_only = FALSE;
+
+      var kb_name = "Host/command_builder/" + cmd_name;
+
+      # check cache
+      cmd_exists = get_kb_item(kb_name);
+
+      if(isnull(cmd_exists) && !cache_only)
+      {
+        var buf = info_send_cmd(cmd:cmd_exists_check["cmd"]);
+
+        dbg::detailed_log(
+          lvl:3,
+          src:fn,
+          name:log_name,
+          msg:'Checked the existence of command "'+cmd_name+'" with the following command which returned the following output.',
+          msg_details:{
+            "Command":{"lvl":3, "value":cmd_exists_check["cmd"]},
+            "Output":{"lvl":3, "value":buf}});
+
+        cmd_exists = cmd_exists_check["validate_func"](tolower(buf));
+
+        if (!cmd_exists)
+          dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:'Command "' + cmd_name + '" does not exist on the host.');
+
+        # cache finding
+        replace_kb_item(name:kb_name, value:cmd_exists);
+      }
+    }
+
+    ##
+    # Checks if named arguments with host_check values are available on host.
+    #
+    # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+    #
+    # @remark This function doesn't return anything, but instead it puts its results in the
+    # KB items ``Host/command_builder/<cmd_name>/<arg name>``. With ``cmd_name`` being the
+    # command for which the object was initialized. A new KB item is created for each arguments defined
+    # with the function `command_builder::command.add_named_argument()`_.
+    ##
+    function host_check_named_arguments(cache_only)
+    {
+      var arg, buf, option_exists, kb_name;
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(cache_only))
+        cache_only = FALSE;
+
+      foreach arg (keys(named))
+      {
+        if (isnull(named[arg]["host_check"]["cmd"])) continue;
+
+        kb_name = "Host/command_builder/" + cmd_name + "/" + arg;
+
+        # check cache
+        option_exists = get_kb_item(kb_name);
+        if(!isnull(option_exists))
+        {
+          named[arg]["host_check"]["exists"] = option_exists;
+          continue;
+        }
+        else if(!cache_only)
+        {
+          buf = info_send_cmd(cmd:named[arg]["host_check"]["cmd"]);
+
+          dbg::detailed_log(
+            lvl:3,
+            src:fn,
+            name:log_name,
+            msg:'Checked the existence of argument "'+arg+'" with the following command which returned the following output.',
+            msg_details:{
+              "Command":{"lvl":3, "value":named[arg]["host_check"]["cmd"]},
+              "Output":{"lvl":3, "value":buf}});
+
+          buf = tolower(buf);
+
+          option_exists = named[arg]["host_check"]["validate_func"](buf);
+
+          if (!option_exists)
+            dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:'Argument "' + arg + '" does not exist on the host.');
+
+          named[arg]["host_check"]["exists"] = option_exists;
+
+          # cache finding
+          replace_kb_item(name:kb_name, value:option_exists);
+        }
+      }
+    }
+
+    ##
+    # Generate command string for positional argument.
+    #
+    # @param [position:integer] Index of the positional argument (can be passed anonymously).
+    # @param [value:string] The value for the argument (can be passed anonymously).
+    #
+    # @return [list] The status and result of the operation, or the error message.
+    #
+    # @remark
+    # The structure of the returned list is
+    # ```
+    # [
+    #   sh_commands::CMD_OK if successful or sh_commands::CMD_FAIL on error,
+    #   the generated and validated cmd string or error message
+    # ]
+    # ```
+    ##
+    function generate_positional_cmd_string(position, value)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(position))
+        position = _FCT_ANON_ARGS[0];
+      if (isnull(value))
+        value = _FCT_ANON_ARGS[1];
+
+      var cmd = "";
+      var buf, err;
+
+      if (positional_argument_value_is_quoted(position))
+        buf = "'" + value + "'";
+      else
+        buf = value;
+
+      if (positional_argument_validate_value(position, buf))
+      {
+        cmd += " ";
+        cmd += buf;
+      }
+      else
+      {
+        err = 'Positional argument "' + value + '" failed validation for positional ' + position + '.';
+        dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+        return [sh_commands::CMD_FAIL, err];
+      }
+
+      return [sh_commands::CMD_OK, cmd];
+    }
+
+    ##
+    # Perform command checks against host.
+    #
+    # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+    ##
+    public function init_cmd(cache_only)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(cache_only))
+        cache_only = FALSE;
+
+      if (!cmd_initialized)
+      {
+        dbg::detailed_log(lvl:2, src:fn, name:log_name, msg:'Running commands to check existence of command and arguments.');
+        host_check_command_exists(cache_only:cache_only);
+        host_check_named_arguments(cache_only:cache_only);
+        cmd_initialized = TRUE;
+        dbg::detailed_log(lvl:2, src:fn, name:log_name, msg:'Finished checking existence of command and arguments.');
+      }
+    }
+
+    ##
+    # Sets the name of the log file to which the command builder's debugging logs should be sent.
+    #
+    # @param [name:string] The name of the log file (must end in ".log").
+    ##
+    public function set_log_name(name)
+    {
+      if (!empty_or_null(name) && typeof(name) =~ 'string|data')
+        log_name = name;
+    }
+
+    ##
+    # Check command is available on host.
+    #
+    # @return [boolean] TRUE if it is and FALSE if not.
+    ##
+    public function command_exists_on_host()
+    {
+      init_cmd(cache_only:TRUE);
+      return cmd_exists;
+    }
+
+    ##
+    # Check if named argument is defined for command.
+    # I.e. if the argument was defined with `command_builder::command.add_named_argument()`_.
+    #
+    # @param [name:string] The name of the argument to check (can be passed anonymously)
+    #
+    # @return [boolean] TRUE if it is and FALSE if not.
+    ##
+    public function named_argument_is_available(name)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(name))
+        name = _FCT_ANON_ARGS[0];
+
+      if (isnull(named[name]))
+        return FALSE;
+
+      return TRUE;
+    }
+
+    ##
+    # Check if named argument is available on host.
+    #
+    # @param [name:string] The name of the argument to check (can be passed anonymously)
+    #
+    # @return [boolean] TRUE if it is and FALSE if not.
+    #
+    # @remark If no host check was defined for the given argument, this function will always return TRUE.
+    ##
+    public function named_argument_exists_on_host(name)
+    {
+      if (isnull(name))
+        name = _FCT_ANON_ARGS[0];
+
+      init_cmd(cache_only:TRUE);
+
+      if (named_argument_is_available(name) && !isnull(named[name]["host_check"]["exists"]))
+      {
+        return named[name]["host_check"]["exists"];
+      }
+
+      # If there is no host check always exists
+      return TRUE;
+    }
+
+    ##
+    # Check if named argument has a value.
+    # As defined by `command_builder::command.add_named_argument()`_.
+    #
+    # @param [name:string] The name of the argument to check (can be passed anonymously)
+    #
+    # @return [boolean] TRUE if does and FALSE if not.
+    ##
+    public function named_argument_has_value(name)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(name))
+        name = _FCT_ANON_ARGS[0];
+
+      if (!named_argument_is_available(name) || !named[name]["value"])
+        return FALSE;
+
+      return TRUE;
+    }
+
+    ##
+    # Check if named argument should be quoted.
+    # As defined by `command_builder::command.add_named_argument()`_.
+    #
+    # @param [name:string] The name of the argument to check (can be passed anonymously)
+    #
+    # @return [boolean] TRUE if needs quoted and FALSE if not.
+    ##
+    public function named_argument_value_is_quoted(name)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(name))
+        name = _FCT_ANON_ARGS[0];
+
+      if (!named_argument_is_available(name) || !named[name]["quote_value"])
+        return FALSE;
+
+      return TRUE;
+    }
+
+    ##
+    # Run the named argument's validate function against value.
+    #
+    # @param [name:string] The name of the argument to validate (can be passed anonymously).
+    # @param [value:any] The value for the argument, that needs to be validated (can be passed anonymously).
+    #
+    # @return [boolean] TRUE if validates and FALSE if invalid.
+    #
+    # @remark The argument's validation function should be defined with `command_builder::command.add_named_argument()`_.
+    ##
+    public function named_argument_validate_value(name, value)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(name))
+        name = _FCT_ANON_ARGS[0];
+      if (isnull(value))
+        value = _FCT_ANON_ARGS[1];
+
+      if (!named_argument_is_available(name) ||
+          !named_argument_has_value(name) ||
+          !named[name]["validate_func"](value))
+      {
+        dbg::detailed_log(
+          lvl:1,
+          src:fn,
+          name:log_name,
+          msg:'The following value for named argument "' + name + '" failed validation.',
+          msg_details:{'Value':{'lvl':1, 'value':value}});
+        return FALSE;
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Check if position is in range of positional arguments.
+    #
+    # @param [position:integer] Index of the positional argument (can be passed anonymously).
+    #
+    # @return [boolean] TRUE if is a valid index and FALSE if not.
+    ##
+    public function positional_argument_is_available(position)
+    {
+      if (isnull(position))
+        position = _FCT_ANON_ARGS[0];
+
+      return position < max_index(positional);
+    }
+
+    ##
+    # Check if positional should be quoted.
+    #
+    # @param [position:integer] Index of the positional argument (can be passed anonymously).
+    #
+    # @return [boolean] TRUE if needs quoted and FALSE if not.
+    ##
+    public function positional_argument_value_is_quoted(position)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(position))
+        position = _FCT_ANON_ARGS[0];
+
+      if (!positional_argument_is_available(position) ||
+          !positional[position]["quote_value"])
+      {
+        dbg::detailed_log(lvl:3, src:fn, name:log_name, msg:'The value of positional argument number ' + position + ' does not need to be wrapped in quotes.');
+        return FALSE;
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Run the positional argument's validate function against value.
+    #
+    # @param [position:integer] Index of the positional argument (can be passed anonymously).
+    # @param [value:any] The value for the argument, that needs to be validated (can be passed anonymously).
+    #
+    # @return [boolean] TRUE if validates and FALSE if invalid.
+    #
+    # @remark The argument's validation function should be defined with `command_builder::command.add_positional_argument()`_.
+    ##
+    public function positional_argument_validate_value(position, value)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(position))
+        position = _FCT_ANON_ARGS[0];
+      if (isnull(value))
+        value = _FCT_ANON_ARGS[1];
+
+      if (!positional_argument_is_available(position) ||
+          !positional[position]["validate_func"](value))
+      {
+        dbg::detailed_log(
+          lvl:1,
+          src:fn,
+          name:log_name,
+          msg:'The following value for positional argument number ' + position + ' failed validation.',
+          msg_details:{'Value':{'lvl':1, 'value':value}});
+        return FALSE;
+      }
+
+      return TRUE;
+    }
+
+    ##
+    # Overrides default method used to check if command exists on host.
+    #
+    # @param [cmd:string] Command string to execute on host to see if command exists (can be passed anonymously).
+    # @param [validate_func:function reference] Function reference to see if the command exists (can be passed anonymously).
+    #
+    # @remark
+    # The ``validate_func`` must satisfy:
+    #
+    # - Take anonparam of the cmd output.
+    # - Return TRUE if the command exists and FALSE if it doesn't.
+    ##
+    public function set_command_exists_host_check(cmd, validate_func)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(cmd))
+        cmd = _FCT_ANON_ARGS[0];
+      if (isnull(validate_func))
+        validate_func = _FCT_ANON_ARGS[1];
+
+      if (isnull(cmd))
+        dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Missing argument "cmd".');
+
+      if (isnull(validate_func) || typeof(validate_func) != 'function')
+      {
+        dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Missing argument "validate_func" or it is not a function reference.');
+      }
+
+      cmd_exists_check["cmd"] = tenable_utils_replacement(cmd);
+      cmd_exists_check["validate_func"] = validate_func;
+    }
+
+    ##
+    # Set default timeout setting.
+    #
+    # @param [timeout:integer] Number of seconds for default timeout (can be passed anonymously).
+    ##
+    public function set_default_timeout(timeout)
+    {
+      if (isnull(timeout))
+        timeout = _FCT_ANON_ARGS[0];
+
+      default_timeout = timeout;
+    }
+
+    ##
+    # Get value of default timeout setting.
+    #
+    # @return [integer] Default timeout value in seconds.
+    ##
+    public function get_default_timeout()
+    {
+      return default_timeout;
+    }
+
+    ##
+    # Set default value of stderr to /dev/null setting.
+    #
+    # @param [stderr_to_dev_null:boolean] TRUE to construct commands to send stderr to /dev/null (can be passed anonymously).
+    ##
+    public function set_default_stderr_to_dev_null(stderr_to_dev_null)
+    {
+      if (isnull(stderr_to_dev_null))
+        stderr_to_dev_null = _FCT_ANON_ARGS[0];
+
+      default_stderr_to_dev_null = stderr_to_dev_null;
+    }
+
+    ##
+    # Get value of default stderr to /dev/null setting.
+    #
+    # @return [boolean] The current value of the stderr to /dev/null setting.
+    ##
+    public function get_default_stderr_to_dev_null()
+    {
+      return default_stderr_to_dev_null;
+    }
+
+    ##
+    # Set positionals to only be allowed at the beginning.
+    #
+    # @anonparam [1st:boolean] TRUE to only allow positional arguments to be at the beginning of the command.
+    ##
+    public function set_positionals_at_beginning()
+    {
+      if (_FCT_ANON_ARGS[0])
+      {
+        positionals_end = FALSE;
+        positionals_beginning = TRUE;
+      }
+      else
+      {
+        positionals_beginning = FALSE;
+      }
+    }
+
+    ##
+    # Set positionals to only be allowed at the end.
+    #
+    # @anonparam [1st:boolean] TRUE to only allow positional arguments to be at the end of the command.
+    ##
+    public function set_positionals_at_end()
+    {
+      if (_FCT_ANON_ARGS[0])
+      {
+        positionals_beginning = FALSE;
+        positionals_end = TRUE;
+      }
+      else
+      {
+        positionals_end = FALSE;
+      }
+    }
+
+    ##
+    # Adds a positional argument to the command definition.
+    #
+    # @param [validate_func:function reference] The function used to validate the argument's value.
+    # @param [quote_value:boolean] If TRUE automatically quotes value with single quotes in command string (optional, defaults to FALSE).
+    #
+    # @param [has_many:boolean] If TRUE allows last positional to consume additional optional positionals (optional, defaults to FALSE).
+    #                           Allowed only if positionals are set to beginning or end.
+    #
+    # @remark This function will call the ``exit()`` function if an error occurs.
+    #
+    # @remark
+    # The function given to ``validate_func`` must satisfy:
+    #
+    # - Take a single anon argument meant to be the value of the argument to validate.
+    # - Return TRUE if the value was validated, FALSE otherwise.
+    ##
+    public function add_positional_argument(validate_func, quote_value, has_many)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(validate_func))
+        validate_func = _FCT_ANON_ARGS[0];
+      if (isnull(quote_value))
+        quote_value = FALSE;
+      if (isnull(has_many))
+        has_many = FALSE;
+
+      if (typeof(validate_func) != 'function')
+      {
+        dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Argument "validate_func" must be of function reference.');
+      }
+
+      if (has_many)
+      {
+        if (positionals_have_has_many)
+        {
+          dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Another positional argument already has "has_many" set, and we can only have one.');
+        }
+
+        if (!positionals_beginning && !positionals_end)
+        {
+          dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Argument "has_many" only honoured if positionals are set to the beginning or end.');
+        }
+
+        positionals_have_has_many = TRUE;
+      }
+      else
+      {
+        if (positionals_have_has_many)
+        {
+          dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Another positional argument already has "has_many" set, and it must be the last positional.');
+        }
+      }
+
+      positional[max_index(positional)] = {
+        "validate_func": validate_func,
+        "quote_value": quote_value,
+        "has_many": has_many
+      };
+    }
+
+    ##
+    # Adds a named argument to the command definition.
+    #
+    # @param  [name:string] Name of the argument (can be passed anonymously).
+    # @param  [validate_func:function reference] Function reference for value validation function if argument takes a value (can be passed anonymously).
+    # @param  [host_check:array] Array containing a check to run on the host to verify the existence of the argument.
+    # @param  [value:boolean] Named argument has value if TRUE and doesn't if FALSE (optional, defaults to TRUE).
+    # @param  [quote_value:boolean] If TRUE automatically quotes value with single quotes in command string (optional, defaults to FALSE).
+    #
+    # @return [boolean] TRUE only, or calls ``exit()`` if an error occurs.
+    #
+    # @remark
+    # The array given to ``host_check`` must have the following structure:
+    # ```
+    #   {
+    #     "cmd": <command to run to verify the argument's existence>,
+    #     "validate_func": <function reference that verify the output of cmd>
+    #   }
+    # ```
+    #
+    # @remark
+    # The function given to ``validate_func`` must satisfy:
+    #
+    # - Take a single anon argument meant to be the value of the argument to validate.
+    # - Return TRUE if the value was validated, FALSE otherwise.
+    #
+    # On the other hand, the function reference given as ``validate_func`` in the ``host_check`` array must satisfy:
+    #
+    # - Take a single anon argument meant to be the output of the command ``cmd`` in ``host_check``.
+    # - Return TRUE if the output of ``cmd`` shows the existence of the argument, FALSE otherwise.
+    ##
+    public function add_named_argument(name, validate_func, host_check, value, quote_value)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+
+      if (isnull(name))
+        name = _FCT_ANON_ARGS[0];
+      if (isnull(quote_value))
+        quote_value = FALSE;
+
+      if (isnull(name))
+      {
+        dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Missing argument "name".');
+      }
+
+      if (!isnull(host_check["cmd"]))
+        host_check["cmd"] = tenable_utils_replacement(host_check["cmd"]);
+
+      if(named_argument_is_available(name))
+      {
+        dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Named argument "'+ name +'" was already defined for this command.');
+      }
+
+      if (isnull(value))
+        value = TRUE;
+      if (value)
+      {
+        if (isnull(validate_func))
+          validate_func = _FCT_ANON_ARGS[1];
+        if (isnull(validate_func) || typeof(validate_func) != 'function')
+        {
+          dbg::detailed_log_and_exit(src:fn, exit_level:1, name:log_name, exit_msg:'Missing argument "validate_func" or it is not a function reference.');
+        }
+      }
+
+      if (!(!isnull(host_check) &&
+            !isnull(host_check["cmd"]) &&
+            !isnull(host_check["validate_func"]) &&
+            typeof(host_check["validate_func"]) == 'function'))
+      {
+        host_check = {};
+      }
+
+      named[name] = {
+        "value" : value,
+        "quote_value" : quote_value,
+        "validate_func" : validate_func,
+        "host_check" : host_check
+      };
+      return TRUE;
+    }
+
+    ##
+    # Validates command and returns string to execute on the host.
+    #
+    # @param [args:list] A list of argument names and/or values in the order in which they should be places in the command.
+    #                    (Elements of the list can be passed anonymously, still taking care of the order)
+    #
+    # @param [named_only:boolean] If TRUE then expects only named arguments and no positional arguments.
+    #                             Useful for partial argument lists. (optional, defaults to FALSE)
+    #
+    # @return [list] A list containing the success status of the function and the generated command or an error message.
+    #
+    # @remark
+    # The returned list is such that:
+    #
+    # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+    # - Index 1: The generated command if successful, or the error message if an error occurred.
+    ##
+    public function generate_command(args, named_only)
+    {
+      var fn = obj_name + FUNCTION_NAME;
+      var cmd, err, name, pos_cmd, buf;
+
+      init_cmd(cache_only:TRUE);
+
+      if(!command_exists_on_host())
+        return [sh_commands::CMD_FAIL, cmd_name + " command doesn't exist on host."];
+
+      if (isnull(args) && !isnull(_FCT_ANON_ARGS))
+      {
+        args = _FCT_ANON_ARGS;
+      }
+      else if(isnull(args))
+      {
+        args = [];
+      }
+
+      if (isnull(named_only))
+        named_only = FALSE;
+
+      if (!named_only)
+      {
+        cmd = cmd_name;
+      }
+      else
+      {
+        cmd = "";
+      }
+
+      if (!named_only && max_index(positional) > max_index(args))
+      {
+        err = 'Expected ' + max_index(positional) + ' positional argument(s), but received ' + max_index(args) + '.';
+        dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+        return [sh_commands::CMD_FAIL, err];
+      }
+
+      var i = 0;
+      var positional_index = -1;
+
+      # Positionals forced to the beginning
+      if (!named_only && positionals_beginning)
+      {
+        for (; i < max_index(args); ++i)
+        {
+          if (!positionals_have_has_many && i == max_index(positional))
+          {
+            break;
+          }
+          else if(i < max_index(positional))
+          {
+            positional_index = i;
+          }
+          else
+          {
+            if (named_argument_is_available(args[i]))
+            {
+              break;
+            }
+          }
+
+          pos_cmd = generate_positional_cmd_string(positional_index, args[i]);
+          if (pos_cmd[0] == sh_commands::CMD_OK)
+          {
+            cmd += pos_cmd[1];
+          }
+          else
+          {
+            return pos_cmd;
+          }
+        }
+      }
+
+      for (; i < max_index(args); ++i)
+      {
+        if (!named_argument_is_available(args[i]))
+        {
+          if (!named_only &&
+              !positionals_beginning &&
+              !positionals_end &&
+              positional_index < max_index(positional)-1)
+          {
+            # Positionals mixed
+            ++positional_index;
+            pos_cmd = generate_positional_cmd_string(positional_index, args[i]);
+            if (pos_cmd[0] == sh_commands::CMD_OK)
+            {
+              cmd += pos_cmd[1];
+            }
+            else
+            {
+              return pos_cmd;
+            }
+
+            continue;
+          }
+          else
+          {
+            if (!named_only && positionals_end)
+            {
+              break;
+            }
+            else
+            {
+              err = 'Unknown named argument "' + args[i] + '".';
+              dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+              return [sh_commands::CMD_FAIL, err];
+            }
+          }
+        }
+
+        # Named argument check (suppress for AIX)
+        if (get_kb_item("Host/AIX/version"))
+        {
+          dbg::detailed_log(lvl:3, src:fn, name:log_name, msg:'Named argument "' + args[i] + '" unavailable for AIX. Proceeding Anyway.');
+        }
+        else if (!named_argument_exists_on_host(args[i]))
+        {
+          err = 'Named argument "' + args[i] + '" is unavailable on the host.';
+          dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+          return [sh_commands::CMD_FAIL, err];
+        }
+
+        if (named_argument_has_value(args[i]))
+        {
+          name = args[i];
+          ++i;
+          if(named_argument_value_is_quoted(name) && !isnull(args[i]))
+            buf = "'" + args[i] + "'";
+          else
+            buf = args[i];
+          if (named_argument_validate_value(name, buf))
+          {
+            cmd += " " + name + " ";
+            cmd += buf;
+          }
+          else
+          {
+            err = 'Named argument "' + name + '" has a invalid value "' + args[i] + '".';
+            dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+            return [sh_commands::CMD_FAIL, err];
+          }
+        }
+        else
+        {
+          cmd += " " + args[i];
+        }
+      }
+
+      # Positionals forced at end
+      if (!named_only && positionals_end)
+      {
+        # Track where i started so we can subtract that
+        # from i to get current positional
+        var count_at_end = i;
+        for (; i < max_index(args); ++i)
+        {
+          if (!positionals_have_has_many && (i - count_at_end) == max_index(positional))
+          {
+            if ((i+1) <= max_index(args))
+            {
+              err = 'Expected ' + max_index(positional) + ' positional argument(s) at the end.';
+              dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+              return [sh_commands::CMD_FAIL, err];
+            }
+
+            break;
+          }
+          else if((i - count_at_end) < max_index(positional))
+          {
+            positional_index = i - count_at_end;
+          }
+
+          pos_cmd = generate_positional_cmd_string(positional_index, args[i]);
+          if (pos_cmd[0] == sh_commands::CMD_OK)
+          {
+            cmd += pos_cmd[1];
+          }
+          else
+          {
+            return pos_cmd;
+          }
+        }
+      }
+
+      if (!named_only && positional_index+1 < max_index(positional))
+      {
+        err = 'Expected ' + max_index(positional) + ' positional argument(s), but received ' + (positional_index + 1) + '.';
+        dbg::detailed_log(lvl:1, src:fn, name:log_name, msg:err);
+        return [sh_commands::CMD_FAIL, err];
+      }
+
+      return [sh_commands::CMD_OK, cmd];
+    }
+
+    ##
+    # Runs command on host with timeout capabilities using command's default.
+    # Also uses default for stderr to ``/dev/null`` setting on command.
+    #
+    # @param [cmd:string]                 Command string to execute on host.
+    # @param [timeout:integer]            Timeout parameter for command (optional, defaults to command's default setting).
+    # @param [stderr_to_dev_null:boolean] If TRUE redirects stderr to ``/dev/null`` on host (optional, defaults to command's default setting).
+    # @param [multi_cmd:boolean]          Set to TRUE if wrapping a series of piped commands (optional, defaults to FALSE).
+    # @param [pread_options:array]        Options to pass to ``pread_ex()`` for agents (optional).
+    #
+    # @return The value returned by `command_builder::run()`_.
+    #
+    # @remark This function *does not* validate the command. This is a helper function for running
+    # already validated commands and shouldn't be used directly by plugins.
+    ##
+    public function run(cmd, timeout, stderr_to_dev_null, multi_cmd, pread_options)
+    {
+      if (isnull(timeout))
+        timeout = default_timeout;
+      if (isnull(stderr_to_dev_null))
+        stderr_to_dev_null = default_stderr_to_dev_null;
+
+      return command_builder::run(cmd:cmd, timeout:timeout, stderr_to_dev_null:stderr_to_dev_null, multi_cmd:multi_cmd, pread_options:pread_options);
+    }
+  }
+
+
+  ##
+  # Initializes general command runner requirments.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host. Defaults to FALSE.
+  #
+  # @return [list] A list containing the success status of the function and an empty string or the error message.
+  #
+  # @remark
+  # The returned list is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - Index 1: An empty string if successful, or the error message if an error occurred.
+  ##
+  function init_cmd_runner(cache_only)
+  {
+    var init_kb = "Host/command_builder/run_init";
+
+    if (isnull(cache_only))
+      cache_only = FALSE;
+
+    if (cache_only && !get_kb_item(init_kb))
+    {
+      return [sh_commands::CMD_FAIL, "command_builder not initialized. Add command_builder_init.nasl as a script dependency."];
+    }
+
+    if(isnull(timeout_exists))
+      does_timeout_exist(cache_only:cache_only);
+    if(isnull(perl_exists))
+      does_perl_exist(cache_only:cache_only);
+
+    if (!cache_only)
+    {
+      replace_kb_item(name:init_kb, value:TRUE);
+    }
+
+    return [sh_commands::CMD_OK, ""];
+  }
+
+  ##
+  # Wraps command in host local timeout.
+  #
+  # @param [cmd:string] Command string to execute on host.
+  # @param [timeout:integer] Timeout in seconds.
+  # @param [multi_cmd:boolean] Set to TRUE if wrapping a series of piped commands. Defaults FALSE.
+  #
+  # @return [list] A list containing the success status of the function and the generated command or an error message.
+  #
+  # @remark
+  # The returned list is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK``.
+  # - Index 1: The generated command if successful, or the error message if an error occurred.
+  ##
+  function add_command_timeout(cmd, timeout, multi_cmd)
+  {
+    if (isnull(multi_cmd))
+      multi_cmd = FALSE;
+
+    var init_result = init_cmd_runner(cache_only:TRUE);
+
+    if (init_result[0] == sh_commands::CMD_FAIL)
+    {
+      return init_result;
+    }
+
+    cmd = tenable_utils_replacement(cmd);
+
+    # Needs wrapped by sh to give all commands one parent process
+    if (multi_cmd)
+    {
+      cmd = str_replace(string:cmd, find:'"', replace:'\\"');
+      cmd = str_replace(string:cmd, find:'$', replace:'\\$');
+      cmd = 'sh -c "' + cmd + '"';
+    }
+
+    if (timeout_exists)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Using the command "timeout" for timeout detection.');
+      # Allows returns a status value
+      # Extra newline before status needed to determine truncated output.
+      cmd = 'timeout -s9 ' + timeout + 's ' + cmd + '; RET=$?; echo; echo "$RET"';
+    }
+    else if(perl_exists)
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Using the "perl" method for timeout detection.');
+      # A perl stand in for the timeout command.
+      var cmd_wrapper = 'timeout(){ perl -e \'$SIG{CHLD} = "IGNORE";$pid = fork;if($pid == 0){setpgrp;shift;system @ARGV;exit;}$i = 0;$t = shift;while($i < $t){if(kill(0, $pid)){sleep 1;$i++;}else{exit 0;}}kill -9, getpgrp($pid);print "\\nTERMINATED\\n";\' "$@"; } ; timeout ';
+
+      if (get_kb_item("Host/AIX/version"))
+      {
+        cmd_wrapper = 'timeout(){ perl -e \'my %children;$SIG{CHLD} = sub {local ($!, $?);while ((my $pid = waitpid(-1, WNOHANG)) > 0) {delete $children{$pid};}};my $pid = fork;if ($pid == 0) {setpgrp;shift;system @ARGV;exit 1;} else {$children{$pid}=1;$i = 0;$t = shift;while($i < $t){if(kill(0, $pid)){sleep 1;$i++;}else{exit 0;}}kill -9, $pid;print  "\\nTERMINATED\\n";}\' "$@"; } ; timeout ';
+      }
+
+      cmd = cmd_wrapper + timeout + '  ' + cmd + ';';
+    }
+    else if(isnull(get_kb_item(sshlib::SSH_LIB_KB_PREFIX + get_kb_connection_id(remote_host:kb_ssh_host(), remote_port:sshlib::kb_ssh_transport()) + "/escalation_type")))
+    {
+      dbg::detailed_log(lvl:3, src:FUNCTION_NAME, msg:'Using fallback method for timeout detection.');
+      # No pivilage escalation type is being used. Shell timeout fallback is ok in this case.
+      # Last 2>/dev/null is needed for kill command doesn't redirect cmd's stderr
+      # Only adds TERMINATED if times out.
+      # Extra newline before needed to determine truncated output.
+      cmd = cmd + ' & NFP=$! ; sw(){ to="' +
+              timeout +
+              '" ; (( i = to )) ; while (( i > 0 )) ; do kill -0 $NFP || exit 0 ;' +
+              ' sleep 1 ; (( i -= 1 )) ; done ; ';
+      if (multi_cmd)
+      {
+        # Enumerates all child processes and kills al of them
+        cmd += 'ps -ef | awk "\\$3 == $NFP { print \\$2}" | xargs -I % kill %';
+      }
+      else
+      {
+        cmd += 'kill $NFP';
+      }
+
+      cmd += ' ; echo; echo "TERMINATED" ; } ; sw "$to" 2>/dev/null';
+    }
+    else
+    {
+      return [sh_commands::CMD_FAIL, "Privilege escalation is being used which requires timeout or perl to be avilable on the system."];
+    }
+
+    return [sh_commands::CMD_OK, cmd];
+  }
+
+  ##
+  # Runs command on host with timeout capabilities.
+  #
+  # @remark This function *does not* validate the command. This is a helper function for running
+  # already validated commands and shouldn't be used directly by plugins.
+  #
+  # @param [cmd:string] Command string to execute on host.
+  # @param [timeout:integer] Timeout parameter for command (optional).
+  # @param [multi_cmd:boolean] Set to TRUE if composed of multiple commands (optional, defaults to FALSE).
+  # @param [stderr_to_dev_null:boolean] If TRUE redirects stderr to ``/dev/null`` on host (optional, defaults to FALSE).
+  # @param [pread_options:boolean] Options to pass to ``pread_ex()`` for agents (optional).
+  #
+  # @return [list] A list containing the success status of the function and the result of the command, or an error message.
+  #
+  # @remark
+  # The returned list is such that:
+  #
+  # - Index 0: The success status either ``sh_commands::CMD_FAIL`` or ``sh_commands::CMD_OK`` or ``sh_commands::CMD_TIMEOUT``.
+  # - Index 1: The generated command if successful, or the error message if an error occurred.
+  ##
+  function run(cmd, timeout, multi_cmd, stderr_to_dev_null, pread_options)
+  {
+    if (empty_or_null(cmd))
+      cmd = _FCT_ANON_ARGS[0];
+
+    if (empty_or_null(cmd))
+      return [sh_commands::CMD_FAIL, 'run() requires a command to run.'];
+
+    if (empty_or_null(stderr_to_dev_null)) stderr_to_dev_null = FALSE;
+
+    cmd = tenable_utils_replacement(cmd);
+
+    if (stderr_to_dev_null)
+    {
+      cmd += ' 2>/dev/null';
+    }
+
+    var timedout = FALSE;
+
+    var init_result = init_cmd_runner(cache_only:TRUE);
+
+    if (init_result[0] == sh_commands::CMD_FAIL)
+    {
+      return init_result;
+    }
+
+    if (!isnull(timeout))
+    {
+      cmd = add_command_timeout(cmd:cmd, timeout:timeout, multi_cmd:multi_cmd);
+      if (cmd[0] == sh_commands::CMD_OK)
+        cmd = cmd[1];
+      else
+        return cmd;
+    }
+
+    # Send command with timeout and additional time to allow for the timeout host side.
+    var buf = info_send_cmd(cmd:cmd, timeout:timeout + 10, pread_options:pread_options);
+    dbg::detailed_log(
+      lvl:3,
+      src:FUNCTION_NAME,
+      msg:'Sent the command and received the following output.',
+      msg_details:{
+        "Command":{"lvl":3, "value":cmd},
+        "Output":{"lvl":3, "value":buf}});
+
+    # Determine if the command timed out
+    if (!isnull(timeout))
+    {
+      if (buf)
+      {
+        var i;
+        var lines = split(buf, keep:FALSE);
+        var lines_len = max_index(lines);
+
+        if (timeout_exists)
+        {
+          # Return Code is 137 if timed out since we use signal KILL(9)
+          if (lines[lines_len-1] == "137")
+          {
+            timedout = TRUE;
+          }
+        }
+        else
+        {
+          if (lines[lines_len-1] == "TERMINATED")
+          {
+            timedout = TRUE;
+          }
+        }
+
+        # If needed remove timeout related data at end of output
+        # in the case of the timeout this can include the last incomplete line
+        var skip = 0;
+        if(timeout_exists || timedout)
+        {
+          skip = 2;
+          # Some OSes return a bash error with the timeout code, that needs to be removed
+          if (lines_len > 2 && lines[lines_len-3] =~ "(sh|bash):\s*line\s*(\d+)?:\s*(\d+)?\s*[Kk]illed")
+            skip = 3;
+        }
+
+        # Reconstruct buf
+        buf = '';
+        for(i = 0; i < lines_len-skip; ++i)
+        {
+          buf += lines[i] + '\n';
+        }
+
+        # Reconstruct the removed part of the output for debug logs
+        if (skip)
+        {
+          var removed_buf = '';
+          for (i = lines_len-skip; i < lines_len; i++)
+            removed_buf += lines[i] + "\n";
+
+          if (!empty_or_null(removed_buf))
+            dbg::detailed_log(
+              lvl:2,
+              src:FUNCTION_NAME,
+              msg:'The command "timeout" exists or the command timedout so the following lines were removed from the output',
+              msg_details:{
+                "Removed lines":{"lvl":2, "value":removed_buf},
+                "Timedout":{"lvl":2, "value":timedout}});
+        }
+      }
+      # On some systems where the timeout command does not exist
+      # the command sends nothing in return. In that case set buf to empty
+      else
+      {
+        buf = '';
+      }
+    }
+
+    if(timedout)
+    {
+      return [sh_commands::CMD_TIMEOUT, buf];
+    }
+
+    return [sh_commands::CMD_OK, buf];
+  }
+
+  ##
+  # Check if timeout command exists.
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [NULL] Always returns ``NULL``, on error and success alike.
+  #                Instead the function's finding is logged in the KB ``Host/command_builder/timeout_exists``.
+  ##
+  function does_timeout_exist(cache_only)
+  {
+    var buf, kb_name, cmd;
+
+    if (isnull(cache_only))
+      cache_only = FALSE;
+
+    kb_name = "Host/command_builder/timeout_exists";
+
+    # check cache
+    timeout_exists = get_kb_item(kb_name);
+    if(!isnull(timeout_exists))
+    {
+      return NULL;
+    }
+
+    timeout_exists = FALSE;
+
+    if (!cache_only)
+    {
+      cmd = 'type timeout 2>&1';
+      buf = info_send_cmd(cmd: cmd);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Checked existence of the "timeout" command with the following command, and it returned the following output.',
+        msg_details:{
+          "Command":{"lvl":3, "value":cmd},
+          "Output":{"lvl":3, "value":buf}});
+
+      if (buf && 'not found' >!< buf)
+      {
+        timeout_exists = TRUE;
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Command "timeout" exists on the host.');
+      }
+
+      # cache finding
+      replace_kb_item(name:kb_name, value:timeout_exists);
+    }
+
+    return NULL;
+  }
+
+  ##
+  # Check if perl exists
+  #
+  # @param [cache_only:boolean] Only check for cached results and do not query the host (optional, defaults to FALSE).
+  #
+  # @return [NULL] Always returns ``NULL``, on error and success alike.
+  #                Instead the function's finding is logged in the KB ``Host/command_builder/perl_exists``.
+  ##
+  function does_perl_exist(cache_only)
+  {
+    var buf, kb_name, cmd;
+
+    if (isnull(cache_only))
+      cache_only = FALSE;
+
+    kb_name = "Host/command_builder/perl_exists";
+
+    # check cache
+    perl_exists = get_kb_item(kb_name);
+    if(!isnull(perl_exists))
+    {
+      return NULL;
+    }
+
+    perl_exists = FALSE;
+
+    if (!cache_only)
+    {
+      cmd = 'type perl 2>&1';
+      buf = info_send_cmd(cmd: cmd);
+
+      dbg::detailed_log(
+        lvl:3,
+        src:FUNCTION_NAME,
+        msg:'Checked existence of the "perl" command with the following command, and it returned the following output.',
+        msg_details:{
+          "Command":{"lvl":3, "value":cmd},
+          "Output":{"lvl":3, "value":buf}});
+
+      if (buf && 'not found' >!< buf)
+      {
+        perl_exists = TRUE;
+        dbg::detailed_log(lvl:2, src:FUNCTION_NAME, msg:'Command "perl" exists on the host.');
+      }
+
+      # cache finding
+      replace_kb_item(name:kb_name, value:perl_exists);
+    }
+
+    return NULL;
+  }
+
+  ##
+  # Check that command exists on host.
+  #
+  # @anonparam [value:string] Output of the test command testing the command's existence.
+  #
+  # @return [boolean] TRUE if exists FALSE if not found.
+  ##
+  function validate_command_exists()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if(!empty_or_null(value) && 'not found' >< value)
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+
+  ##
+  # Check that value is alphanumeric.
+  #
+  # @anonparam [value:string] A string to validate as being alphanumeric.
+  #
+  # @return [boolean] TRUE if valid FALSE if invalid.
+  ##
+  function validate_alphanumeric()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if (isnull(value) || value !~ "^[0-9A-Za-z]+$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Check that value is an integer.
+  #
+  # @anonparam [value:string|integer] The value to validate as being an integer.
+  #
+  # @return [boolean] TRUE if valid FALSE if invalid.
+  ##
+  function validate_int()
+  {
+    var value = _FCT_ANON_ARGS[0];
+
+    if (isnull(value) || value !~ "^\d+$")
+    {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Check that value has no command injection via an accept-list that excludes non-English chars.
+  #
+  # @anonparam [value:string] The string to check for injections.
+  #
+  # @return [boolean] TRUE if there a no injections, FALSE if injections were found.
+  #
+  # @remark This function will call `lcx::store_dangerous_nix_filepath()`_ if injections are found.
+  ##
+  function validate_no_injection()
+  {
+    # only allow accept-listed characters to prevent command injection
+    # strings starting with '-' aren't allowed unless surrounded by quotes
+    var pat = NO_INJECTION_PATTERN;
+    var value = _FCT_ANON_ARGS[0];
+    
+    if (empty_or_null(value) || value !~ pat)
+    {
+      lcx::store_dangerous_nix_filepath(item:value);
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  ##
+  # Check that value has no command injection using a denylist approach
+  # https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/Command%20Injection
+  #
+  # @anonparam [value:string] The string to check for injections.
+  #
+  # @return [boolean] TRUE if there a no injections, FALSE if injections were found.
+  #
+  # @remark This function will call `lcx::store_dangerous_nix_filepath()`_ if injections are found.
+  ##
+  function validate_no_injection_denylist()
+  {
+    # Do not allow deny-listed chars
+    var pat = INJECTION_PATTERN;
+    var value = _FCT_ANON_ARGS[0];
+    var cmd_killed = pregmatch(pattern:"(\d+\s[Kk]illed)", string:value);
+
+    if (!empty_or_null(cmd_killed))
+      return TRUE;
+    
+    if (empty_or_null(value) || value =~ pat)
+    {
+      lcx::store_dangerous_nix_filepath(item:value);
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+}
+
+namespace sh_commands
+{
+  # Return status constants
+  var CMD_FAIL = 0;
+  var CMD_OK = 1;
+  var CMD_TIMEOUT = 2;
+}

@@ -1,0 +1,39 @@
+#TRUSTED 8236897626e8e73bbad37dfb911b03c503f18178ec51a2d7e2193415e21285ba958d017878a2dd0da144b8a53205d0c0f918eab86f75bb083d131c38efb3ce493a661a4b4e4305f9ef73a7b05bef6bf23d75f60e8e614882cdee2e6b1c5c6f3963d6f224a5458fab7ac3a4830a9d668035595037d5b7b9a1fea41982922680c6d5e6b30a6fc1528a15cb10c46833f4b5f2e17d4c01246cb55fc509f8a5cf8196dde402437b83ef5475329115ae9e48d45462853bbb08d2a10a0df7f5d302b1ac2dc869c699728162f341354570f15eb832c3d68dd6feaf4f075d7fa38d2ca81099cc3614c93f9484cfa696167dcf10c3eba3f9f1044860be0346b61fc5f5da9fad7deb4cca5c31af69f8aa0912df393609f0b5a9f2b3b10fa7eb8eec23f3d6269cb98f22f5fca720c96ac8fa98c2baa16b55f31b959c747a6842821d1468ad1027c13dc6c37131c4e1922247dfb55215f96a44bdc5079a69524f02b39f3e58201fecbeee79bbb59ac5c6a9b3a08e58c4ee6380f5f0ff5bce2acad953710a7b98fc80121a2cbddc9c759ac29c1354545d7b50f9775480ec846e63709612848fa307552cd403c422faa7efff9708b6528ec6467459b6e8e3e5f9c2a64729d03d3189f5fc2ba88f177463d52fc518c959d32d07969449161ae57cef927b6a9dad4bc0567d9aed4a28f13e7c488e50b89d4589360f44734b0feefc67b81e64460b3d
+#TRUST-RSA-SHA256 481d4b4be65f9a4387a8b20f95fc267d3a1f3e4a946591c31d831db0050f2289b64eef753e2d54ea48e22178c5312864dd95d49bcdbf3007b4a0f1adacc40e38815bc70dfdfc5eb2c50564b88d8807fdef0f0f1cfecaad6c49e70c5052781814e862db4c4e2db0e80b795c84929fee682ac7f9396bb1ac976e6bf08171f8a2b667cb5db49dcef8d31e1a90f84aceda7328449b8a422cf30e58a4f2a9e10ea07b2e5dd3b05536153031a58edaa97ebcc9239d10cb39a42856df7adcce0170c4024e38e3ae867b827a69d42a0f8cf7087abe24267490b9c27d0267a2c86aa0ae2105011d670367a766590c31fa2cdf268698593e956734d22be85b7e795f6c5a7ce52fc7ce001a43f4c30c202b1e88ca20e289f54ca0bb29b09a7aedc42c03220608a231bcd9e37f34e8671a2fcfdc3bc6d625489b23df28fb777ae7184f3e022803ac43b41952ce80fd332af7d9338ac0ed5ebf70699c33ea4ebc27089bb61cfab708c71b8606b43e616fa7884a09a9b3c9ca713cc6a0aeb6bc0503ce717bc584a971bca76c0b1c44b917b2210f9e6754c4533aac1e3a9cd48a151c28312b6bff2a158a6eba5a2736893b84729afaf896311c8b4f6ea74dd49d3e63acc6c69fc8fb76aa756b72bc51ae49bbfdce160542c60913e622d29d086b6e181599c0de18032399aa24c9a8a39ed92f7bbd065954fd21c08ea81e1ad36b59fda27fca788f
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.5
+
+# Oracle VM helper functions
+
+
+function handle_oracle_vm(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var sp, rpm_buf, cpu, match;
+  set_kb_item(name:"Host/etc/redhat-release", value: cmd_res);
+  match = pregmatch(pattern:"Oracle VM server release ([0-9]+(\.[0-9]+)+)", string:cmd_res);
+  if (match) cmd_res = "OVS"+match[1];
+  replace_kb_item(name:"Host/OracleVM/release", value:cmd_res);
+  report += '\n' + 'The remote Oracle VM system is : ' + cmd_res;
+
+  if (session) session.clear_cmd_error();
+
+  rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                            internal_label:"OracleVM");
+
+  cpu = host_info_key_val['cpu'];
+
+  if (rpm_buf && cpu)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_oracle_vm.static', value: 35);
+  }
+
+  return TRUE;
+}

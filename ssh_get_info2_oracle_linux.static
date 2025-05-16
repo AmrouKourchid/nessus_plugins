@@ -1,0 +1,276 @@
+#TRUSTED 78ecc3ea6a99a1688100b5960dcf02fedc97d0bbc4a8dc4e3caf923cdb36e4f895e3ae28f88ef09428138a592dd8b29ffe3148038e7d98eb6f5c78feb874078d0612216746397cbc45afca6d6049903b43ba66bc2ab4bf4085a6116d0a094021415c273c675eb4d3ecacfd449fdfe0c034c2d6f2522998bef9732a5206dca6f8642c091209da00523e2c9e1453ab3d1c121439fa7181f2d3d3d4294ba07c9d37096341cf28a0bff16f03db0902ebc136e68770228700a75301980fd6b0abf91898abab0518bf51863ef3e605f038a0ef0b02dd79a5867b6cf09fd07bc52670e4d19efb1f7ee9d34a5ad1cce61d9959c5b5051a5ba1d77d464b2d3304c50a322bc7ae2ae7294daf28583b292e754e30a8d88ad3ff350415d317a6608fdd97e03aca062cfa58c9fe7612f8b953f9d9f845b910f56ec2d8bb6676540c4a9554d4459492bdc411b7987bcfcc474d8f3154bb15318e604f5a5d754b8abfdf9444860a9b48d117038b474d7110027834b7121f1820eaa1bff558a326d5350a6b517aca597c001a37f8dea7b8edd5646c237ed1616753afd2c9669f559ce7077ac4d7bfc5101581bf7d67fb8720a8a9fcafc50c6041fe9bebcc12314511bb699f4e7b44c3dc35be58f895cf0c37a54917c15e8d73c3b5e602ffd37b921ef9970422c77ce6a4ea163f28127fb312b0587929afe04eeb5b7758294f36c8d1d39c56c33269
+#TRUST-RSA-SHA256 088a3a32644fc8ee3992fb684fad5d171f7f0ca7e6a8a248abb1d9c961be92342d4c0b81f756c692a32e5df20963cadd9e40d208a2dfb0514d192621491fee497f71be8f3374b66c78030ac6bef247118100a9ed10d2bd5a716a552d2256bc774fdbc1607b1641d62d0fdbe801770de69541bbc222f057e57da321842ebe51f0b8f810f671133543d32ece4ce4728aa70ad2258107ee9c9265c4e77e44e6e68e033607552e352e3ac11935f9f503bceb1f880690b58a23d6f05e1d175c90db0c6f0f1a6b3b418dc7bb85b962a19182d244535f4344e09cc3d5a8cdc3435a03a49e4207450c82bdd30540ba5f977c49c900f364524b170621944b7a50ef81fd058037a22e67aaa3051a2d3d3f5a7ee90d6a072cbfa255aa614cfcd78b0254bcc821e7c33d485f62dc64888cbbe74acae868cd9ae83b7b77abe3088c8f90027d071b1db884770422f78266b97719f3eb2b9b457d247bbd71ad90a87735c48c5cf3a1b8a88076d6435580c743fa0ecda6818d7c85b99fea6ff18ad1083d38ca2dc7374c864f3450dde8ceb18acba92fa16d5a6fcd0201f9381eecc76c889e13b36b7464d1181357f6cd49c610bafb6a9c4d471589a1b85878c68851bef0955c1e1c61ec73d7ce2ecac304e3631dc347296daae82c589c3e07b3e9c7840923a70d0d452743590f55b53306fd70e83eb1e0a92215232daf58491a671e662c0efeb3d7
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.6
+
+# Oracle Linux helper functions
+
+function handle_oracle_linux(session, use_shell_handler, &channel, cmd_res)
+{
+  local_var oracle_buf, release_file, release_buf;
+  local_var rpm_pat, rpm_buf, matches, line, match, ver;
+  local_var OracleLinux_label, minor_array;
+  local_var interrupted_errors;
+  replace_kb_item(name:"Host/etc/redhat-release", value:cmd_res);
+  replace_kb_item(name:"Host/RedHat/release", value:cmd_res);
+  interrupted_errors = 0;
+
+  if(host_info_key_val['oracle_linux_rpm_interrupted'])
+    interrupted_errors++;
+
+  if(host_info_key_val['oracle_linux'] && strlen(host_info_key_val['oracle_linux']))
+  {
+    oracle_buf = host_info_key_val['oracle_linux'];
+    release_file = host_info_key_val['oracle_linux_release_file'];
+  }
+  else
+  {
+    if(cmd_res =~ 'release [3-5]([^0-9]|$)')
+      release_file = '/etc/enterprise-release';
+    else
+      release_file = '/etc/oracle-release';
+
+    oracle_buf = run_command(cmd:"cat " + release_file,
+                             session:session,
+                             use_shell_handler:use_shell_handler,
+                             channel:channel);
+  }
+
+  # Gather RPM info
+  if(host_info_key_val['oracle_linux_rpm'] && strlen(host_info_key_val['oracle_linux_rpm']))
+  {
+    rpm_buf = host_info_key_val['oracle_linux_rpm'];
+  }
+  else
+  {
+    rpm_buf = gather_rpm_info(session:session, use_shell_handler:use_shell_handler, channel:channel,
+                              internal_label:"RedHat");
+  }
+
+  if ("Oracle Linux Server" >< oracle_buf)
+  {
+    OracleLinux_label = "Oracle Linux Server";
+    replace_kb_item(name:"Host" + release_file, value:oracle_buf);
+    replace_kb_item(name:"Host/RedHat/release", value:oracle_buf);
+  }
+  else if("Enterprise Linux Enterprise Linux" >< oracle_buf)
+  {
+    release_buf = str_replace(string:oracle_buf,
+                              find:"Enterprise Linux Enterprise Linux",
+                              replace:"Oracle Enterprise Linux");
+    release_buf = ereg_replace(pattern:"^(.+ Enterprise Linux).+(release [0-9].+)", replace:"\1 \2",
+                               string:release_buf);
+    if(" Update " >< release_buf)
+      release_buf = ereg_replace(pattern:"^(.+ release [0-9]+).+ Update ([0-9]+).*$", replace:"\1.\2",
+                                 string:release_buf);
+    release_buf = chomp(release_buf) + '\n';
+    OracleLinux_label = "Oracle Enterprise Linux";
+    replace_kb_item(name:"Host" + release_file, value:release_buf);
+    replace_kb_item(name:"Host/RedHat/release", value:release_buf);
+    oracle_buf = release_buf;
+  }
+  else if(cmd_res =~ "^Enterprise Linux Enterprise Linux")
+  {
+    cmd_res = str_replace(string:cmd_res, find:"Enterprise Linux Enterprise Linux", replace:"Oracle Enterprise Linux");
+    OracleLinux_label = "Oracle Enterprise Linux";
+    replace_kb_item(name:"Host/RedHat/release", value:cmd_res);
+    oracle_buf = cmd_res;
+  }
+  else if(strlen(oracle_buf) && pgrep(pattern:"^(oraclelinux|enterprise)-release", string:rpm_buf))
+  {
+    rpm_pat = "^oraclelinux-release-([0-9]+)[^-]+-([0-9]+)";
+    matches = pgrep(pattern:rpm_pat, string:rpm_buf);
+    if(!matches)
+    {
+      # The enterprise-release package on EL4 doesn't reflect the update level.
+      rpm_pat = "^enterprise-release-([5-8])-([0-9]+)";
+      matches = egrep(pattern:rpm_pat, string:rpm_buf);
+    }
+
+    if(matches)
+    {
+      foreach line (split(matches))
+      {
+        match = pregmatch(pattern:rpm_pat, string:line);
+        if(!isnull(match))
+        {
+          ver = match[1] + '.' + match[2];
+          if (int(match[1]) < 6)
+          {
+            OracleLinux_label = "Oracle Enterprise Linux";
+            replace_kb_item(name:"Host" + release_file,
+                            value:'Oracle Enterprise Linux ' + ver + ' (generated from rpm)\n');
+          }
+          else
+          {
+            OracleLinux_label = "Oracle Linux Server";
+            replace_kb_item(name:"Host"+release_file, value:'Oracle Linux Server ' + ver + ' (generated from rpm)\n');
+          }
+          if(match[2])
+            set_kb_item(name:"Host/RedHat/minor_release", value:match[2]);
+          break;
+        }
+      }
+    }
+
+    release_buf = str_replace(string:oracle_buf,
+                              find:"Enterprise Linux Enterprise Linux",
+                              replace:"Oracle Enterprise Linux");
+    release_buf = ereg_replace(pattern:"^(.+ Enterprise Linux).+(release [0-9].+)",
+                               replace:"\1 \2",
+                               string:release_buf);
+    if(" Update " >< release_buf)
+      release_buf = ereg_replace(pattern:"^(.+ release [0-9]+).+ Update ([0-9]+).*$",
+                                 replace:"\1.\2",
+                                 string:release_buf);
+    release_buf = chomp(release_buf) + '\n';
+    OracleLinux_label = "Oracle Enterprise Linux";
+    replace_kb_item(name:"Host" + release_file, value:release_buf);
+    replace_kb_item(name:"Host/RedHat/release", value:release_buf);
+  }
+
+  if (strlen(OracleLinux_label))
+  {
+     replace_kb_item(name:"Host/OracleLinux", value:TRUE);
+     report += '\nThe remote ' + OracleLinux_label + ' system is :\n' + oracle_buf;
+  }
+  else
+  {
+    failure_kb_msg = "Unable to determine Oracle Linux version.";
+    failure_kb_type = lcx::ISSUES_INFO;
+    return FALSE;
+  }
+
+  # calculate minor version
+
+  # 3.x
+  minor_array = pregmatch(pattern:"(?:Red Hat Enterprise|Oracle|Oracle Enterprise) Linux.*release 3 .*pdate (\d+).*",
+                          string:oracle_buf);
+  # 4.x
+  if (!minor_array)
+    minor_array = pregmatch(pattern:"(?:Red Hat Enterprise|Oracle|Oracle Enterprise) Linux.*release 4 .*pdate (\d+).*",
+                            string:oracle_buf);
+  # x.x
+  if (!minor_array)
+   minor_array = pregmatch(pattern:"(?:Red Hat Enterprise|Oracle|Oracle Enterprise) Linux.*release \d+\.(\d+).*",
+                           string:oracle_buf);
+
+  if (minor_array)
+    replace_kb_item(name:"Host/RedHat/minor_release", value:minor_array[1]);
+
+  var cpu = host_info_key_val['cpu'];
+
+  var found = FALSE;
+
+  if(rpm_buf && cpu && !interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is available for this host.';
+    sshlib::enable_local_checks();
+    replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_oracle_linux.static', value: 175);
+    found = TRUE;
+  }
+
+  # Register OS
+  if ( found &&
+       !empty_or_null(oracle_buf) &&
+       !empty_or_null(cpu) )
+    register_oracle_linux_os(oracle_info:oracle_buf, cpu:cpu);
+  else
+    dbg::detailed_log(lvl:1,
+                      src:FUNCTION_NAME,
+                      msg:'Failed to register_oracle_linux_os due to missing release file or cpu information.');
+
+  if(found)
+    return TRUE;
+
+  if(interrupted_errors)
+  {
+    report += '\nOS Security Patch Assessment is not available because\n' +
+              'the following commands were interrupted due to timeout or error:\n';
+    report += cmd_interrupted_names_local_checks;
+    failure_kb_msg = 'SSH command(s) interrupted due to timeout or error,\n' +
+                     'preventing OS Security Patch Assessment:\n' + cmd_interrupted_names_local_checks;
+    failure_kb_type = lcx::ISSUES_ERROR;
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  return TRUE;
+}
+
+##
+# Register OS including parsing and standardizing.
+#
+# @param [oracle_info:str] OS release info from the release file under /etc
+# @param [cpu:str]         CPU architecture
+#
+# @return the return value of register_os() or NULL if an error occurred
+##
+function register_oracle_linux_os(oracle_info, cpu)
+{
+  # Parse OS string
+  #
+  #  - Examples:
+  #    Oracle Linux Server release 6.10
+  #    Oracle Linux Server 7.9
+  #    Oracle Linux Server release 8.9
+  #    Oracle Linux Server 9.0  
+  #
+  #  - Match groups:
+  #    1: Oracle Linux | Oracle Linux Server
+  #    2: Release String (e.g. '6.10')
+
+  var pattern = "^(Oracle Linux(?: Server)?)(?: release)? ([0-9.]+)(?:\\s+)?$";
+  var matches = pregmatch(pattern:pattern, string:oracle_info, icase:TRUE);
+  if (empty_or_null(matches))
+  {
+    dbg::detailed_log(lvl:1, src:FUNCTION_NAME, msg:'Failed to match on OS string: ' + oracle_info);
+    return NULL;
+  }
+
+  # Product
+  var product = matches[1];
+
+  # Release
+  var release = matches[2];
+
+  # Version
+  #  - There should always be at least a release due to the previous pattern matchings.
+  var version = release;
+
+  # OS Name
+  var os_name = strcat(product, ' ', release);
+
+  # Base CPE
+  #  - Examples:
+  #    cpe:/o:oracle:linux:5.10
+  #    cpe:/o:oracle:linux:7.4
+  #    cpe:/o:oracle:linux:7.9
+  #    cpe:/o:oracle:linux:9.2
+  var cpe = 'cpe:/o:oracle:linux:' + release;
+
+  return register_os(
+    type        : 'local',
+    method      : 'SSH',
+    confidence  : 100,
+
+    vendor      : 'Oracle',
+    product     : product,
+
+    release     : release,
+    version     : version,
+    os_name     : os_name,
+    target_hw   : cpu,
+
+    cpe         : cpe
+  );
+
+  return NULL;
+}
+

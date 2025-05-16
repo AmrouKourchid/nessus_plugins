@@ -1,0 +1,107 @@
+#TRUSTED 065b67efdc69ffff86cd457d136b81a47eec045a177acf7f0562723b7238b856ada95c72f57748ffc81b7eacba5def8a1f50bab565652fe659b7980edc060c6f31e0199af724824b014e764a897f798e3b2c221cb88807a5037327ca56f20f007aadb2cb3975bb6b91295103498cb4f2cc2ee035eba14a9e7191d9d8c1d56c3e07668a09422d175d082f8c19b342ce0326cd8b6675c985ce7a87cbe0c197d84a50e4496e4716f37fbfb31af57922cf24400ded91382b7fb83277c4bfc6f0caf2abd64f090964a6061b622c2cd13855a292237e2994cf4aa52827f73546da39167ebe72b261c3e6b8fd2840f85af616d78359b0d66ceb2544858dbddef61305e4592a0540e1a95878fa1736bf7e24b89f061ed8261d60936721e37e673dd05ab0aabb1081703e241905f2b41886b9d66c74770970f735e3ddfff577cad940689a042464feb8d7d894cc5b30925edd16a497e5e8bf4d752da8d131c8c82e0058f3f032d7f04dbee7a98f1a46b750a6a65e23afdf228da4fe3c9947cb21d8cc2756a68bccea2ff4fb12d2e71814e5a407b6cdacebe7d22370e6db84c5a80d228dab55e86fbeb594c38b8c7e88763b9a82afdec563886a2db73c1abfcdb9d2340fa937444cab0d822470fe54fa0d6f07a3459acd18656dfe4742f99fba89494fa889dc20a336810d53c0e67ba0142c3129ed3268d105eeca348f530f4c7ce77781aa
+#TRUST-RSA-SHA256 77b3d2920f28c70f44cd8f8da09dc2c8405473bea1321116c2a656eed88200f858c86e169e8176bc285fb555c9d603f6df8ed981ba7006b16fb5066b8ecdf1ab1162268a82a15d706ffa244ac7284edc9308a599d736df13681433bd10d0a0584b273533708d0ce4eef8ce8362415a18e07cd3a7ebaf51ff8fb4cfdcf5c4e96f2754e3ac584127580292cbc172574af193a6f6d3e84c402b14f5e744572e7b5fbfca4df4dbc4d90f3b98bb91e5f2807e2b6a84911c7fddaf391653f3e63f1b6b187c3137bc57e26bf727db76baf7e1cd068976176b146a9d26f9d88927dbd53ca04442461dc721b848b61659796995ead8ce0089798a1eca6ccf646bfd9f431588c122c4f45ea9e51760296b814d19ee8fad10905d65a4e52e92b31b5a4176659e69e2f966119ac264110e73eff67e02ca899c03bfa83aaed4bf8c31cb74a01ff45c94ff65d3459f4753897ff9c1f046f784819b4516f1cfd650b0e51a381bf0d2a590839b99d9b8f277129be955c0d6934825d54af80b896efcab9640485cccf02feb90357129cf6b14abe54a535d17f4bfced51aa9d396c13ae28e573c78810b0058912f8db1b785b6e5f86fa478cd8267fcda332ca43e0cfd8a838d67ff83a583134ea3365859322c09be4165c306d58b0df4cdbfc7ed901343e600b072385483f836f2bd3b0775a772dbbe8b307dcdcb949f782c4cabc7cb0507793b6add
+
+# (C) Tenable Network Security, Inc.
+#
+# This script is released under one of the Tenable Script Licenses and may not
+# be used from within scripts released under another license without the
+# authorization from Tenable Network Security Inc.
+#
+# Revision: 1.10
+
+function cisco_ucs_director_pre_check_fail()
+{
+  # have we already checked that the host is not Cisco UCS Director?
+  if(host_info_key_val['host_not_cisco_ucs_director'])
+    return TRUE;
+
+  if(uname_error_or_mismatch(regex:cisco_ucs_director_check['test_cmd_regex']))
+    return TRUE;
+
+  # Not Cisco UCS Director if one of the following devices
+  if (is_cisco_firepower() ||
+      is_cisco_nxos() ||
+      is_timos_userauth() ||
+      is_cisco_ucos() ||
+      is_citrix_adc() ||
+      is_citrix_adm() ||
+      is_viptela_ssh() ||
+      is_huawei() ||
+      is_panos() ||
+      is_acos() ||
+      is_adtran() ||
+      is_staros() ||
+      is_ivanti_sentry() ||
+      is_screenos() ||
+      is_exos() ||
+      is_qnap_standard() ||
+      is_dell_idrac() ||
+      is_infoblox_nios() ||
+      is_aruba_cppm() ||
+      is_arrayos())
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+# callback for systems with "Cisco UCS Director Shell Menu" in uname output
+function handle_cisco_ucs_director(session, use_shell_handler, &channel, cmd_res)
+{
+  var version, build;
+
+  sshlib::set_support_level(level: sshlib::SSH_LIB_SUPPORTS_COMMANDS);
+  report += '\nLocal checks have been enabled for this host.';
+
+  var match = pregmatch(pattern:"Version\s*:\s*([0-9.]+) Build\s*:\s*([0-9.]+)", string:cmd_res);
+  if(!isnull(match))
+  {
+    if(!isnull(match[1]))
+    {
+      version = match[1];
+      replace_kb_item(name:"Host/Cisco/UCSDirector/version", value:version);
+    }
+
+    if(!isnull(match[2]))
+    {
+      build = match[2];
+      replace_kb_item(name:"Host/Cisco/UCSDirector/build", value:build);
+    }
+  }
+
+  if(isnull(version) || isnull(build))
+  {
+    failure_kb_msg = 'The remote host appears to be running Cisco UCS Director.\n' +
+                     'However, we could not detect the version and build from the menu title.';
+    failure_kb_type = lcx::ISSUES_INFO;
+    report += '\n\n' + failure_kb_msg + '\n';
+    sshlib::set_support_level(level:sshlib::SSH_LIB_LOCAL_CHECKS_ERROR);
+    return TRUE;
+  }
+
+  report += '\nOS Security Patch Assessment is available for Cisco UCS Director, Version: ' + version + ' Build: ' + build + '.\n';
+  sshlib::enable_local_checks();
+  replace_kb_item(name:'debug/Host/local_checks_enabled_source/includes/ssh_get_info2_cisco_ucs_director.static', value: 83);
+
+  replace_kb_item(name:"Host/OS/UCSmenu", value:"Cisco UCS Director");
+  replace_kb_item(name:"Host/OS/UCSmenu/Confidence", value:100);
+  replace_kb_item(name:"Host/OS/UCSmenu/Type", value:"IaaS");
+
+  return NULL;
+}
+
+function handle_not_cisco_ucs_director(session, use_shell_handler, &channel, cmd_res)
+{
+  if (use_shell_handler) store_shell_info();
+
+  if(!empty_or_null(cmd_res))
+  {
+    replace_kb_item(name:"Host/uname", value:cmd_res);
+
+    # store more details for other handlers to use
+    host_info_key_val['uname-a_unrecognized'] = cmd_res;
+    host_info_key_val['host_not_cisco_ucs_director'] = TRUE;
+  }
+
+}
